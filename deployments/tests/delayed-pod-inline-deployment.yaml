@@ -1,0 +1,57 @@
+---
+apiVersion: gpu.dra.intel.com/v1alpha
+kind: GpuClaimParameters
+metadata:
+  name: inline-gpu-claim-params
+spec:
+  count: 1
+  type: "gpu"
+  memory: 640
+---
+apiVersion: resource.k8s.io/v1alpha1
+kind: ResourceClaimTemplate
+metadata:
+  name: test-inline-claim-template
+  namespace: default
+spec:
+  metadata:
+    labels:
+      app: inline-resource
+  spec:
+    resourceClassName: intel-gpu
+    parametersRef:
+      apiGroup: gpu.dra.intel.com/v1alpha
+      kind: GpuClaimParameters
+      name: inline-gpu-claim-params
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-single-pod
+  namespace: default
+  labels:
+    app: inline-pods
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inline-pods
+  template:
+    metadata:
+      labels:
+        app: inline-pods
+    spec:
+      containers:
+      - name: with-resource
+        image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+        command: ["sh", "-c", "ls -la /dev/dri/ && sleep 10"]
+        resources:
+          claims:
+          - name: resource
+      - name: without-resource
+        image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+        command: ["sh", "-c", "ls -la /dev/ && sleep 10"]
+      resourceClaims:
+      - name: resource
+        source:
+          resourceClaimTemplateName: test-inline-claim-template
