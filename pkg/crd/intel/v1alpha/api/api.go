@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,11 @@ import (
 )
 
 const (
-	ApiGroupName           = icrd.ApiGroupName
-	ApiVersion             = icrd.ApiVersion
+	APIGroupName           = icrd.APIGroupName
+	APIVersion             = icrd.APIVersion
 	GpuDeviceType          = icrd.GpuDeviceType
+	VfDeviceType           = icrd.VfDeviceType
+	AnyDeviceType          = icrd.AnyDeviceType // either VF or plain GPU
 	UnknownDeviceType      = icrd.UnknownDeviceType
 	GpuClaimParametersKind = "GpuClaimParameters"
 )

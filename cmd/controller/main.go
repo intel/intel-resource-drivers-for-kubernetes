@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,12 +41,12 @@ import (
 	"k8s.io/component-base/featuregate"
 	"k8s.io/component-base/logs"
 	logsapi "k8s.io/component-base/logs/api/v1"
-	_ "k8s.io/component-base/logs/json/register" // for JSON log output support
+	_ "k8s.io/component-base/logs/json/register"
 	"k8s.io/component-base/metrics/legacyregistry"
-	_ "k8s.io/component-base/metrics/prometheus/clientgo/leaderelection" // register leader election in the default legacy registry
-	_ "k8s.io/component-base/metrics/prometheus/restclient"              // for client metric registration
-	_ "k8s.io/component-base/metrics/prometheus/version"                 // for version metric registration
-	_ "k8s.io/component-base/metrics/prometheus/workqueue"               // register work queues in the default legacy registry
+	_ "k8s.io/component-base/metrics/prometheus/clientgo/leaderelection"
+	_ "k8s.io/component-base/metrics/prometheus/restclient"
+	_ "k8s.io/component-base/metrics/prometheus/version"
+	_ "k8s.io/component-base/metrics/prometheus/workqueue"
 	"k8s.io/component-base/term"
 	"k8s.io/dynamic-resource-allocation/controller"
 	"k8s.io/dynamic-resource-allocation/leaderelection"
@@ -56,7 +56,7 @@ import (
 	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/crd/intel/v1alpha/api"
 )
 
-type flags_t struct {
+type flagsType struct {
 	kubeconfig   *string
 	kubeAPIQPS   *float32
 	kubeAPIBurst *int
@@ -73,16 +73,16 @@ type flags_t struct {
 	leaderElectionRetryPeriod   *time.Duration
 }
 
-type clientset_t struct {
+type clientsetType struct {
 	core  coreclientset.Interface
 	intel intelclientset.Interface
 }
 
-type config_t struct {
+type configType struct {
 	namespace string
-	flags     *flags_t
+	flags     *flagsType
 	csconfig  *rest.Config
-	clientset *clientset_t
+	clientset *clientsetType
 	ctx       context.Context
 	mux       *http.ServeMux
 }
@@ -102,7 +102,6 @@ func newCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "controller",
 		Short: "Intel GPU resource-driver controller",
-		Long:  "Intel GPU resource-driver controller handles allocations and deallocations for resource-claims",
 	}
 
 	flags := addFlags(cmd, logsconfig, fgate)
@@ -111,7 +110,7 @@ func newCommand() *cobra.Command {
 		// Activate logging as soon as possible, after that
 		// show flags with the final logging configuration.
 		if err := logsapi.ValidateAndApply(logsconfig, fgate); err != nil {
-			return err
+			return fmt.Errorf("logsapi failed: %v", err)
 		}
 
 		return nil
@@ -141,13 +140,13 @@ func newCommand() *cobra.Command {
 			nsname = "default"
 		}
 
-		config := &config_t{
+		config := &configType{
 			ctx:       ctx,
 			mux:       mux,
 			flags:     flags,
 			csconfig:  csconfig,
 			namespace: nsname,
-			clientset: &clientset_t{
+			clientset: &clientsetType{
 				coreclient,
 				intelclient,
 			},
@@ -175,8 +174,10 @@ func newCommand() *cobra.Command {
 	return cmd
 }
 
-func addFlags(cmd *cobra.Command, logsconfig *logsapi.LoggingConfiguration, fgate featuregate.MutableFeatureGate) *flags_t {
-	flags := &flags_t{}
+func addFlags(cmd *cobra.Command,
+	logsconfig *logsapi.LoggingConfiguration,
+	fgate featuregate.MutableFeatureGate) *flagsType {
+	flags := &flagsType{}
 
 	sharedFlagSets := cliflag.NamedFlagSets{}
 	fs := sharedFlagSets.FlagSet("logging")
@@ -184,16 +185,18 @@ func addFlags(cmd *cobra.Command, logsconfig *logsapi.LoggingConfiguration, fgat
 	logs.AddFlags(fs, logs.SkipLoggingConfigurationFlags())
 
 	fs = sharedFlagSets.FlagSet("Kubernetes client")
-	flags.kubeconfig = fs.String("kubeconfig", "", "Absolute path to the kube.config file. Either this or KUBECONFIG need to be set if the driver is being run out of cluster.")
+	flags.kubeconfig = fs.String("kubeconfig", "", "Absolute path to the kube.config file")
 	flags.kubeAPIQPS = fs.Float32("kube-api-qps", 5, "QPS to use while communicating with the kubernetes apiserver.")
 	flags.kubeAPIBurst = fs.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver.")
 	flags.workers = fs.Int("workers", 10, "Concurrency to process multiple claims")
 
 	fs = sharedFlagSets.FlagSet("http server")
 	flags.httpEndpoint = fs.String("http-endpoint", "",
-		"The TCP network address where the HTTP server for diagnostics, including pprof, metrics and (if applicable) leader election health check, will listen (example: `:8080`). The default is the empty string, which means the server is disabled.")
-	flags.metricsPath = fs.String("metrics-path", "/metrics", "The HTTP path where Prometheus metrics will be exposed, disabled if empty.")
-	flags.profilePath = fs.String("pprof-path", "", "The HTTP path where pprof profiling will be available, disabled if empty.")
+		"TCP address to listen for diagnostics HTTP server (i.e.: `:8080`). Empty string = disabled (default)")
+	flags.metricsPath = fs.String("metrics-path", "/metrics",
+		"HTTP path to expose for Prometheus metrics, Empty string = disabled (default is /metrics).")
+	flags.profilePath = fs.String("pprof-path", "",
+		"HTTP path for pprof profiling. Empty string = disabled.")
 
 	fs = sharedFlagSets.FlagSet("leader election")
 	flags.enableLeaderElection = fs.Bool("leader-election", false,
@@ -224,7 +227,7 @@ func addFlags(cmd *cobra.Command, logsconfig *logsapi.LoggingConfiguration, fgat
 	return flags
 }
 
-func getClientsetConfig(f *flags_t) (*rest.Config, error) {
+func getClientsetConfig(f *flagsType) (*rest.Config, error) {
 	var csconfig *rest.Config
 
 	klog.V(5).Infof("Getting client config")
@@ -254,7 +257,7 @@ func getClientsetConfig(f *flags_t) (*rest.Config, error) {
 	return csconfig, nil
 }
 
-func setupHTTPEndpoint(config *config_t) error {
+func setupHTTPEndpoint(config *configType) error {
 	klog.V(5).Infof("Setting up HTTP endpoint")
 
 	if *config.flags.metricsPath != "" {
@@ -263,7 +266,8 @@ func setupHTTPEndpoint(config *config_t) error {
 		reg := prometheus.NewRegistry()
 		gatherers := prometheus.Gatherers{
 			// Include Go runtime and process metrics:
-			// https://github.com/kubernetes/kubernetes/blob/9780d88cb6a4b5b067256ecb4abf56892093ee87/staging/src/k8s.io/component-base/metrics/legacyregistry/registry.go#L46-L49
+			// https://github.com/kubernetes/kubernetes/blob/9780d88cb6a4b5b067256ecb4abf56892093ee87/staging/
+			// src/k8s.io/component-base/metrics/legacyregistry/registry.go#L46-L49
 			legacyregistry.DefaultGatherer,
 		}
 		gatherers = append(gatherers, reg)
@@ -305,10 +309,10 @@ func setupHTTPEndpoint(config *config_t) error {
 	return nil
 }
 
-func startControllerWithLeader(config *config_t) error {
+func startControllerWithLeader(config *configType) error {
 	klog.V(3).Infof("Starting controller with leader election")
 	// This must not change between releases.
-	lockName := intelcrd.ApiGroupName
+	lockName := intelcrd.APIGroupName
 
 	// Create a new clientset for leader election
 	// to avoid starving it when the normal traffic
@@ -339,11 +343,11 @@ func startControllerWithLeader(config *config_t) error {
 	return nil
 }
 
-func StartController(config *config_t) {
+func StartController(config *configType) {
 	klog.V(3).Infof("Starting controller without leader election")
 	driver := newDriver(config)
 	informerFactory := informers.NewSharedInformerFactory(config.clientset.core, 0 /* resync period */)
-	ctrl := controller.New(config.ctx, intelcrd.ApiGroupName, driver, config.clientset.core, informerFactory)
+	ctrl := controller.New(config.ctx, intelcrd.APIGroupName, driver, config.clientset.core, informerFactory)
 	informerFactory.Start(config.ctx.Done())
 	ctrl.Run(*config.flags.workers)
 }

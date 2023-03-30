@@ -42,15 +42,18 @@ spec:
                 minimum: 1
                 type: integer
               memory:
-                description: Per GPU memory request, in MiB, maximum 131072 (127 GiB)
-                maximum: 131072
+                description: Per GPU memory request, in MiB, maximum 1048576 (1 TiB)
+                maximum: 1048576
                 minimum: 8
                 type: integer
               type:
+                enum:
+                - gpu
+                - vf
+                - any
                 type: string
             required:
             - count
-            - type
             type: object
         type: object
     served: true

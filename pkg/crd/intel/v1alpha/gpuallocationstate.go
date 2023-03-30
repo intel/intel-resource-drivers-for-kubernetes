@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,50 +20,70 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Types of Devices that can be allocated
+// Types of Devices that can be allocated.
 const (
 	GpuDeviceType     = "gpu"
+	VfDeviceType      = "vf"
+	AnyDeviceType     = "any"
 	UnknownDeviceType = "unknown"
 )
 
-// AllocatableGpu represents an allocatable GPU on a node
+// AllocatableGpu represents an allocatable Gpu on a node.
 type AllocatableGpu struct {
-	CDIDevice string `json:"cdiDevice"`
-	Memory    int    `json:"memory"`
-	Model     string `json:"model"`
-	Type      string `json:"type"` // gpu, vf, pf, tile, vgpu
-	UUID      string `json:"uuid"`
+	// Unique identifier of device: PCI address and PCI Device ID.
+	UID string `json:"uid"`
+	// Amount of local memory in MiB.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1048576
+	Memory int `json:"memory"`
+	// pci-id of the Gpu device.
+	Model string `json:"model"`
+	// Type of the device: bare-metal Gpu or SR-IOV Virtual Function (VF).
+	Type GpuType `json:"type"` // gpu, vf
+	// Device where VF should be / is provisioned.
+	ParentUID string `json:"parentuid"`
+	// Greater than 0 if SR-IOV is supported / enabled.
+	Maxvfs int `json:"maxvfs"`
 }
 
-// AllocatedGpu represents an allocated GPU on a node
+// AllocatedGpu represents an allocated Gpu on a node.
 type AllocatedGpu struct {
-	CDIDevice string `json:"cdiDevice"`
-	Memory    int    `json:"memory"`
-	Type      string `json:"type"` // gpu, vf, pf, tile, vgpu
-	UUID      string `json:"uuid"`
+	// Unique identifier of device: PCI address and PCI Device ID.
+	UID string `json:"uid"`
+	// Amount of local memory in MiB.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1048576
+	Memory int `json:"memory"`
+	// Type of the device: bare-metal Gpu or SR-IOV Virtual Function (VF).
+	Type GpuType `json:"type"` // gpu, vf
+	// Device where VF should be / is provisioned.
+	ParentUID string `json:"parentuid"`
+	// Virtual Function profile defines amount of local memory and time slice VF gets.
+	Profile string `json:"profile"`
 }
 
-// AllocatedDevices represents a list of allocated devices on a node
+// AllocatedDevices represents a list of allocated devices on a node.
 // +kubebuilder:validation:MaxItems=8
-type AllocatedDevices []AllocatedGpu
+type AllocatedGpus []AllocatedGpu
 
-// RequestedGpu represents a GPU being requested for allocation
-type RequestedGpu struct {
-	UUID string `json:"uuid,omitempty"`
+// +kubebuilder:validation:Enum=gpu;vf;any
+type GpuType string
+
+// RequestedDevices represents a set of request spec and devices requested for allocation.
+type ResourceClaimAllocation struct {
+	Request GpuClaimParametersSpec `json:"request"`
+	Gpus    AllocatedGpus          `json:"gpus"`
+	// Pod UID, for delayed allocation to match Resource Claims of same Pod when allocating VFs.
+	Owner string `json:"owner"`
 }
 
-// RequestedDevices represents a set of request spec and devices requested for allocation
-type RequestedDevices struct {
-	Spec GpuClaimParametersSpec `json:"spec"`
-	// +kubebuilder:validation:MaxItems=8
-	GPUs []RequestedGpu `json:"devices"`
-}
+type ResourceClaimAllocations map[string]ResourceClaimAllocation
 
-// GpuAllocationStateSpec is the spec for the GpuAllocationState CRD
+// GpuAllocationStateSpec is the spec for the GpuAllocationState CRD.
 type GpuAllocationStateSpec struct {
-	AllocatableGpus          map[string]AllocatableGpu   `json:"allocatableGpus,omitempty"`
-	ResourceClaimAllocations map[string]AllocatedDevices `json:"resourceClaimAllocations,omitempty"`
-	ResourceClaimRequests    map[string]RequestedDevices `json:"resourceClaimRequests,omitempty"`
+	Allocatable              map[string]AllocatableGpu          `json:"allocatable,omitempty"`
+	Prepared                 map[string]AllocatedGpus           `json:"prepared,omitempty"`
+	ResourceClaimAllocations map[string]ResourceClaimAllocation `json:"resourceClaimAllocations,omitempty"`
 }
 
 // +genclient
@@ -73,7 +93,7 @@ type GpuAllocationStateSpec struct {
 // +kubebuilder:resource:scope=Namespaced
 // +kubebuilder:resource:singular=gas
 
-// GpuAllocationState holds the state required for allocation on a node
+// GpuAllocationState holds the state required for allocation on a node.
 type GpuAllocationState struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -84,7 +104,7 @@ type GpuAllocationState struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// GpuAllocationStateList represents the "plural" of a GpuAllocationState CRD object
+// GpuAllocationStateList represents the "plural" of a GpuAllocationState CRD object.
 type GpuAllocationStateList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

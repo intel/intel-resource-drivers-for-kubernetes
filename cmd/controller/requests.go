@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,24 +24,23 @@ import (
 )
 
 /*
-	 requests is a map {
-		claim-uuid : map {
-			nodename : intelcrd.RequestedDevices{
-							Spec    GpuClaimParametersSpec `json:"spec"`
-							Devices []RequestedGpu         `json:"devices"`
-						}
+	PerNodeClaimRequests is a map {
+		claim-uid : map {
+			nodename : intelcrd.ResourceClaimAllocation {
+				Request GPUClaimParametersSpec `json:"request"`
+				GPUs    AllocatedGPUs          `json:"gpus"`
 			}
 		}
 	}
 */
 type PerNodeClaimRequests struct {
 	sync.RWMutex
-	requests map[string]map[string]intelcrd.RequestedDevices
+	requests map[string]map[string]intelcrd.ResourceClaimAllocation
 }
 
 func NewPerNodeClaimRequests() *PerNodeClaimRequests {
 	return &PerNodeClaimRequests{
-		requests: make(map[string]map[string]intelcrd.RequestedDevices),
+		requests: make(map[string]map[string]intelcrd.ResourceClaimAllocation),
 	}
 }
 
@@ -60,39 +59,38 @@ func (p *PerNodeClaimRequests) Exists(claimUID, node string) bool {
 	return true
 }
 
-func (p *PerNodeClaimRequests) Get(claimUID, node string) intelcrd.RequestedDevices {
+func (p *PerNodeClaimRequests) Get(claimUID, node string) intelcrd.ResourceClaimAllocation {
 	p.RLock()
 	defer p.RUnlock()
 
 	if !p.Exists(claimUID, node) {
-		return intelcrd.RequestedDevices{}
+		return intelcrd.ResourceClaimAllocation{}
 	}
 	return p.requests[claimUID][node]
 }
 
 func (p *PerNodeClaimRequests) CleanupNode(gas *intelcrd.GpuAllocationState) {
 	p.RLock()
+	klog.V(5).Infof("Cleaning up resource requests for node %v", gas.Name)
 	for claimUID := range p.requests {
-		if request, exists := p.requests[claimUID][gas.Name]; exists {
-			klog.V(5).Infof("Cleaning up resource requests for node %v", gas.Name)
+		// if the resource claim was suitable for GAS node
+		if _, exists := p.requests[claimUID][gas.Name]; exists {
 			// cleanup processed claim requests
-			if _, exists := gas.Spec.ResourceClaimRequests[claimUID]; exists {
+			if _, exists := gas.Spec.ResourceClaimAllocations[claimUID]; exists {
 				delete(p.requests, claimUID)
-			} else {
-				gas.Spec.ResourceClaimRequests[claimUID] = request
 			}
 		}
 	}
 	p.RUnlock()
 }
 
-func (p *PerNodeClaimRequests) Set(claimUID, node string, devices intelcrd.RequestedDevices) {
+func (p *PerNodeClaimRequests) Set(claimUID, node string, devices intelcrd.ResourceClaimAllocation) {
 	p.Lock()
 	defer p.Unlock()
 
 	_, exists := p.requests[claimUID]
 	if !exists {
-		p.requests[claimUID] = make(map[string]intelcrd.RequestedDevices)
+		p.requests[claimUID] = make(map[string]intelcrd.ResourceClaimAllocation)
 	}
 
 	p.requests[claimUID][node] = devices

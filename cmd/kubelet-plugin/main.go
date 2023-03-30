@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,10 +45,8 @@ import (
 )
 
 const (
-	apiGroupVersion = intelcrd.ApiGroupName + "/" + intelcrd.ApiVersion
-
-	pluginRegistrationPath = "/var/lib/kubelet/plugins_registry/" + intelcrd.ApiGroupName + ".sock"
-	driverPluginPath       = "/var/lib/kubelet/plugins/" + intelcrd.ApiGroupName
+	pluginRegistrationPath = "/var/lib/kubelet/plugins_registry/" + intelcrd.APIGroupName + ".sock"
+	driverPluginPath       = "/var/lib/kubelet/plugins/" + intelcrd.APIGroupName
 	driverPluginSocketPath = driverPluginPath + "/plugin.sock"
 
 	cdiRoot    = "/etc/cdi"
@@ -58,24 +56,23 @@ const (
 
 	dridevpath = "/dev/dri/"
 
-	kubeApiQps   = 5
-	kubeApiBurst = 10
+	kubeAPIQps   = 5
+	kubeAPIBurst = 10
 )
 
-type clientset_t struct {
+type clientsetType struct {
 	core  coreclientset.Interface
 	intel intelclientset.Interface
 }
 
-type config_t struct {
+type configType struct {
 	crdconfig *intelcrd.GpuAllocationStateConfig
-	clientset *clientset_t
+	clientset *clientsetType
 }
 
 func main() {
 	command := newCommand()
-	err := command.Execute()
-	if err != nil {
+	if err := command.Execute(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
 }
@@ -88,7 +85,6 @@ func newCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "kubelet-plugin",
 		Short: "Intel GPU resource-driver kubelet plugin",
-		Long:  "Intel GPU resource-driver kubelet-plugin runs as a device plugin for kubelet that supports dynamic resource allocation.",
 	}
 
 	sharedFlagSets := cliflag.NamedFlagSets{}
@@ -104,67 +100,67 @@ func newCommand() *cobra.Command {
 	cliflag.SetUsageAndHelpFunc(cmd, sharedFlagSets, cols)
 
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		// Activate logging as soon as possible, after that
-		// show flags with the final logging configuration.
 		if err := logsapi.ValidateAndApply(logsconfig, fgate); err != nil {
-			return err
+			return fmt.Errorf("failed to validate logs config: %v", err)
 		}
 
 		return nil
 	}
 
-	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		clientsetconfig, err := getClientSetConfig()
-		if err != nil {
-			return fmt.Errorf("create client configuration: %v", err)
-		}
-
-		coreclient, err := coreclientset.NewForConfig(clientsetconfig)
-		if err != nil {
-			return fmt.Errorf("create core client: %v", err)
-		}
-
-		intelclient, err := intelclientset.NewForConfig(clientsetconfig)
-		if err != nil {
-			return fmt.Errorf("create Intel client: %v", err)
-		}
-
-		nodeName, nodeNameFound := os.LookupEnv("NODE_NAME")
-		if !nodeNameFound {
-			nodeName = "127.0.0.1"
-		}
-		podNamespace, podNamespaceFound := os.LookupEnv("POD_NAMESPACE")
-		if !podNamespaceFound {
-			podNamespace = "default"
-		}
-		klog.V(3).Infof("node: %v, namespace: %v", nodeName, podNamespace)
-
-		node, err := coreclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("get node object: %v", err)
-		}
-
-		config := &config_t{
-			crdconfig: &intelcrd.GpuAllocationStateConfig{
-				Name:      nodeName,
-				Namespace: podNamespace,
-				Owner: &metav1.OwnerReference{
-					APIVersion: "v1",
-					Kind:       "Node",
-					Name:       nodeName,
-					UID:        node.UID,
-				},
-			},
-			clientset: &clientset_t{
-				coreclient,
-				intelclient,
-			},
-		}
-
-		return CallPlugin(config)
-	}
+	cmd.RunE = commandExecutable
 
 	return cmd
+}
+
+func commandExecutable(cmd *cobra.Command, args []string) error {
+	clientsetconfig, err := getClientSetConfig()
+	if err != nil {
+		return fmt.Errorf("create client configuration: %v", err)
+	}
+
+	coreclient, err := coreclientset.NewForConfig(clientsetconfig)
+	if err != nil {
+		return fmt.Errorf("create core client: %v", err)
+	}
+
+	intelclient, err := intelclientset.NewForConfig(clientsetconfig)
+	if err != nil {
+		return fmt.Errorf("create Intel client: %v", err)
+	}
+
+	nodeName, nodeNameFound := os.LookupEnv("NODE_NAME")
+	if !nodeNameFound {
+		nodeName = "127.0.0.1"
+	}
+	podNamespace, podNamespaceFound := os.LookupEnv("POD_NAMESPACE")
+	if !podNamespaceFound {
+		podNamespace = "default"
+	}
+	klog.V(3).Infof("node: %v, namespace: %v", nodeName, podNamespace)
+
+	node, err := coreclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get node object: %v", err)
+	}
+
+	config := &configType{
+		crdconfig: &intelcrd.GpuAllocationStateConfig{
+			Name:      nodeName,
+			Namespace: podNamespace,
+			Owner: &metav1.OwnerReference{
+				APIVersion: "v1",
+				Kind:       "Node",
+				Name:       nodeName,
+				UID:        node.UID,
+			},
+		},
+		clientset: &clientsetType{
+			coreclient,
+			intelclient,
+		},
+	}
+
+	return CallPlugin(config)
 }
 
 func getClientSetConfig() (*rest.Config, error) {
@@ -184,21 +180,21 @@ func getClientSetConfig() (*rest.Config, error) {
 		}
 	}
 
-	csconfig.QPS = kubeApiQps
-	csconfig.Burst = kubeApiBurst
+	csconfig.QPS = kubeAPIQps
+	csconfig.Burst = kubeAPIBurst
 
 	return csconfig, nil
 }
 
-func CallPlugin(config *config_t) error {
+func CallPlugin(config *configType) error {
 	err := os.MkdirAll(driverPluginPath, 0750)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create plugin socket dir: %v", err)
 	}
 
 	err = os.MkdirAll(cdiRoot, 0750)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create CDI root dir: %v", err)
 	}
 
 	driver, err := NewDriver(config)
@@ -216,20 +212,20 @@ KubeletPluginSocketPath: %v`,
 
 	driverVersion.PrintDriverVersion()
 
-	kubelet_plugin, err := plugin.Start(
+	kubeletPlugin, err := plugin.Start(
 		driver,
-		plugin.DriverName(intelcrd.ApiGroupName),
+		plugin.DriverName(intelcrd.APIGroupName),
 		plugin.RegistrarSocketPath(pluginRegistrationPath),
 		plugin.PluginSocketPath(driverPluginSocketPath),
 		plugin.KubeletPluginSocketPath(driverPluginSocketPath))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to start kubelet-plugin: %v", err)
 	}
 
 	sigc := make(chan os.Signal, 1)
 	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	<-sigc
-	kubelet_plugin.Stop()
+	kubeletPlugin.Stop()
 
 	return nil
 }

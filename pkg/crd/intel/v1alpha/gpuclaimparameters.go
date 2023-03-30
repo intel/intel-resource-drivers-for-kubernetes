@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,16 +20,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// GpuClaimParametersSpec is the spec for the GpuClaimParameters CRD
+// GpuClaimParametersSpec is the spec for the GpuClaimParameters CRD.
 type GpuClaimParametersSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=8
 	Count int `json:"count"` // quantity of units
-	// Per GPU memory request, in MiB, maximum 131072 (127 GiB)
+	// Per GPU memory request, in MiB, maximum 1048576 (1 TiB)
 	// +kubebuilder:validation:Minimum=8
-	// +kubebuilder:validation:Maximum=131072
-	Memory int    `json:"memory,omitempty"` // MiB in total, divide by Count for per-unit
-	Type   string `json:"type"`             // unit type: any, gpu, tile
+	// +kubebuilder:validation:Maximum=1048576
+	Memory int `json:"memory,omitempty"`
+	// +kubebuilder:validation:
+	Type GpuType `json:"type,omitempty"`
 }
 
 // +genclient
@@ -37,7 +38,7 @@ type GpuClaimParametersSpec struct {
 // +k8s:openapi-gen=true
 // +kubebuilder:resource:scope=Namespaced
 
-// GpuClaimParameters holds the set of parameters provided when creating a resource claim for a GPU
+// GpuClaimParameters holds the set of parameters provided when creating a resource claim for a GPU.
 type GpuClaimParameters struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -47,7 +48,7 @@ type GpuClaimParameters struct {
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// GpuClaimParametersList represents the "plural" of a GpuClaimParameters CRD object
+// GpuClaimParametersList represents the "plural" of a GpuClaimParameters CRD object.
 type GpuClaimParametersList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
