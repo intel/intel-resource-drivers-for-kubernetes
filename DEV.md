@@ -73,7 +73,7 @@ cp controller-gen $HOME/bin
 
 # Known issues
 
-## "Parametrses"
+## "Parameterses"
 
 - CRD generator might make "Parameterses" as plural for "Parameters", so `hack/update_codegen.sh`
 fixes these artifacts

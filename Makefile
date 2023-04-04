@@ -21,18 +21,21 @@ export GOPATH GOBIN GO111MODULE
 
 GIT_COMMIT = $(shell git rev-parse HEAD)
 BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-VERSION ?= v0.0.4a
+VERSION ?= v0.1.0-beta
 
 LDFLAGS = -X ${PKG}/pkg/version.driverVersion=${IMAGE_VERSION} -X ${PKG}/pkg/version.gitCommit=${GIT_COMMIT} -X ${PKG}/pkg/version.buildDate=${BUILD_DATE}
 EXT_LDFLAGS = -s -w -extldflags "-static"
 
 GOLICENSES_VERSION?=v1.5.0
+ifneq ("$(wildcard licenses/)","")
+LOCAL_LICENSES=TRUE
+endif
 
 # Use a custom version for E2E tests if we are testing in CI
 REGISTRY ?= registry.local
 IMAGENAME ?= intel-gpu-resource-driver
 IMAGE_VERSION ?= $(VERSION)
-IMAGE_TAG = $(REGISTRY)/$(IMAGENAME):$(IMAGE_VERSION)
+IMAGE_TAG ?= $(REGISTRY)/$(IMAGENAME):$(IMAGE_VERSION)
 
 ifndef DOCKER
 	PODMAN_VERSION := $(shell command podman version 2>/dev/null)
@@ -62,7 +65,8 @@ build: all
 
 .PHONY: container-build
 container-build: update-vendor
-	$(DOCKER) build --pull --platform="linux/$(ARCH)" -t $(IMAGE_TAG) --build-arg ARCH=$(ARCH) .
+	$(DOCKER) build --pull --platform="linux/$(ARCH)" -t $(IMAGE_TAG) --build-arg ARCH=$(ARCH) \
+	--build-arg LOCAL_LICENSES=$(LOCAL_LICENSES) ./
 
 .PHONY: container-local
 container-local: container-build
@@ -98,8 +102,13 @@ licenses: clean-licenses
 	"./pkg/crd/intel/v1alpha/api" "./pkg/crd/intel/clientset/versioned/" --save_path licenses
 
 .PHONY: format
-	gofmt -w -s .
+format:
+	gofmt -w -s -l ./
 
 .PHONY: lint
 lint: format build
-	golangci-lint run
+	golangci-lint run ./...
+
+.PHONY: vet
+vet:
+	go vet  $(PKG)/...

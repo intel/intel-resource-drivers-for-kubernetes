@@ -1,0 +1,19 @@
+apiVersion: gpu.dra.intel.com/v1alpha
+kind: GpuClaimParameters
+metadata:
+  name: delayed-claim-external-vf-mem
+spec:
+  count: 1
+  type: "vf"
+  memory: 1024
+---
+apiVersion: resource.k8s.io/v1alpha1
+kind: ResourceClaim
+metadata:
+  name: delayed-claim-external-vf-mem
+spec:
+  resourceClassName: intel-gpu
+  parametersRef:
+    apiGroup: gpu.dra.intel.com/v1alpha
+    kind: GpuClaimParameters
+    name: delayed-claim-external-vf-mem

@@ -1,0 +1,46 @@
+apiVersion: gpu.dra.intel.com/v1alpha
+kind: GpuClaimParameters
+metadata:
+  name: immediate-pod-inline-vf
+  namespace: default
+spec:
+  count: 1
+  type: "vf"
+---
+apiVersion: resource.k8s.io/v1alpha1
+kind: ResourceClaimTemplate
+metadata:
+  name: immediate-pod-inline-vf
+  namespace: default
+spec:
+  metadata:
+    labels:
+      app: immediate-pod-inline-vf
+  spec:
+    resourceClassName: intel-gpu
+    allocationMode: Immediate
+    parametersRef:
+      apiGroup: gpu.dra.intel.com/v1alpha
+      kind: GpuClaimParameters
+      name: immediate-pod-inline-vf
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: immediate-pod-inline-vf
+spec:
+  restartPolicy: Never
+  containers:
+  - name: with-resource
+    image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+    command: ["sh", "-c", "ls -la /dev/dri/ && sleep 5"]
+    resources:
+      claims:
+      - name: resource
+  - name: without-resource
+    image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+    command: ["sh", "-c", "ls -la /dev/ && sleep 5"]
+  resourceClaims:
+  - name: resource
+    source:
+      resourceClaimTemplateName: immediate-pod-inline-vf

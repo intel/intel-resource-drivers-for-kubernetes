@@ -1,0 +1,75 @@
+apiVersion: gpu.dra.intel.com/v1alpha
+kind: GpuClaimParameters
+metadata:
+  name: delayed-pod-2inline-vf-1
+  namespace: default
+spec:
+  count: 1
+  type: "vf"
+---
+apiVersion: resource.k8s.io/v1alpha1
+kind: ResourceClaimTemplate
+metadata:
+  name: delayed-pod-2inline-vf-1
+  namespace: default
+spec:
+  metadata:
+    labels:
+      app: delayed-pod-2inline-vf
+  spec:
+    resourceClassName: intel-gpu
+    parametersRef:
+      apiGroup: gpu.dra.intel.com/v1alpha
+      kind: GpuClaimParameters
+      name: delayed-pod-2inline-vf-1
+---
+apiVersion: gpu.dra.intel.com/v1alpha
+kind: GpuClaimParameters
+metadata:
+  name: delayed-pod-2inline-vf-2
+  namespace: default
+spec:
+  count: 1
+  type: "vf"
+---
+apiVersion: resource.k8s.io/v1alpha1
+kind: ResourceClaimTemplate
+metadata:
+  name: delayed-pod-2inline-vf-2
+  namespace: default
+spec:
+  metadata:
+    labels:
+      app: delayed-pod-2inline-vf
+  spec:
+    resourceClassName: intel-gpu
+    parametersRef:
+      apiGroup: gpu.dra.intel.com/v1alpha
+      kind: GpuClaimParameters
+      name: delayed-pod-2inline-vf-2
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: delayed-pod-2inline-vf
+spec:
+  restartPolicy: Never
+  containers:
+  - name: with-resource
+    image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+    command: ["sh", "-c", "ls -la /dev/dri/ && sleep 5"]
+    resources:
+      claims:
+      - name: resource1
+      - name: resource2
+  - name: without-resource
+    image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+    command: ["sh", "-c", "ls -la /dev/ && sleep 5"]
+  resourceClaims:
+  - name: resource1
+    source:
+      resourceClaimTemplateName: delayed-pod-2inline-vf-1
+  - name: resource2
+    source:
+      resourceClaimTemplateName: delayed-pod-2inline-vf-2
+

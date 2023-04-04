@@ -18,7 +18,7 @@ spec:
       serviceAccountName: intel-dra-resource-driver-service-account
       containers:
       - name: kubelet-plugin
-        image: registry.local/intel-gpu-resource-driver:v0.0.4a
+        image: registry.local/intel-gpu-resource-driver:v0.1.0-beta
         imagePullPolicy: Always
         command: ["/kubelet-plugin", "-v", "5"]
         env:
@@ -79,7 +79,7 @@ spec:
       serviceAccountName: intel-dra-resource-driver-service-account
       containers:
       - name: controller
-        image: registry.local/intel-gpu-resource-driver:v0.0.4a
+        image: registry.local/intel-gpu-resource-driver:v0.1.0-beta
         imagePullPolicy: Always
         command: ["/controller", "-v", "6"]
         env:
@@ -121,7 +121,7 @@ rules:
   resources: ["pods", "nodes", "events"]
   verbs: ["get", "list", "create", "watch", "patch"]
 - apiGroups: ["resource.k8s.io"]
-  resources: ["resourceclaims", "resourceclasses", "podschedulings","resourceclaims/status"]
+  resources: ["resourceclaims", "resourceclasses", "podschedulings","resourceclaims/status", "podschedulings/status"]
   verbs: ["get", "update", "list", "watch", "patch"]
 - apiGroups: ["gpu.dra.intel.com"]
   resources: ["*"]

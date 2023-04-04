@@ -1,48 +1,46 @@
-# one claim parameter with half GPU memory, one Pod with two containers: with and without claim
 apiVersion: gpu.dra.intel.com/v1alpha
 kind: GpuClaimParameters
 metadata:
-  name: inline-claim-parameters
+  name: delayed-pod-inline-gpu-mem
   namespace: default
 spec:
   count: 1
   type: "gpu"
-  memory: 512
+  memory: 2048
 ---
 apiVersion: resource.k8s.io/v1alpha1
 kind: ResourceClaimTemplate
 metadata:
-  name: test-inline-claim-template
+  name: delayed-pod-inline-gpu-mem
   namespace: default
 spec:
   metadata:
     labels:
-      app: inline-resource
+      app: delayed-pod-inline-gpu-mem
   spec:
     resourceClassName: intel-gpu
-    allocationMode: Immediate
     parametersRef:
       apiGroup: gpu.dra.intel.com/v1alpha
       kind: GpuClaimParameters
-      name: inline-claim-parameters
+      name: delayed-pod-inline-gpu-mem
 ---
 apiVersion: v1
 kind: Pod
 metadata:
-  name: test-single-pod
+  name: delayed-pod-inline-gpu-mem
 spec:
   restartPolicy: Never
   containers:
   - name: with-resource
     image: registry.k8s.io/e2e-test-images/busybox:1.29-2
-    command: ["sh", "-c", "ls -la /dev/dri/ && sleep 30"]
+    command: ["sh", "-c", "ls -la /dev/dri/ && sleep 5"]
     resources:
       claims:
       - name: resource
   - name: without-resource
     image: registry.k8s.io/e2e-test-images/busybox:1.29-2
-    command: ["sh", "-c", "ls -la /dev/ && sleep 30"]
+    command: ["sh", "-c", "ls -la /dev/ && sleep 5"]
   resourceClaims:
   - name: resource
     source:
-      resourceClaimTemplateName: test-inline-claim-template
+      resourceClaimTemplateName: delayed-pod-inline-gpu-mem

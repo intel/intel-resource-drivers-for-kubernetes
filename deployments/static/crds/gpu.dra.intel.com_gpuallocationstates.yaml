@@ -37,68 +37,136 @@ spec:
             description: GpuAllocationStateSpec is the spec for the GpuAllocationState
               CRD
             properties:
-              allocatableGpus:
+              allocatable:
                 additionalProperties:
-                  description: AllocatableGpu represents an allocatable GPU on a node
+                  description: AllocatableGpu represents an allocatable Gpu on a node
                   properties:
-                    cdiDevice:
-                      type: string
+                    maxvfs:
+                      description: Greater than 0 if SR-IOV is supported / enabled
+                      type: integer
                     memory:
+                      description: Amount of local memory in MiB
+                      maximum: 1048576
+                      minimum: 0
                       type: integer
                     model:
+                      description: pci-id of the Gpu device
+                      type: string
+                    parentuid:
+                      description: Device where VF should be / is provisioned
                       type: string
                     type:
+                      description: 'Type of the device: bare-metal Gpu or SR-IOV Virtual
+                        Function (VF)'
+                      enum:
+                      - gpu
+                      - vf
+                      - any
                       type: string
-                    uuid:
+                    uid:
+                      description: 'Unique identifier of device: PCI address and PCI
+                        Device ID'
                       type: string
                   required:
-                  - cdiDevice
+                  - maxvfs
                   - memory
                   - model
+                  - parentuid
                   - type
-                  - uuid
+                  - uid
                   type: object
                 type: object
-              resourceClaimAllocations:
+              prepared:
                 additionalProperties:
                   description: AllocatedDevices represents a list of allocated devices
                     on a node
                   items:
-                    description: AllocatedGpu represents an allocated GPU on a node
+                    description: AllocatedGpu represents an allocated Gpu on a node
                     properties:
-                      cdiDevice:
-                        type: string
                       memory:
+                        description: Amount of local memory in MiB
+                        maximum: 1048576
+                        minimum: 0
                         type: integer
-                      type:
+                      parentuid:
+                        description: Device where VF should be / is provisioned
                         type: string
-                      uuid:
+                      profile:
+                        description: Virtual Function profile defines amount of local
+                          memory and time slice VF gets
+                        type: string
+                      type:
+                        description: 'Type of the device: bare-metal Gpu or SR-IOV
+                          Virtual Function (VF)'
+                        enum:
+                        - gpu
+                        - vf
+                        - any
+                        type: string
+                      uid:
+                        description: 'Unique identifier of device: PCI address and
+                          PCI Device ID'
                         type: string
                     required:
-                    - cdiDevice
                     - memory
+                    - parentuid
+                    - profile
                     - type
-                    - uuid
+                    - uid
                     type: object
                   maxItems: 8
                   type: array
                 type: object
-              resourceClaimRequests:
+              resourceClaimAllocations:
                 additionalProperties:
                   description: RequestedDevices represents a set of request spec and
                     devices requested for allocation
                   properties:
-                    devices:
+                    gpus:
+                      description: AllocatedDevices represents a list of allocated
+                        devices on a node
                       items:
-                        description: RequestedGpu represents a GPU being requested
-                          for allocation
+                        description: AllocatedGpu represents an allocated Gpu on a
+                          node
                         properties:
-                          uuid:
+                          memory:
+                            description: Amount of local memory in MiB
+                            maximum: 1048576
+                            minimum: 0
+                            type: integer
+                          parentuid:
+                            description: Device where VF should be / is provisioned
                             type: string
+                          profile:
+                            description: Virtual Function profile defines amount of
+                              local memory and time slice VF gets
+                            type: string
+                          type:
+                            description: 'Type of the device: bare-metal Gpu or SR-IOV
+                              Virtual Function (VF)'
+                            enum:
+                            - gpu
+                            - vf
+                            - any
+                            type: string
+                          uid:
+                            description: 'Unique identifier of device: PCI address
+                              and PCI Device ID'
+                            type: string
+                        required:
+                        - memory
+                        - parentuid
+                        - profile
+                        - type
+                        - uid
                         type: object
                       maxItems: 8
                       type: array
-                    spec:
+                    owner:
+                      description: Pod Uid, for delayed allocation to match Resource
+                        Claims of same Pod when allocating VFs
+                      type: string
+                    request:
                       description: GpuClaimParametersSpec is the spec for the GpuClaimParameters
                         CRD
                       properties:
@@ -107,20 +175,24 @@ spec:
                           minimum: 1
                           type: integer
                         memory:
-                          description: Per GPU memory request, in MiB, maximum 131072
-                            (127 GiB)
-                          maximum: 131072
+                          description: Per GPU memory request, in MiB, maximum 1048576
+                            (1 TiB)
+                          maximum: 1048576
                           minimum: 8
                           type: integer
                         type:
+                          enum:
+                          - gpu
+                          - vf
+                          - any
                           type: string
                       required:
                       - count
-                      - type
                       type: object
                   required:
-                  - devices
-                  - spec
+                  - gpus
+                  - owner
+                  - request
                   type: object
                 type: object
             type: object

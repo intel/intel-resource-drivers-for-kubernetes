@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,14 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/google/uuid"
 	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/crd/intel/v1alpha/api"
 	"k8s.io/klog/v2"
 )
@@ -36,63 +37,167 @@ const (
 	renderdIdRE        = `^renderD[0-9]+$`
 )
 
-/* detect devices from sysfs drm directory (card id and renderD id) */
-func enumerateAllPossibleDevices() (map[string]*DeviceInfo, error) {
+// Detect devices from sysfs drm directory (card id and renderD id).
+func enumerateAllPossibleDevices() map[string]*DeviceInfo {
 
 	devices := make(map[string]*DeviceInfo)
 
-	files, err := os.ReadDir(sysfsI915DriverDir)
 	cardregexp := regexp.MustCompile(cardRE)
 	renderdregexp := regexp.MustCompile(renderdIdRE)
 	pciregexp := regexp.MustCompile(pciAddressRE)
+	files, err := os.ReadDir(sysfsI915DriverDir)
 
 	if err != nil {
-		return nil, fmt.Errorf("can't read sysfs folder: %v", err)
+		if err == os.ErrNotExist {
+			klog.V(5).Infof("No Intel GPU devices found on this host. %v does not exist", sysfsI915DriverDir)
+			return devices
+		}
+		klog.Errorf("Cannot read sysfs folder: %v", err)
+		return devices
 	}
 
-	for _, f := range files {
+	for _, i915file := range files {
 		// check if file is pci device
-		if !pciregexp.MatchString(f.Name()) {
+		if !pciregexp.MatchString(i915file.Name()) {
 			continue
 		}
-		klog.V(5).Infof("Found GPU PCI device: " + f.Name())
+		klog.V(5).Infof("Found GPU PCI device: " + i915file.Name())
 
-		uuid := uuid.New().String()
-		klog.V(5).Infof("New gpu UUID: %v", uuid)
-
-		drmFiles, err := os.ReadDir(path.Join(sysfsI915DriverDir, f.Name(), "drm"))
-
+		deviceIdFile := path.Join(sysfsI915DriverDir, i915file.Name(), "device")
+		deviceIdBytes, err := os.ReadFile(deviceIdFile)
 		if err != nil {
-			return nil, fmt.Errorf("can't read device folder: %v", err)
+			klog.Errorf("Failed reading device file (%s): %+v", deviceIdFile, err)
+			continue
+		}
+		deviceId := strings.TrimSpace(string(deviceIdBytes))
+		uid := fmt.Sprintf("%v-%v", i915file.Name(), deviceId)
+		klog.V(5).Infof("New gpu UID: %v", uid)
+		newDeviceInfo := &DeviceInfo{
+			uid:        uid,
+			model:      deviceId,
+			memory:     0,
+			deviceType: intelcrd.GpuDeviceType, // presume GPU, detect the physfn / parent lower
+			cardidx:    0,
+			renderdidx: 0,
 		}
 
-		devices[uuid] = &DeviceInfo{
-			uuid:       uuid,
-			model:      "UHDGraphics",
-			memory:     1024,
-			cdiname:    uuid,
-			deviceType: intelcrd.GpuDeviceType,
+		// get card and renderD indexes
+		drmDir := path.Join(sysfsI915DriverDir, i915file.Name(), "drm")
+		drmFiles, err := os.ReadDir(drmDir)
+
+		if err != nil { // ignore this device
+			klog.Errorf("Cannot read device folder %v: %v", drmDir, err)
+			continue
 		}
 
 		for _, drmFile := range drmFiles {
 			if cardregexp.MatchString(drmFile.Name()) {
-				cardidx, err := strconv.Atoi(strings.Split(drmFile.Name(), "card")[1])
+				cardIdx, err := strconv.Atoi(drmFile.Name()[4:])
 				if err != nil {
-					klog.Error("failed to parse cardN device: %v, skipping", drmFile)
+					klog.Errorf("Failed to parse index of DRM card device '%v', skipping", drmFile)
 					continue
 				}
-				devices[uuid].cardidx = cardidx
-				klog.V(5).Infof("%v's card id: %d", f.Name(), cardidx)
+				newDeviceInfo.cardidx = cardIdx
+				newDeviceInfo.memory = getLocalMemoryAmountMiB(drmFile.Name())
 			} else if renderdregexp.MatchString(drmFile.Name()) {
-				renderdidx, err := strconv.Atoi(strings.Split(drmFile.Name(), "renderD")[1])
+				renderDidx, err := strconv.Atoi(drmFile.Name()[7:])
 				if err != nil {
-					klog.Error("failed to parse renderDN device: %v, skipping", drmFile)
+					klog.Errorf("failed to parse renderDN device: %v, skipping", drmFile)
 					continue
 				}
-				devices[uuid].renderdidx = renderdidx
-				klog.V(5).Infof("%v's renderd id: %d", f.Name(), renderdidx)
+				newDeviceInfo.renderdidx = renderDidx
 			}
 		}
+
+		detectSRIOV(newDeviceInfo, i915file, deviceId)
+		devices[newDeviceInfo.uid] = newDeviceInfo
+
 	}
-	return devices, nil
+	return devices
+}
+
+// Detects if the GPU is a VF or PF. For PF check if SR-IOV is enabled, and the maximum
+// number of VFs. For VF detects parent PR.
+func detectSRIOV(newDeviceInfo *DeviceInfo, i915file fs.DirEntry, deviceID string) {
+	totalvfsFile := path.Join(sysfsI915DriverDir, i915file.Name(), "sriov_totalvfs")
+	totalvfsByte, err := os.ReadFile(totalvfsFile)
+	if err != nil {
+		klog.V(5).Infof("Could not read totalvfs file (%s): %+v. Checking for physfn.", totalvfsFile, err)
+		// Detect parent if device this is a VF
+		physfnLink := path.Join(sysfsI915DriverDir, i915file.Name(), "physfn")
+		parentLink, err := os.Readlink(physfnLink)
+		if err != nil {
+			klog.Errorf("Failed reading %v: %v. Ignoring SRIOV for device %v", physfnLink, err, i915file.Name())
+
+			return
+		}
+
+		// no error, find out which VF index current device belongs to
+		parentDBDF := parentLink[3:]
+		vfIdx, err := deduceVfIdx(parentDBDF, i915file.Name())
+		if err != nil {
+			klog.Errorf("Ignoring device %v", i915file.Name())
+
+			return
+		}
+
+		newDeviceInfo.uid = fmt.Sprintf("%s-%s-vf%s", parentDBDF, deviceID, vfIdx)
+		newDeviceInfo.parentuid = fmt.Sprintf("%s-%s", parentDBDF, deviceID)
+		newDeviceInfo.deviceType = intelcrd.VfDeviceType
+		klog.V(5).Infof("physfn OK, device %v is a VF from %v", newDeviceInfo.uid, newDeviceInfo.parentuid)
+
+		return
+	}
+
+	totalvfsInt, err := strconv.Atoi(strings.TrimSpace(string(totalvfsByte)))
+	if err != nil {
+		klog.Errorf("Could not convert string into int: %s", string(totalvfsByte))
+
+		return
+	}
+
+	klog.V(5).Infof("Detected SR-IOV capacity, max VFs: %v", totalvfsInt)
+
+	// check if driver will pick up new VFs as DRM devices for dynamic provisioning
+	driversAutoprobeFile := path.Join(sysfsI915DriverDir, i915file.Name(), "sriov_drivers_autoprobe")
+	driversAutoprobeByte, err := os.ReadFile(driversAutoprobeFile)
+	if err != nil {
+		klog.V(5).Infof("Could not read sriov_drivers_autoprobe file: %v. Not enabling SRIOV", err)
+
+		return
+	}
+
+	if strings.TrimSpace(string(driversAutoprobeByte)) == "0" {
+		klog.V(5).Infof("sriov_drivers_autoprobe disabled. Not enabling SR-IOV", err)
+
+		return
+	}
+	klog.V(5).Info("Driver autoprobe is enabled, enabling SR-IOV")
+	newDeviceInfo.maxvfs = totalvfsInt
+}
+
+func deduceVfIdx(parentDBDF string, vfDBDF string) (string, error) {
+	filePath := filepath.Join(sysfsI915DriverDir, parentDBDF, "virtfn*")
+	files, _ := filepath.Glob(filePath)
+	for _, virtfn := range files {
+		klog.V(5).Infof("Checking %v", virtfn)
+		virtfnTarget, err := os.Readlink(virtfn)
+		if err != nil {
+			klog.Warningf("Failed reading virtfn symlink %v: %v. Skipping", virtfn, err)
+		}
+
+		// ../0000:00:02.1  # 15 chars
+		if len(virtfnTarget) != 15 {
+			klog.Warningf("Symlink target does not match expected length: %v", virtfnTarget)
+			continue
+		}
+
+		vfBase := filepath.Base(virtfn)
+		vfIdx := vfBase[6:]
+		klog.V(5).Infof("symlink target: %v, VF Base: %v, VF Idx: %v", virtfnTarget, vfBase, vfIdx)
+		if virtfnTarget[3:] == vfDBDF {
+			return vfIdx, nil
+		}
+	}
+	return "", fmt.Errorf("Could not find PF %v symlink to VF %v", parentDBDF, vfDBDF)
 }

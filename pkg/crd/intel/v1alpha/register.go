@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,21 +23,21 @@ import (
 )
 
 const (
-	ApiGroupName string = "gpu.dra.intel.com"
-	ApiVersion   string = "v1alpha"
+	APIGroupName string = "gpu.dra.intel.com"
+	APIVersion   string = "v1alpha"
 )
 
 var (
-	// SchemeBuilder initializes a scheme builder
+	// SchemeBuilder initializes a scheme builder.
 	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
-	// AddToScheme is a global function that registers this API group & version to a scheme
+	// AddToScheme is a global function that registers this API group & version to a scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
 
 // SchemeGroupVersion is group version used to register these objects.
 var SchemeGroupVersion = schema.GroupVersion{
-	Group:   ApiGroupName,
-	Version: ApiVersion,
+	Group:   APIGroupName,
+	Version: APIVersion,
 }
 
 func Resource(resource string) schema.GroupResource {
@@ -50,7 +50,7 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&DeviceClassParameters{},
 		&DeviceClassParametersList{},
 		&GpuClaimParameters{},
-		&GpuClaimParametersList{}, // implement DeepCopyObject and switch to 1.19 Go
+		&GpuClaimParametersList{},
 		&GpuAllocationState{},
 		&GpuAllocationStateList{},
 	)
