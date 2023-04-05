@@ -37,10 +37,21 @@ and available for Pods
 
 ## Requirements
 
-- Kubernetes 1.26+, with `DynamicResourceAllocation` feature-flag enabled, and [other cluster parameters](hack/clusterconfig.yaml)
+- Kubernetes 1.26, with `DynamicResourceAllocation` feature-flag enabled, and [other cluster parameters](hack/clusterconfig.yaml)
 Container runtime needs to support CDI:
 - CRI-O at least v1.23.0
 - Containerd at least v1.7 (any release candidate will do)
+
+## Supported Kubernetes Versions
+
+Supported Kubernetes versions are listed below:
+
+| Branch            | Kubernetes branch/version      | Status      |
+|:------------------|:-------------------------------|:------------|
+| v0.1.0-beta       | Kubernetes 1.26 branch v1.26.x | supported   |
+
+[Go environment]: https://golang.org/doc/install
+[Kubernetes cluster]: https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/
 
 ## [How to deploy and use](doc/USAGE.md)
 
