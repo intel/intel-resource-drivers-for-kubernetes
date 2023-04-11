@@ -316,7 +316,7 @@ func (d driver) allocatePendingClaim(
 	}
 
 	// validate that there is still resource for it
-	if d.pendingClaimStillValid(gas, claimUID, nodename, owner) {
+	if d.pendingClaimStillValid(gas, claimParams, claimUID, nodename, owner) {
 		gas.Spec.ResourceClaimAllocations[claimUID] = d.PendingClaimRequests.Get(claimUID, nodename)
 		klog.V(5).Infof("enough resources. Setting GAS ResourceClaimAllocation %v: %+v",
 			claimUID, gas.Spec.ResourceClaimAllocations[claimUID])
@@ -364,7 +364,7 @@ func (d driver) Deallocate(ctx context.Context, claim *resourcev1.ResourceClaim)
 	}
 
 	claimUID := string(claim.UID)
-	claimAllocation, exists := gas.Spec.ResourceClaimAllocations[claimUID]
+	_, exists := gas.Spec.ResourceClaimAllocations[claimUID]
 	if !exists {
 		klog.Warning("Resource claim %v does not exist internally in resource driver")
 		return nil
@@ -372,9 +372,7 @@ func (d driver) Deallocate(ctx context.Context, claim *resourcev1.ResourceClaim)
 
 	request := intelcrd.GpuClaimParametersSpec{}
 	if err := json.Unmarshal([]byte(claim.Status.Allocation.ResourceHandle), &request); err != nil {
-		klog.V(5).Infof("Experiment failed: %v", err)
-	} else {
-		klog.V(5).Infof("Experiment succes: %+v", request)
+		klog.Warningf("Could not parse resource claim parameters from resource handle: %v", err)
 	}
 
 	delete(gas.Spec.ResourceClaimAllocations, claimUID)
@@ -383,14 +381,7 @@ func (d driver) Deallocate(ctx context.Context, claim *resourcev1.ResourceClaim)
 		return fmt.Errorf("error updating GpuAllocationState CRD: %v", err)
 	}
 
-	switch claimAllocation.Request.Type {
-	case intelcrd.GpuDeviceType, intelcrd.VfDeviceType, intelcrd.AnyDeviceType:
-		d.PendingClaimRequests.Remove(claimUID)
-	default:
-		klog.Errorf("Unknown requested devices type: %v", claimAllocation.Request.Type)
-		return fmt.Errorf("unable to deallocate devices '%v': unknown requested device type %v",
-			claimAllocation, claimAllocation.Request.Type)
-	}
+	d.PendingClaimRequests.Remove(claimUID)
 
 	return nil
 }
@@ -694,9 +685,8 @@ func (d *driver) selectPotentialVFDevices(
 	}
 
 	allocation := intelcrd.ResourceClaimAllocation{
-		Request: *claimParams,
-		Gpus:    devices,
-		Owner:   owner,
+		Gpus:  devices,
+		Owner: owner,
 	}
 
 	return allocation
@@ -724,8 +714,7 @@ func selectPotentialGpuDevices(
 	}
 
 	allocation := intelcrd.ResourceClaimAllocation{
-		Request: *claimParams,
-		Gpus:    devices,
+		Gpus: devices,
 	}
 
 	klog.V(5).Infof("Checking if claim %v has an owner", claimAllocation.Claim.UID)
@@ -740,6 +729,7 @@ func selectPotentialGpuDevices(
 // Ensure claim fits to previously selected GPU resources.
 func (d *driver) pendingClaimStillValid(
 	gas *intelcrd.GpuAllocationState,
+	claimParams *intelcrd.GpuClaimParametersSpec,
 	pendingClaimUID string,
 	selectedNode string,
 	owner string) bool {
@@ -786,22 +776,22 @@ func (d *driver) pendingClaimStillValid(
 
 			klog.V(5).Infof("Checking if gpu %v fits request", parentUID)
 			// check if GPU has enough resources left for current loop iteration's VF
-			if !gpuFitsRequest(&pendingClaim.Request, available[parentUID], consumed[parentUID]) {
+			if !gpuFitsRequest(claimParams, available[parentUID], consumed[parentUID]) {
 				return false
 			}
 
 			klog.V(5).Infof("VF %v is OK to be provisioned", device.UID)
 			consumed[parentUID].Maxvfs++
-			consumed[parentUID].Memory += pendingClaim.Request.Memory
+			consumed[parentUID].Memory += claimParams.Memory
 		} else { // if _, exists := available[device.UID]; exists
-			if !gpuFitsRequest(&pendingClaim.Request, available[device.UID], consumed[device.UID]) {
+			if !gpuFitsRequest(claimParams, available[device.UID], consumed[device.UID]) {
 				return false
 			}
 			if available[device.UID].Type == intelcrd.VfDeviceType {
 				delete(available, device.UID)
 				delete(consumed, device.UID)
 			} else {
-				consumed[device.UID].Memory += pendingClaim.Request.Memory
+				consumed[device.UID].Memory += claimParams.Memory
 			}
 		}
 	}

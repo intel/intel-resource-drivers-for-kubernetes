@@ -19,7 +19,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: GpuAllocationState holds the state required for allocation on
-          a node
+          a node.
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -35,29 +35,29 @@ spec:
             type: object
           spec:
             description: GpuAllocationStateSpec is the spec for the GpuAllocationState
-              CRD
+              CRD.
             properties:
               allocatable:
                 additionalProperties:
-                  description: AllocatableGpu represents an allocatable Gpu on a node
+                  description: AllocatableGpu represents an allocatable Gpu on a node.
                   properties:
                     maxvfs:
-                      description: Greater than 0 if SR-IOV is supported / enabled
+                      description: Greater than 0 if SR-IOV is supported / enabled.
                       type: integer
                     memory:
-                      description: Amount of local memory in MiB
+                      description: Amount of local memory in MiB.
                       maximum: 1048576
                       minimum: 0
                       type: integer
                     model:
-                      description: pci-id of the Gpu device
+                      description: pci-id of the Gpu device.
                       type: string
                     parentuid:
-                      description: Device where VF should be / is provisioned
+                      description: Device where VF should be / is provisioned.
                       type: string
                     type:
                       description: 'Type of the device: bare-metal Gpu or SR-IOV Virtual
-                        Function (VF)'
+                        Function (VF).'
                       enum:
                       - gpu
                       - vf
@@ -65,7 +65,7 @@ spec:
                       type: string
                     uid:
                       description: 'Unique identifier of device: PCI address and PCI
-                        Device ID'
+                        Device ID.'
                       type: string
                   required:
                   - maxvfs
@@ -79,25 +79,25 @@ spec:
               prepared:
                 additionalProperties:
                   description: AllocatedDevices represents a list of allocated devices
-                    on a node
+                    on a node.
                   items:
-                    description: AllocatedGpu represents an allocated Gpu on a node
+                    description: AllocatedGpu represents an allocated Gpu on a node.
                     properties:
                       memory:
-                        description: Amount of local memory in MiB
+                        description: Amount of local memory in MiB.
                         maximum: 1048576
                         minimum: 0
                         type: integer
                       parentuid:
-                        description: Device where VF should be / is provisioned
+                        description: Device where VF should be / is provisioned.
                         type: string
                       profile:
                         description: Virtual Function profile defines amount of local
-                          memory and time slice VF gets
+                          memory and time slice VF gets.
                         type: string
                       type:
                         description: 'Type of the device: bare-metal Gpu or SR-IOV
-                          Virtual Function (VF)'
+                          Virtual Function (VF).'
                         enum:
                         - gpu
                         - vf
@@ -105,7 +105,7 @@ spec:
                         type: string
                       uid:
                         description: 'Unique identifier of device: PCI address and
-                          PCI Device ID'
+                          PCI Device ID.'
                         type: string
                     required:
                     - memory
@@ -120,30 +120,30 @@ spec:
               resourceClaimAllocations:
                 additionalProperties:
                   description: RequestedDevices represents a set of request spec and
-                    devices requested for allocation
+                    devices requested for allocation.
                   properties:
                     gpus:
                       description: AllocatedDevices represents a list of allocated
-                        devices on a node
+                        devices on a node.
                       items:
                         description: AllocatedGpu represents an allocated Gpu on a
-                          node
+                          node.
                         properties:
                           memory:
-                            description: Amount of local memory in MiB
+                            description: Amount of local memory in MiB.
                             maximum: 1048576
                             minimum: 0
                             type: integer
                           parentuid:
-                            description: Device where VF should be / is provisioned
+                            description: Device where VF should be / is provisioned.
                             type: string
                           profile:
                             description: Virtual Function profile defines amount of
-                              local memory and time slice VF gets
+                              local memory and time slice VF gets.
                             type: string
                           type:
                             description: 'Type of the device: bare-metal Gpu or SR-IOV
-                              Virtual Function (VF)'
+                              Virtual Function (VF).'
                             enum:
                             - gpu
                             - vf
@@ -151,7 +151,7 @@ spec:
                             type: string
                           uid:
                             description: 'Unique identifier of device: PCI address
-                              and PCI Device ID'
+                              and PCI Device ID.'
                             type: string
                         required:
                         - memory
@@ -163,36 +163,12 @@ spec:
                       maxItems: 8
                       type: array
                     owner:
-                      description: Pod Uid, for delayed allocation to match Resource
-                        Claims of same Pod when allocating VFs
+                      description: Pod UID, for delayed allocation to match Resource
+                        Claims of same Pod when allocating VFs.
                       type: string
-                    request:
-                      description: GpuClaimParametersSpec is the spec for the GpuClaimParameters
-                        CRD
-                      properties:
-                        count:
-                          maximum: 8
-                          minimum: 1
-                          type: integer
-                        memory:
-                          description: Per GPU memory request, in MiB, maximum 1048576
-                            (1 TiB)
-                          maximum: 1048576
-                          minimum: 8
-                          type: integer
-                        type:
-                          enum:
-                          - gpu
-                          - vf
-                          - any
-                          type: string
-                      required:
-                      - count
-                      type: object
                   required:
                   - gpus
                   - owner
-                  - request
                   type: object
                 type: object
             type: object
