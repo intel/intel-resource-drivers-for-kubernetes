@@ -71,8 +71,7 @@ type GpuType string
 
 // RequestedDevices represents a set of request spec and devices requested for allocation.
 type ResourceClaimAllocation struct {
-	Request GpuClaimParametersSpec `json:"request"`
-	Gpus    AllocatedGpus          `json:"gpus"`
+	Gpus AllocatedGpus `json:"gpus"`
 	// Pod UID, for delayed allocation to match Resource Claims of same Pod when allocating VFs.
 	Owner string `json:"owner"`
 }
