@@ -18,7 +18,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -240,20 +239,7 @@ func (d driver) allocateImmediateClaimOnNode(
 
 	d.PendingClaimRequests.Remove(string(cas[0].Claim.UID))
 
-	claimParams, ok := cas[0].ClaimParameters.(*intelcrd.GpuClaimParametersSpec)
-	if !ok {
-		return nil, fmt.Errorf("unknown ResourceClaim.ParametersRef.Kind: %v", cas[0].Claim.Spec.ParametersRef.Kind)
-	}
-
-	var claimParamsSpecString string
-	claimParamsSpecJSON, err := json.Marshal(claimParams)
-	if err == nil {
-		claimParamsSpecString = string(claimParamsSpecJSON)
-	} else {
-		klog.Errorf("Failed to marshall GpuClaimParametersSpec")
-	}
-
-	return buildAllocationResult(nodename, true, claimParamsSpecString), nil
+	return buildAllocationResult(nodename, true), nil
 }
 
 func (d driver) allocatePendingClaim(
@@ -283,24 +269,17 @@ func (d driver) allocatePendingClaim(
 		return nil, fmt.Errorf("GpuAllocationStateStatus: %v", gas.Status)
 	}
 
-	var claimParamsSpecString string
 	claimParams, ok := claimParameters.(*intelcrd.GpuClaimParametersSpec)
 	if !ok {
-		klog.Warningf("unknown ResourceClaim.ParametersRef.Kind: %v", claim.Spec.ParametersRef.Kind)
-	} else {
-		claimParamsSpecJSON, err := json.Marshal(claimParams)
-		if err == nil {
-			claimParamsSpecString = string(claimParamsSpecJSON)
-		} else {
-			klog.Warningf("Failed to marshall GpuClaimParametersSpec")
-		}
+		klog.Errorf("unknown ResourceClaim.ParametersRef.Kind: %v", claim.Spec.ParametersRef.Kind)
+		return nil, fmt.Errorf("unknown ResourceClaim.ParametersRef.Kind: %v", claim.Spec.ParametersRef.Kind)
 	}
 
 	if gas.Spec.ResourceClaimAllocations == nil {
 		gas.Spec.ResourceClaimAllocations = intelcrd.ResourceClaimAllocations{}
 	} else if _, exists := gas.Spec.ResourceClaimAllocations[claimUID]; exists {
 		klog.V(5).Infof("GAS already has ResourceClaimAllocation for claim %v, building allocation result", claimUID)
-		return buildAllocationResult(nodename, true, claimParamsSpecString), nil
+		return buildAllocationResult(nodename, true), nil
 	}
 
 	if !d.PendingClaimRequests.Exists(claimUID, nodename) {
@@ -338,7 +317,7 @@ func (d driver) allocatePendingClaim(
 
 	d.PendingClaimRequests.Remove(claimUID)
 
-	return buildAllocationResult(nodename, true, claimParamsSpecString), nil
+	return buildAllocationResult(nodename, true), nil
 }
 
 func (d driver) Deallocate(ctx context.Context, claim *resourcev1.ResourceClaim) error {
@@ -368,11 +347,6 @@ func (d driver) Deallocate(ctx context.Context, claim *resourcev1.ResourceClaim)
 	if !exists {
 		klog.Warning("Resource claim %v does not exist internally in resource driver")
 		return nil
-	}
-
-	request := intelcrd.GpuClaimParametersSpec{}
-	if err := json.Unmarshal([]byte(claim.Status.Allocation.ResourceHandle), &request); err != nil {
-		klog.Warningf("Could not parse resource claim parameters from resource handle: %v", err)
 	}
 
 	delete(gas.Spec.ResourceClaimAllocations, claimUID)
@@ -842,7 +816,7 @@ func gpuFitsRequest(
 	return true
 }
 
-func buildAllocationResult(selectedNode string, shared bool, requestString string) *resourcev1.AllocationResult {
+func buildAllocationResult(selectedNode string, shared bool) *resourcev1.AllocationResult {
 	nodeSelector := &corev1.NodeSelector{
 		NodeSelectorTerms: []corev1.NodeSelectorTerm{
 			{
@@ -859,7 +833,6 @@ func buildAllocationResult(selectedNode string, shared bool, requestString strin
 	allocation := &resourcev1.AllocationResult{
 		AvailableOnNodes: nodeSelector,
 		Shareable:        shared,
-		ResourceHandle:   requestString,
 	}
 	return allocation
 }

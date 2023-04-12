@@ -298,17 +298,23 @@ func addDevicesToCDISpec(devices DevicesInfo, spec *specs.Spec) {
 func addNewDevicesToNewRegistry(devices DevicesInfo) error {
 	klog.V(5).Infof("Adding %v devices to new spec", len(devices))
 	registry := cdiapi.GetRegistry()
+
 	spec := &specs.Spec{
-		Version: cdiVersion,
-		Kind:    cdiKind,
+		Kind: cdiKind,
 	}
+
+	cdiVersion, err := cdiapi.MinimumRequiredVersion(spec)
+	if err != nil {
+		return fmt.Errorf("failed to get minimum required CDI spec version: %v", err)
+	}
+	spec.Version = cdiVersion
 
 	addDevicesToCDISpec(devices, spec)
 	klog.V(5).Infof("spec devices length: %v", len(spec.Devices))
 
 	specname, err := cdiapi.GenerateNameForSpec(spec)
 	if err != nil {
-		return fmt.Errorf("Failed to generate name for cdi device spec: %+v", err)
+		return fmt.Errorf("failed to generate name for cdi device spec: %+v", err)
 	}
 
 	err = registry.SpecDB().WriteSpec(spec, specname)

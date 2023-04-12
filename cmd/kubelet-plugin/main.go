@@ -49,10 +49,9 @@ const (
 	driverPluginPath       = "/var/lib/kubelet/plugins/" + intelcrd.APIGroupName
 	driverPluginSocketPath = driverPluginPath + "/plugin.sock"
 
-	cdiRoot    = "/etc/cdi"
-	cdiVendor  = "intel.com"
-	cdiVersion = "0.3.0"
-	cdiKind    = cdiVendor + "/gpu"
+	cdiRoot   = "/etc/cdi"
+	cdiVendor = "intel.com"
+	cdiKind   = cdiVendor + "/gpu"
 
 	dridevpath = "/dev/dri/"
 
