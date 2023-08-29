@@ -56,9 +56,9 @@ Fix the image location of [resource-driver](deployments/resource-driver.yaml) to
 
 Deploy Custom Resource Definitions, resource-class and finally resoruce-driver
 ```bash
-kubectl deploy -f deployments/static/crds/
-kubectl deploy -f deployments/resource-class.yaml
-kubectl deploy -f deployments/resource-driver.yaml
+kubectl apply -f deployments/static/crds/
+kubectl apply -f deployments/resource-class.yaml
+kubectl apply -f deployments/resource-driver.yaml
 ```
 
 NB: kubelet-plugin is a priviliged container since it has to read and write to sysfs to manipulate
