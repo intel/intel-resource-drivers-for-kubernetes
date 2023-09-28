@@ -1,7 +1,53 @@
-apiVersion: resource.k8s.io/v1alpha1
+apiVersion: gpu.resource.intel.com/v1alpha2
+kind: GpuClassParameters
+metadata:
+  name: intel-gpu-params-shared
+spec:
+  shared: true
+---
+apiVersion: resource.k8s.io/v1alpha2
+kind: ResourceClass
+metadata:
+  name: intel-gpu-shared
+driverName: gpu.resource.intel.com
+parametersRef:
+  apiGroup: gpu.resource.intel.com/v1alpha2
+  kind: GpuClassParameters
+  name: intel-gpu-params-shared
+
+---
+apiVersion: gpu.resource.intel.com/v1alpha2
+kind: GpuClassParameters
+metadata:
+  name: intel-gpu-params
+spec:
+  shared: false
+---
+apiVersion: resource.k8s.io/v1alpha2
 kind: ResourceClass
 metadata:
   name: intel-gpu
-driverName: gpu.dra.intel.com
-# TODO:
-# parameters
+driverName: gpu.resource.intel.com
+parametersRef:
+  apiGroup: gpu.resource.intel.com/v1alpha2
+  kind: GpuClassParameters
+  name: intel-gpu-params
+
+---
+apiVersion: gpu.resource.intel.com/v1alpha2
+kind: GpuClassParameters
+metadata:
+  name: intel-gpu-monitor-params
+spec:
+  monitor: true
+  shared: false
+---
+apiVersion: resource.k8s.io/v1alpha2
+kind: ResourceClass
+metadata:
+  name: intel-gpu-monitor
+driverName: gpu.resource.intel.com
+parametersRef:
+  apiGroup: gpu.resource.intel.com/v1alpha2
+  kind: GpuClassParameters
+  name: intel-gpu-monitor-params

@@ -27,43 +27,44 @@ import (
 const (
 	// PF: 0000:03:00.0-0xXXXX is 19.
 	// VF: 0000:03:00.0-0xXXXX-vfY is 23.
-	PFUIDLength    = 19
+	PFUIDLength = 19
+	// The length of VF UID is at least 23, can be more if number of VF is double-digit.
 	MinVFUIDLength = 23
 )
 
-// Return PF UID parsed from VF UID.
-// VF contains fully PF UID and VF index, for instance '0000:03:00.0-vf0-0x1234'.
+// PfUIDFromVfUID returns PF UID parsed from VF UID.
+// VF contains fully PF UID and VF index, for instance '0000:03:00.0-0x1234-vf0'.
 func PfUIDFromVfUID(uid string) (string, error) {
 	if len(uid) < MinVFUIDLength {
-		return "", fmt.Errorf("Not a VF")
+		return "", fmt.Errorf("not a VF")
 	}
 
 	parts := strings.Split(uid, "-vf")
 	if len(parts) != 2 {
-		klog.Errorf("Malformed VF UID: %v", uid)
-		return "", fmt.Errorf("Malformed VF UID: %v", uid)
+		klog.Errorf("malformed VF UID: %v", uid)
+		return "", fmt.Errorf("malformed VF UID: %v", uid)
 	}
 
 	return parts[0], nil
 }
 
-// Return PF UID parsed from VF UID.
-// VF contains fully PF UID and VF index, for instance '0000:03:00.0-vf0-0x1234'.
-func VFIndexFromUID(uid string) (int, error) {
+// VfIndexFromUID returns PCI VF index from device UID.
+// VF UID contains full PF UID and VF index, for instance '0000:03:00.0-0x1234-vf0'.
+func VFIndexFromUID(uid string) (uint64, error) {
 	if len(uid) < MinVFUIDLength {
-		return 0, fmt.Errorf("Not a VF")
+		return 0, fmt.Errorf("not a VF")
 	}
 
 	parts := strings.Split(uid, "-vf")
 	if len(parts) != 2 {
-		klog.Errorf("Malformed VF UID: %v", uid)
-		return 0, fmt.Errorf("Malformed VF UID: %v", uid)
+		klog.Errorf("malformed VF UID: %v", uid)
+		return 0, fmt.Errorf("malformed VF UID: %v", uid)
 	}
 
-	vfIndex, err := strconv.Atoi(parts[1])
+	vfIndex, err := strconv.ParseUint(parts[1], 10, 64)
 	if err != nil {
-		klog.Errorf("Failed to parse VF index from VF UID %v", uid)
-		return 0, fmt.Errorf("Failed to parse VF index from VF UID %v", uid)
+		klog.Errorf("failed to parse VF index from VF UID %v", uid)
+		return 0, fmt.Errorf("failed to parse VF index from VF UID %v", uid)
 	}
 
 	return vfIndex, nil

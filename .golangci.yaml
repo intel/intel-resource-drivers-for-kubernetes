@@ -1,0 +1,26 @@
+# please keep this alphabetized
+linters:
+  enable:
+    - asciicheck
+    - contextcheck
+    - forcetypeassert
+    - gocritic
+    - godot
+    - gofmt
+    - goimports
+    - misspell
+    - stylecheck
+    - gocyclo
+
+run:
+  tests: true
+  timeout: 1m
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  goimports:
+    local-prefixes: "sigs.k8s.io/dra-example-driver"
+  stylecheck:
+    # default set minus ID - see https://golangci-lint.run/usage/linters/#stylecheck
+    initialisms: ["ACL", "API", "ASCII", "CPU", "CSS", "DNS", "EOF", "GUID", "HTML", "HTTP", "HTTPS", "IP", "JSON", "QPS", "RAM", "RPC", "SLA", "SMTP", "SQL", "SSH", "TCP", "TLS", "TTL", "UDP", "UI", "GID", "UID", "UUID", "URI", "URL", "UTF8", "VM", "XML", "XMPP", "XSRF", "XSS", "SIP", "RTP", "AMQP", "DB", "TS"]

@@ -1,4 +1,4 @@
-# Copyright (c) 2022, Intel Corporation.  All Rights Reserved.
+# Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,25 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG GOLANG_VERSION=1.19
+ARG GOLANG_VERSION=1.21
 
 FROM golang:${GOLANG_VERSION} as build
-
+ARG LOCAL_LICENSES
 WORKDIR /build
 COPY . .
 
-RUN make all && \
-make licenses && \
-mkdir -p /install_root/etc && \
-adduser --disabled-password --quiet --gecos "" -u 10001 gas && \
-tail -1 /etc/passwd > /install_root/etc/passwd && \
-cp -r licenses/ /install_root/ && \
+RUN make build && \
+mkdir -p /install_root && \
+if [ -z "$LOCAL_LICENSES" ]; then \
+    make licenses; \
+fi && \
+cp -r licenses /install_root/ && \
 cp bin/* /install_root/
 
 # check debian base version from
 # https://github.com/kubernetes/kubernetes/blob/master/build/dependencies.yaml
-FROM registry.k8s.io/build-image/debian-base:bullseye-v1.3.0
-
+FROM scratch
+WORKDIR /
 LABEL description="Intel GPU resource driver for Kubernetes"
 
 COPY --from=build /install_root /

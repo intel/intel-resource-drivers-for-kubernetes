@@ -20,18 +20,18 @@ import (
 	"sync"
 )
 
-type PerNodeMutex struct {
+type perNodeMutex struct {
 	sync.Mutex
 	submutex map[string]*sync.Mutex
 }
 
-func NewPerNodeMutex() *PerNodeMutex {
-	return &PerNodeMutex{
+func newPerNodeMutex() *perNodeMutex {
+	return &perNodeMutex{
 		submutex: make(map[string]*sync.Mutex),
 	}
 }
 
-func (pnm *PerNodeMutex) Get(node string) *sync.Mutex {
+func (pnm *perNodeMutex) Get(node string) *sync.Mutex {
 	pnm.Mutex.Lock()
 	defer pnm.Mutex.Unlock()
 	if pnm.submutex[node] == nil {
