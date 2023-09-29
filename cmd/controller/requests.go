@@ -19,32 +19,32 @@ package main
 import (
 	"sync"
 
-	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/crd/intel/v1alpha/api"
+	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
 	"k8s.io/klog/v2"
 )
 
 /*
-	PerNodeClaimRequests is a map {
+	perNodeClaimRequests is a map {
 		claim-uid : map {
-			nodename : intelcrd.ResourceClaimAllocation {
-				Request GPUClaimParametersSpec `json:"request"`
-				GPUs    AllocatedGPUs          `json:"gpus"`
+			nodename : intelcrd.AllocatedClaim {
+				Gpus AllocatedGpus `json:"gpus"`
+				Owner string `json:"owner"`
 			}
 		}
 	}
 */
-type PerNodeClaimRequests struct {
+type perNodeClaimRequests struct {
 	sync.RWMutex
-	requests map[string]map[string]intelcrd.ResourceClaimAllocation
+	requests map[string]map[string]intelcrd.AllocatedClaim
 }
 
-func NewPerNodeClaimRequests() *PerNodeClaimRequests {
-	return &PerNodeClaimRequests{
-		requests: make(map[string]map[string]intelcrd.ResourceClaimAllocation),
+func newPerNodeClaimRequests() *perNodeClaimRequests {
+	return &perNodeClaimRequests{
+		requests: make(map[string]map[string]intelcrd.AllocatedClaim),
 	}
 }
 
-func (p *PerNodeClaimRequests) Exists(claimUID, node string) bool {
+func (p *perNodeClaimRequests) exists(claimUID, node string) bool {
 	p.RLock()
 	defer p.RUnlock()
 
@@ -59,24 +59,24 @@ func (p *PerNodeClaimRequests) Exists(claimUID, node string) bool {
 	return true
 }
 
-func (p *PerNodeClaimRequests) Get(claimUID, node string) intelcrd.ResourceClaimAllocation {
+func (p *perNodeClaimRequests) get(claimUID, node string) intelcrd.AllocatedClaim {
 	p.RLock()
 	defer p.RUnlock()
 
-	if !p.Exists(claimUID, node) {
-		return intelcrd.ResourceClaimAllocation{}
+	if !p.exists(claimUID, node) {
+		return intelcrd.AllocatedClaim{}
 	}
 	return p.requests[claimUID][node]
 }
 
-func (p *PerNodeClaimRequests) CleanupNode(gas *intelcrd.GpuAllocationState) {
+func (p *perNodeClaimRequests) cleanupNode(gas *intelcrd.GpuAllocationState) {
 	p.RLock()
 	klog.V(5).Infof("Cleaning up resource requests for node %v", gas.Name)
 	for claimUID := range p.requests {
 		// if the resource claim was suitable for GAS node
 		if _, exists := p.requests[claimUID][gas.Name]; exists {
 			// cleanup processed claim requests
-			if _, exists := gas.Spec.ResourceClaimAllocations[claimUID]; exists {
+			if _, exists := gas.Spec.AllocatedClaims[claimUID]; exists {
 				delete(p.requests, claimUID)
 			}
 		}
@@ -84,19 +84,19 @@ func (p *PerNodeClaimRequests) CleanupNode(gas *intelcrd.GpuAllocationState) {
 	p.RUnlock()
 }
 
-func (p *PerNodeClaimRequests) Set(claimUID, node string, devices intelcrd.ResourceClaimAllocation) {
+func (p *perNodeClaimRequests) set(claimUID, node string, devices intelcrd.AllocatedClaim) {
 	p.Lock()
 	defer p.Unlock()
 
 	_, exists := p.requests[claimUID]
 	if !exists {
-		p.requests[claimUID] = make(map[string]intelcrd.ResourceClaimAllocation)
+		p.requests[claimUID] = make(map[string]intelcrd.AllocatedClaim)
 	}
 
 	p.requests[claimUID][node] = devices
 }
 
-func (p *PerNodeClaimRequests) Remove(claimUID string) {
+func (p *perNodeClaimRequests) remove(claimUID string) {
 	p.Lock()
 	defer p.Unlock()
 

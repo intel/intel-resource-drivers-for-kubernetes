@@ -1,6 +1,6 @@
 apiVersion: kubeadm.k8s.io/v1beta3
 kind: ClusterConfiguration
-kubernetesVersion: v1.26.0
+kubernetesVersion: v1.28.0
 imageRepository: registry.local
 apiServer:
   extraArgs:
@@ -22,6 +22,7 @@ apiVersion: kubeadm.k8s.io/v1beta3
 kind: InitConfiguration
 nodeRegistration:
   criSocket: "unix:///var/run/crio/crio.sock"
+  #criSocket: "unix:///var/run/containerd/containerd.sock"
 ---
 apiVersion: kubeproxy.config.k8s.io/v1alpha1
 kind: KubeProxyConfiguration

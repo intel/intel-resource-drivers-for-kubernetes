@@ -52,8 +52,8 @@ import (
 	"k8s.io/dynamic-resource-allocation/leaderelection"
 	"k8s.io/klog/v2"
 
-	intelclientset "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/crd/intel/clientset/versioned"
-	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/crd/intel/v1alpha/api"
+	intelclientset "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/clientset/versioned"
+	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
 )
 
 type flagsType struct {
@@ -71,6 +71,9 @@ type flagsType struct {
 	leaderElectionLeaseDuration *time.Duration
 	leaderElectionRenewDeadline *time.Duration
 	leaderElectionRetryPeriod   *time.Duration
+
+	preferredAllocationPolicy *string
+	allocationPolicyResource  *string
 }
 
 type clientsetType struct {
@@ -93,6 +96,14 @@ func main() {
 	os.Exit(code)
 }
 
+func validPreferredAllocationPolicies() stringSearchMap {
+	return newSearchMap("none", "balanced", "packed")
+}
+
+func validAllocationPolicyResources() stringSearchMap {
+	return newSearchMap("memory", "millicores")
+}
+
 // NewCommand creates a *cobra.Command object with default parameters.
 func newCommand() *cobra.Command {
 	logsconfig := logsapi.NewLoggingConfiguration()
@@ -107,6 +118,10 @@ func newCommand() *cobra.Command {
 	flags := addFlags(cmd, logsconfig, fgate)
 
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if err := checkFlags(flags); err != nil {
+			return fmt.Errorf("flag error: %v", err)
+		}
+
 		// Activate logging as soon as possible, after that
 		// show flags with the final logging configuration.
 		if err := logsapi.ValidateAndApply(logsconfig, fgate); err != nil {
@@ -165,7 +180,7 @@ func newCommand() *cobra.Command {
 				return fmt.Errorf("start controller with leader: %v", err)
 			}
 		} else {
-			StartController(config)
+			startController(config)
 		}
 
 		return nil
@@ -209,6 +224,12 @@ func addFlags(cmd *cobra.Command,
 		"Duration, in seconds, that the acting leader will retry refreshing leadership before giving up.")
 	flags.leaderElectionRetryPeriod = fs.Duration("leader-election-retry-period", 5*time.Second,
 		"Duration, in seconds, the LeaderElector clients should wait between tries of actions.")
+
+	fs = sharedFlagSets.FlagSet("GPU allocation policy (N/A for virtual functions)")
+	flags.preferredAllocationPolicy = fs.String("preferred-allocation-policy", "none",
+		fmt.Sprintf("Preferred allocation policy for the selected resource. One of: %v.", validPreferredAllocationPolicies()))
+	flags.allocationPolicyResource = fs.String("allocation-policy-resource", "memory",
+		fmt.Sprintf("Name of the resource used for enforcing the allocation policy. One of: %v.", validAllocationPolicyResources()))
 
 	fs = sharedFlagSets.FlagSet("other")
 	fgate.AddFlag(fs)
@@ -294,7 +315,7 @@ func setupHTTPEndpoint(config *configType) error {
 
 	listener, err := net.Listen("tcp", *config.flags.httpEndpoint)
 	if err != nil {
-		return fmt.Errorf("Listen on HTTP endpoint: %v", err)
+		return fmt.Errorf("listen on HTTP endpoint: %v", err)
 	}
 
 	go func() {
@@ -319,12 +340,12 @@ func startControllerWithLeader(config *configType) error {
 	// exceeds the QPS+burst limits.
 	clientset, err := coreclientset.NewForConfig(config.csconfig)
 	if err != nil {
-		return fmt.Errorf("Failed to create leaderelection client: %v", err)
+		return fmt.Errorf("failed to create leaderelection client: %v", err)
 	}
 
 	le := leaderelection.New(clientset, lockName,
 		func(ctx context.Context) {
-			StartController(config)
+			startController(config)
 		},
 		leaderelection.LeaseDuration(*config.flags.leaderElectionLeaseDuration),
 		leaderelection.RenewDeadline(*config.flags.leaderElectionRenewDeadline),
@@ -343,7 +364,27 @@ func startControllerWithLeader(config *configType) error {
 	return nil
 }
 
-func StartController(config *configType) {
+func checkStringFlag(sm stringSearchMap, needle string) error {
+	if !sm[needle] {
+		return fmt.Errorf("value %v not among allowed values %v", needle, sm)
+	}
+
+	return nil
+}
+
+func checkFlags(flags *flagsType) error {
+	if err := checkStringFlag(validPreferredAllocationPolicies(), *flags.preferredAllocationPolicy); err != nil {
+		return err
+	}
+
+	if err := checkStringFlag(validAllocationPolicyResources(), *flags.allocationPolicyResource); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func startController(config *configType) {
 	klog.V(3).Infof("Starting controller without leader election")
 	driver := newDriver(config)
 	informerFactory := informers.NewSharedInformerFactory(config.clientset.core, 0 /* resync period */)

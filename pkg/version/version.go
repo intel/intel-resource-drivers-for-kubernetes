@@ -19,7 +19,7 @@ package version
 import (
 	"runtime"
 
-	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/crd/intel/v1alpha/api"
+	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
 	"k8s.io/klog/v2"
 )
 

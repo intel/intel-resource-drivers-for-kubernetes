@@ -24,6 +24,7 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/metadata"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -39,9 +40,8 @@ import (
 	plugin "k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 
-	intelclientset "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/crd/intel/clientset/versioned"
-	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/crd/intel/v1alpha/api"
-	driverVersion "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/version"
+	intelclientset "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/clientset/versioned"
+	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
 )
 
 const (
@@ -52,8 +52,6 @@ const (
 	cdiRoot   = "/etc/cdi"
 	cdiVendor = "intel.com"
 	cdiKind   = cdiVendor + "/gpu"
-
-	dridevpath = "/dev/dri/"
 
 	kubeAPIQps   = 5
 	kubeAPIBurst = 10
@@ -67,6 +65,7 @@ type clientsetType struct {
 type configType struct {
 	crdconfig *intelcrd.GpuAllocationStateConfig
 	clientset *clientsetType
+	cdiRoot   string
 }
 
 func main() {
@@ -99,6 +98,8 @@ func newCommand() *cobra.Command {
 	cliflag.SetUsageAndHelpFunc(cmd, sharedFlagSets, cols)
 
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		cmd.SetContext(metadata.AppendToOutgoingContext(context.Background(), "pre", "run"))
+
 		if err := logsapi.ValidateAndApply(logsconfig, fgate); err != nil {
 			return fmt.Errorf("failed to validate logs config: %v", err)
 		}
@@ -137,7 +138,7 @@ func commandExecutable(cmd *cobra.Command, args []string) error {
 	}
 	klog.V(3).Infof("node: %v, namespace: %v", nodeName, podNamespace)
 
-	node, err := coreclient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	node, err := coreclient.CoreV1().Nodes().Get(cmd.Context(), nodeName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("get node object: %v", err)
 	}
@@ -157,9 +158,10 @@ func commandExecutable(cmd *cobra.Command, args []string) error {
 			coreclient,
 			intelclient,
 		},
+		cdiRoot: cdiRoot,
 	}
 
-	return CallPlugin(config)
+	return callPlugin(cmd.Context(), config)
 }
 
 func getClientSetConfig() (*rest.Config, error) {
@@ -185,18 +187,18 @@ func getClientSetConfig() (*rest.Config, error) {
 	return csconfig, nil
 }
 
-func CallPlugin(config *configType) error {
+func callPlugin(ctx context.Context, config *configType) error {
 	err := os.MkdirAll(driverPluginPath, 0750)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin socket dir: %v", err)
 	}
 
-	err = os.MkdirAll(cdiRoot, 0750)
+	err = os.MkdirAll(config.cdiRoot, 0750)
 	if err != nil {
 		return fmt.Errorf("failed to create CDI root dir: %v", err)
 	}
 
-	driver, err := NewDriver(config)
+	driver, err := newDriver(ctx, config)
 	if err != nil {
 		return err
 	}
@@ -208,8 +210,6 @@ KubeletPluginSocketPath: %v`,
 		pluginRegistrationPath,
 		driverPluginSocketPath,
 		driverPluginSocketPath)
-
-	driverVersion.PrintDriverVersion()
 
 	kubeletPlugin, err := plugin.Start(
 		driver,
