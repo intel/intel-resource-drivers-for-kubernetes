@@ -1,5 +1,5 @@
 # one claim parameter with half GPU memory, one Pod with two containers: with and without claim
-apiVersion: gpu.dra.intel.com/v1alpha
+apiVersion: gpu.resource.intel.com/v1alpha2
 kind: GpuClaimParameters
 metadata:
   name: inline-claim2-parameters
@@ -9,7 +9,7 @@ spec:
   type: "gpu"
   memory: 511
 ---
-apiVersion: resource.k8s.io/v1alpha1
+apiVersion: resource.k8s.io/v1alpha2
 kind: ResourceClaimTemplate
 metadata:
   name: test-inline-claim2-template
@@ -22,7 +22,7 @@ spec:
     resourceClassName: intel-gpu
     allocationMode: Immediate
     parametersRef:
-      apiGroup: gpu.dra.intel.com/v1alpha
+      apiGroup: gpu.resource.intel.com/v1alpha2
       kind: GpuClaimParameters
       name: inline-claim2-parameters
 ---
