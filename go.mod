@@ -6,7 +6,7 @@ require (
 	github.com/container-orchestrated-devices/container-device-interface v0.5.4
 	github.com/prometheus/client_golang v1.16.0
 	github.com/spf13/cobra v1.7.0
-	google.golang.org/grpc v1.54.0
+	google.golang.org/grpc v1.56.3
 	k8s.io/api v0.28.1
 	k8s.io/apimachinery v0.28.1
 	k8s.io/client-go v0.28.1
