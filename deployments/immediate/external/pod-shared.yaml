@@ -1,4 +1,4 @@
-apiVersion: gpu.dra.intel.com/v1alpha
+apiVersion: gpu.resource.intel.com/v1alpha2
 kind: GpuClaimParameters
 metadata:
   name: gpu-params2
@@ -7,7 +7,7 @@ spec:
   type: "gpu"
   memory: 256
 ---
-apiVersion: resource.k8s.io/v1alpha1
+apiVersion: resource.k8s.io/v1alpha2
 kind: ResourceClaim
 metadata:
   name: gpu-claim2
@@ -15,7 +15,7 @@ spec:
   resourceClassName: intel-gpu
   allocationMode: Immediate
   parametersRef:
-    apiGroup: gpu.dra.intel.com/v1alpha
+    apiGroup: gpu.resource.intel.com/v1alpha2
     kind: GpuClaimParameters
     name: gpu-params2
 ---

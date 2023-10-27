@@ -1,4 +1,4 @@
-apiVersion: gpu.dra.intel.com/v1alpha
+apiVersion: gpu.resource.intel.com/v1alpha2
 kind: GpuClaimParameters
 metadata:
   name: delayed-2pod-external-vf
@@ -6,14 +6,14 @@ spec:
   count: 1
   type: "vf"
 ---
-apiVersion: resource.k8s.io/v1alpha1
+apiVersion: resource.k8s.io/v1alpha2
 kind: ResourceClaim
 metadata:
   name: delayed-2pod-external-vf
 spec:
   resourceClassName: intel-gpu
   parametersRef:
-    apiGroup: gpu.dra.intel.com/v1alpha
+    apiGroup: gpu.resource.intel.com/v1alpha2
     kind: GpuClaimParameters
     name: delayed-2pod-external-vf
 ---

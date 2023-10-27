@@ -1,4 +1,4 @@
-apiVersion: gpu.dra.intel.com/v1alpha
+apiVersion: gpu.resource.intel.com/v1alpha2
 kind: GpuClaimParameters
 metadata:
   name: delayed-pod-inline-gpu-mem
@@ -8,7 +8,7 @@ spec:
   type: "gpu"
   memory: 512
 ---
-apiVersion: resource.k8s.io/v1alpha1
+apiVersion: resource.k8s.io/v1alpha2
 kind: ResourceClaimTemplate
 metadata:
   name: delayed-pod-inline-gpu-mem
@@ -20,7 +20,7 @@ spec:
   spec:
     resourceClassName: intel-gpu
     parametersRef:
-      apiGroup: gpu.dra.intel.com/v1alpha
+      apiGroup: gpu.resource.intel.com/v1alpha2
       kind: GpuClaimParameters
       name: delayed-pod-inline-gpu-mem
 ---

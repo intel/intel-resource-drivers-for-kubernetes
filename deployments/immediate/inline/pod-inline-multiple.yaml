@@ -1,5 +1,5 @@
 # two claim parameters, two containers with different inline resource-claims
-apiVersion: gpu.dra.intel.com/v1alpha
+apiVersion: gpu.resource.intel.com/v1alpha2
 kind: GpuClaimParameters
 metadata:
   name: inline-claim-parameters-multiple1
@@ -9,7 +9,7 @@ spec:
   type: "gpu"
   memory: 128
 ---
-apiVersion: gpu.dra.intel.com/v1alpha
+apiVersion: gpu.resource.intel.com/v1alpha2
 kind: GpuClaimParameters
 metadata:
   name: inline-claim-parameters-multiple2
@@ -19,7 +19,7 @@ spec:
   type: "gpu"
   memory: 128
 ---
-apiVersion: resource.k8s.io/v1alpha1
+apiVersion: resource.k8s.io/v1alpha2
 kind: ResourceClaimTemplate
 metadata:
   name: test-inline-claim-template1
@@ -32,11 +32,11 @@ spec:
     resourceClassName: intel-gpu
     allocationMode: Immediate
     parametersRef:
-      apiGroup: gpu.dra.intel.com/v1alpha
+      apiGroup: gpu.resource.intel.com/v1alpha2
       kind: GpuClaimParameters
       name: inline-claim-parameters-multiple1
 ---
-apiVersion: resource.k8s.io/v1alpha1
+apiVersion: resource.k8s.io/v1alpha2
 kind: ResourceClaimTemplate
 metadata:
   name: test-inline-claim-template2
@@ -49,7 +49,7 @@ spec:
     resourceClassName: intel-gpu
     allocationMode: Immediate
     parametersRef:
-      apiGroup: gpu.dra.intel.com/v1alpha
+      apiGroup: gpu.resource.intel.com/v1alpha2
       kind: GpuClaimParameters
       name: inline-claim-parameters-multiple2
 ---
