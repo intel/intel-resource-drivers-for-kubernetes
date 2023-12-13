@@ -56,7 +56,7 @@ endif
 
 .EXPORT_ALL_VARIABLES:
 
-BINARIES = bin/controller bin/kubelet-plugin bin/gas-status-updater
+GPU_BINARIES = bin/gpu-controller bin/gpu-kubelet-plugin bin/gpu-gas-status-updater
 COMMON_SRC = \
  Makefile \
  pkg/version/version.go \
@@ -67,20 +67,20 @@ COMMON_SRC = \
  go.sum
 
 .PHONY: build
-build: $(BINARIES)
+build: $(GPU_BINARIES)
 
-bin/kubelet-plugin: cmd/kubelet-plugin/*.go $(COMMON_SRC)
+bin/gpu-kubelet-plugin: cmd/gpu-kubelet-plugin/*.go $(COMMON_SRC)
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
-	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/kubelet-plugin
+	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/gpu-kubelet-plugin
 
-bin/controller: cmd/controller/*.go $(COMMON_SRC)
+bin/gpu-controller: cmd/gpu-controller/*.go $(COMMON_SRC)
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
-	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/controller
+	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/gpu-controller
 
 .PHONY: bin/gas-status-updater
-bin/gas-status-updater: cmd/gas-status-updater/*.go $(COMMON_SRC)
+bin/gpu-gas-status-updater: cmd/gpu-gas-status-updater/*.go $(COMMON_SRC)
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
-	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/gas-status-updater
+	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/gpu-gas-status-updater
 
 .PHONY: branch-build
 # test that all commits in $GIT_BRANCH (default=current) build
