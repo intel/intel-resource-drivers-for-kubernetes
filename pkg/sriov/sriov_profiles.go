@@ -23,6 +23,8 @@ import (
 )
 
 const (
+	bytesInMiB     = 1024 * 1024
+	ExecQuantumMax = 64
 	// Name of the profile in Profiles that resets VF to fair-share provisioning.
 	FairShareProfile = "fairShare"
 )
@@ -345,38 +347,49 @@ var PerDeviceIdDefaultProfiles = map[string]string{
 	"0x0bdb": "max_48g_c8",
 }
 
-// getProfileLmemQuotaMiBNoErr is safe to use internally, the profile tables are unit-tested.
-func getProfileLmemQuotaMiBNoErr(profileName string, eccOn bool) uint64 {
-	lmemQuotaMiB, _ := GetProfileLmemQuotaMiB(profileName, eccOn)
+// profileMemoryMiBNoErr is safe to use internally, the profile tables are unit-tested.
+func profileMemoryMiBNoErr(profileName string, eccOn bool) uint64 {
+	lmemQuotaMiB, _ := ProfileMemoryMiB(profileName, eccOn)
 	return lmemQuotaMiB
 }
 
-// GetProfileLmemQuotaMiB returns amount of memory in MiB given profile provides
+// ProfileMemoryMiB returns amount of memory in MiB given profile provides
 // if it exists, or error.
-func GetProfileLmemQuotaMiB(profileName string, eccOn bool) (uint64, error) {
+func ProfileMemoryMiB(profileName string, eccOn bool) (uint64, error) {
 	profile, found := Profiles[profileName]
 	if !found {
 		return 0, fmt.Errorf("profile %v not found", profileName)
 	}
 
 	if eccOn {
-		return profile["lmem_quota_ecc_on"] / (1024 * 1024), nil
+		return profile["lmem_quota_ecc_on"] / bytesInMiB, nil
 	}
 
-	return profile["lmem_quota"] / (1024 * 1024), nil
+	return profile["lmem_quota"] / bytesInMiB, nil
+}
+
+// profileMillicores returns relative amount of millicores VF profile has.
+func profileMillicores(profileName string) uint64 {
+	numVFs := Profiles[profileName]["numvfs"]
+	millicores := uint64(1000 / numVFs)
+	if millicores == 0 {
+		return 0
+	}
+	return uint64(millicores)
 }
 
 // GetVFDefaults returns default VF memory amount in MiB and profile name for
 // a given deviceId.
-func GetVFDefaults(deviceId string, eccOn bool) (uint64, string, error) {
+func GetVFDefaults(deviceId string, eccOn bool) (uint64, uint64, string, error) {
 	defaultProfileName, found := PerDeviceIdDefaultProfiles[deviceId]
 	if !found {
-		return 0, "", fmt.Errorf("unsupported device %v", deviceId)
+		return 0, 0, "", fmt.Errorf("unsupported device %v", deviceId)
 	}
 
-	vfMem := getProfileLmemQuotaMiBNoErr(defaultProfileName, eccOn)
+	vfMem := profileMemoryMiBNoErr(defaultProfileName, eccOn)
+	vfMillicores := profileMillicores(defaultProfileName)
 
-	return vfMem, defaultProfileName, nil
+	return vfMem, vfMillicores, defaultProfileName, nil
 }
 
 // GetMimimumVFMemorySizeMiB returns amount of memory in MiB that the smallest
@@ -388,7 +401,7 @@ func GetMimimumVFMemorySizeMiB(deviceId string, eccOn bool) (uint64, error) {
 	}
 
 	minimumProfileName := deviceProfiles[len(deviceProfiles)-1]
-	return GetProfileLmemQuotaMiB(minimumProfileName, eccOn)
+	return ProfileMemoryMiB(minimumProfileName, eccOn)
 }
 
 // GetMaximumVFMemorySizeMiB returns amount of memory in MiB that the largest
@@ -400,7 +413,7 @@ func GetMaximumVFMemorySizeMiB(deviceId string, eccOn bool) (uint64, error) {
 	}
 
 	maximumProfileName := deviceProfiles[0]
-	return GetProfileLmemQuotaMiB(maximumProfileName, eccOn)
+	return ProfileMemoryMiB(maximumProfileName, eccOn)
 }
 
 // SanitizeLmemQuotaMiB returns true is requested amount of lmemQuota in MiB is
@@ -416,7 +429,7 @@ func SanitizeLmemQuotaMiB(deviceId string, eccOn bool, lmemQuotaMiB uint64) bool
 	maxVFMemMiB, _ := GetMaximumVFMemorySizeMiB(deviceId, eccOn)
 
 	if lmemQuotaMiB > maxVFMemMiB || lmemQuotaMiB < minVFMemMiB {
-		klog.V(5).Infof("VF memory value is out of bounds")
+		klog.V(5).Info("VF memory value is out of bounds")
 		return false
 	}
 
@@ -426,35 +439,36 @@ func SanitizeLmemQuotaMiB(deviceId string, eccOn bool, lmemQuotaMiB uint64) bool
 // PickVFProfile selects suitable VF profile based on memory request.
 // Returns VF memory in MiB, profile name and error.
 // Can be used in case fair share is not suitable.
-func PickVFProfile(deviceId string, vfMemoryRequestMiB uint64, eccOn bool) (uint64, string, error) {
-	availableProfileNames, found := PerDeviceIdProfiles[deviceId]
-
-	if !found {
-		klog.Infof("No VF profiles for device %v, using %v", deviceId, FairShareProfile)
-		return 0, FairShareProfile, nil
+func PickVFProfile(deviceId string, requestMemoryMiB uint64, requestMillicores uint64, eccOn bool) (uint64, uint64, string, error) {
+	devProfiles, found := PerDeviceIdProfiles[deviceId]
+	klog.V(5).Infof("Request: %v MiB, %v millicores", requestMemoryMiB, requestMillicores)
+	if !found || (requestMemoryMiB == 0 && requestMillicores == 0) {
+		klog.Infof("Using %v profile for device %v", FairShareProfile, deviceId)
+		return 0, 0, FairShareProfile, nil
 	}
 
-	lmemRequestBytes := vfMemoryRequestMiB * (1024 * 1024)
 	profileName := ""
+	vfMemoryMiB := uint64(0)
+	vfMillicores := uint64(0)
 
 	// iterate over list of profiles backwards - find the smallest VF that fits
 	// request to provision as many VFs as possible
-	for profileIdx := len(availableProfileNames) - 1; profileIdx >= 0; profileIdx-- {
-		if (eccOn && Profiles[availableProfileNames[profileIdx]]["lmem_quota_ecc_on"] >= lmemRequestBytes) ||
-			(!eccOn && Profiles[availableProfileNames[profileIdx]]["lmem_quota"] >= lmemRequestBytes) {
-			profileName = availableProfileNames[profileIdx]
+	for profileIdx := len(devProfiles) - 1; profileIdx >= 0; profileIdx-- {
+		vfMemoryMiB = profileMemoryMiBNoErr(devProfiles[profileIdx], eccOn)
+		vfMillicores = profileMillicores(devProfiles[profileIdx])
+		klog.V(5).Infof("profile %v: %v MiB, %v millicores", devProfiles[profileIdx], vfMemoryMiB, vfMillicores)
+		if vfMemoryMiB >= requestMemoryMiB && vfMillicores >= requestMillicores {
+			profileName = devProfiles[profileIdx]
 			break
 		}
 	}
 
 	if profileName == "" {
-		return 0, "", fmt.Errorf("could not select suitable VF Profile")
+		return 0, 0, "", fmt.Errorf("could not select suitable VF Profile")
 	}
 
-	klog.V(5).Infof("Picking profile %v", profileName)
-	vfMemMiB := getProfileLmemQuotaMiBNoErr(profileName, eccOn)
-
-	return vfMemMiB, profileName, nil
+	klog.V(5).Infof("Picking profile %v (memory %v / millicores %v)", profileName, vfMemoryMiB, vfMillicores)
+	return vfMemoryMiB, vfMillicores, profileName, nil
 }
 
 // MaxFairVFs returns the maximum number of VFs that PF resources can be split
@@ -494,7 +508,7 @@ func MaxFairVFs(deviceId string, vfs []int) (int, error) {
 		}
 		profileSuitable := true
 		for _, vf := range vfs {
-			profileLmemQuotaMiB := Profiles[vfProfileName]["lmem_quota"] / 1048576
+			profileLmemQuotaMiB := Profiles[vfProfileName]["lmem_quota"] / bytesInMiB
 			// stop checking rest of VFs if even one cannot fit into profile
 			if uint64(vf) > profileLmemQuotaMiB {
 				profileSuitable = false
@@ -512,7 +526,7 @@ func MaxFairVFs(deviceId string, vfs []int) (int, error) {
 	}
 
 	if !fairSplitOK {
-		klog.V(5).Infof("Could not split PF resources fairly")
+		klog.V(5).Info("Could not split PF resources fairly")
 		return 0, fmt.Errorf("could not split PF resources fairly")
 	}
 

@@ -1,0 +1,30 @@
+@startuml
+
+allowmixing
+
+actor User
+
+component "resourceclaim0\n\nresourceClass: class0\nparametersRef:" as resclaim0 {
+  component resclaimparams0 [
+type: gpu,
+memory: 256,
+millicores: 100,
+count: 1,
+]
+}
+
+component "resource-classes" {
+  component "class0" {
+      component "class0-parameters"
+  }
+  component "class1" {
+      component "class1-parameters"
+  }
+}
+
+left to right direction
+
+User --> resclaim0 : deploy
+
+@enduml
+

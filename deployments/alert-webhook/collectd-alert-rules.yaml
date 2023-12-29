@@ -1,0 +1,81 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    app.kubernetes.io/name: collectd-gpu-plugin
+    app.kubernetes.io/part-of: collectd-gpu-plugin
+    prometheus: k8s
+    role: alert-rules
+  name: collectd-alert-rules
+  namespace: monitoring
+spec:
+  groups:
+  # TODO: use suitable interval in "for" fields, and update summary/description accordingly
+  # TODO: alert only on error count changes, not about high but stable error counts?
+  - name: collectd-alerts
+    rules:
+    - alert: ThrottledGpuFrequency
+      annotations:
+        description: "Frequency throttled >20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU"
+        summary: GPU throttled >20s
+      expr: |
+        count(collectd_gpu_sysman_frequency_mhz{type="actual",throttled_by!=""}) by (node,pci_bdf,throttled_by) > 1
+      for: 20s
+      labels:
+        severity: warning
+    - alert: HighGpuPowerUsage
+      annotations:
+        description: ">90% ({{ $value }}%) power usage >20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU"
+        summary: ">90% GPU power usage >20s"
+      # TODO, replace absolute watts test value with:
+      # collectd_gpu_sysman_power_ratio > 0.9
+      expr: |
+        collectd_gpu_sysman_power_watts > 3
+      for: 20s
+      labels:
+        severity: warning
+    - alert: HighGpuTemperature
+      annotations:
+        description: ">85C ({{ $value }}C) temperature >20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU"
+        summary: ">85C GPU temperature >20s"
+      expr: |
+        collectd_gpu_sysman_temperature_celsius > 85
+      for: 20s
+      labels:
+        severity: warning
+    - alert: HighMemoryUsage
+      annotations:
+        description: ">95% ({{ $value }}%) memory usage >20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU"
+        summary: ">95% GPU memory usage >20s"
+      expr: |
+        collectd_gpu_sysman_memory_usage_ratio > 0.95
+      for: 20s
+      labels:
+        severity: warning
+    - alert: UnhealthyGpuMemory
+      annotations:
+        description: "'{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU memory is unhealthy"
+        summary: Unhealthy GPU memory
+      expr: |
+        count(collectd_gpu_sysman_memory_usage_ratio{health=~"replace|critical|degraded"}) by (node,pci_bdf) > 1
+      for: 20s
+      labels:
+        severity: warning
+    - alert: UnhealthyGpuFabricPort
+      annotations:
+        description: "'{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU has unhealthy fabric port(s)"
+        summary: Unhealthy GPU fabric port
+      expr: |
+        count(collectd_gpu_sysman_fabric_port_bytes_total{state=~"failed|degraded"}) by (node,pci_bdf) > 1
+      for: 20s
+      labels:
+        severity: warning
+    - alert: UnrecoverableGpuError
+      annotations:
+        description: "'{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU has unrecoverable error(s)"
+        summary: Unrecoverable GPU error
+      expr: |
+        count(collectd_gpu_sysman_all_errors_total{type="uncorrectable"}) by (node,pci_bdf) > 1
+      for: 20s
+      labels:
+        severity: warning

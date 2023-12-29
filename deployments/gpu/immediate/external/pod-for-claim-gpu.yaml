@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-for-immediate-gpu
+spec:
+  restartPolicy: Never
+  containers:
+  - name: with-resource
+    image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+    command: ["sh", "-c", "ls -la /dev/dri/ && sleep 30"]
+    resources:
+      claims:
+      - name: resource
+  - name: without-resource
+    image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+    command: ["sh", "-c", "ls -la /dev/ && sleep 30"]
+  resourceClaims:
+  - name: resource
+    source:
+      resourceClaimName: immediate-gpu

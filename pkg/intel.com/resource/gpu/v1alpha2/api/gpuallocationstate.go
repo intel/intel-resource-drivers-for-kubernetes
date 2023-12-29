@@ -32,6 +32,8 @@ const (
 	GpuAllocationStateStatusReady = "Ready"
 	// Status indicating that CRD entry cannot be used by controller.
 	GpuAllocationStateStatusNotReady = "NotReady"
+	// Value for UID field of device, used for VFs that are not yet provisioned.
+	NewVFUID = ""
 )
 
 // Config to help getting entry of GpuAllocationState.
@@ -43,6 +45,12 @@ type GpuAllocationStateConfig struct {
 
 // AllocatableGpu represents an allocatable Gpu on a node.
 type AllocatableGpu = intelcrd.AllocatableGpu
+
+// TaintedGpu represents a tainted Gpu on a node.
+type TaintedGpu = intelcrd.TaintedGpu
+
+// TaintedDevices is map of tainted devices on a node.
+type TaintedDevices = intelcrd.TaintedDevices
 
 // AllocatedGpu represents an allocated Gpu on a node.
 type AllocatedGpu = intelcrd.AllocatedGpu
@@ -70,6 +78,13 @@ type GpuAllocationStateSpec = intelcrd.GpuAllocationStateSpec
 type GpuAllocationState struct {
 	*intelcrd.GpuAllocationState
 	clientset intelclientset.Interface
+	// available is a list of devices available for allocation.
+	// Updated only manually when GpuAllocationState.UpdateAvailableAndConsumed() is called.
+	Available map[string]*intelcrd.AllocatableGpu
+	// consumed is a list of available devices' resources consumed.
+	// It is identical to available but contains the occupied resources.
+	// Updated only manually when GpuAllocationState.UpdateAvailableAndConsumed() is called.
+	Consumed map[string]*intelcrd.AllocatableGpu
 }
 
 // Returns a blank GpuAllocationState object ready to retrieve the record from
@@ -89,6 +104,8 @@ func NewGpuAllocationState(config *GpuAllocationStateConfig, clientset intelclie
 	gas := &GpuAllocationState{
 		object,
 		clientset,
+		map[string]*intelcrd.AllocatableGpu{},
+		map[string]*intelcrd.AllocatableGpu{},
 	}
 
 	return gas
@@ -185,50 +202,12 @@ func (g *GpuAllocationState) ListNames(ctx context.Context) ([]string, error) {
 	return gasnames, nil
 }
 
-// AvailableAndConsumed returns allocatable devices without devices that have
-// VFs provisioned, and calculates consumed resources based on existing
-// allocations.
-func (g *GpuAllocationState) AvailableAndConsumed() (
-	map[string]*intelcrd.AllocatableGpu, map[string]*intelcrd.AllocatableGpu) {
-	available := make(map[string]*intelcrd.AllocatableGpu)
-	consumed := make(map[string]*intelcrd.AllocatableGpu)
-
-	klog.V(5).Infof(
-		"GpuAllocationState spec has %v allocatable devices, %v allocated claims",
-		len(g.Spec.AllocatableDevices),
-		len(g.Spec.AllocatedClaims))
-
-	// Safest way is two iterations: first - GPUs, then - VFs to prevent nil-exceptions and overwriting.
-	for _, device := range g.Spec.AllocatableDevices {
-		if device.Type == intelcrd.GpuDeviceType {
-			available[device.UID] = device.DeepCopy()
-			consumed[device.UID] = &intelcrd.AllocatableGpu{
-				UID:       device.UID,
-				ParentUID: device.ParentUID,
-				Type:      device.Type}
-		}
-	}
-
-	for _, device := range g.Spec.AllocatableDevices {
-		if device.Type == intelcrd.VfDeviceType {
-			// Test for presence in consumed, because available entry could have been deleted by preceding child VF.
-			if _, found := consumed[device.ParentUID]; !found {
-				klog.Errorf("GpuAllocationState %v is broken, parent %v of VF %v is missing", g.Name, device.ParentUID, device.UID)
-
-				return make(map[string]*intelcrd.AllocatableGpu), make(map[string]*intelcrd.AllocatableGpu)
-			}
-			available[device.UID] = device.DeepCopy()
-			consumed[device.UID] = &intelcrd.AllocatableGpu{
-				UID:       device.UID,
-				ParentUID: device.ParentUID,
-				Type:      device.Type}
-			consumed[device.ParentUID].Maxvfs++
-			consumed[device.ParentUID].Memory += device.Memory
-			consumed[device.ParentUID].Millicores += device.Millicores
-			delete(available, device.ParentUID)
-		}
-	}
-
+// UpdateAvailableAndConsumed updates allocatable devices map filtering out devices that have
+// VFs provisioned, and calculates consumed resources based on existing allocations.
+// Use this method after the fresh contents of GAS.Spec was fetched from cache or API.
+// Do not use this after the GAS.Spec was modified and changes not submitted to API.
+func (g *GpuAllocationState) UpdateAvailableAndConsumed() {
+	available, consumed := g.availableAndConsumedFromAllocatable()
 	klog.V(3).Infof("Available %v devices: %v", len(available), available)
 
 	for claimUID, claimAllocation := range g.Spec.AllocatedClaims {
@@ -241,8 +220,17 @@ func (g *GpuAllocationState) AvailableAndConsumed() (
 					continue
 				}
 			case intelcrd.VfDeviceType:
-				if _, found := consumed[device.UID]; !found {
-					// Yet to be provisioned, did not consume anything.
+				if device.UID == "" { // Schrödinger's VF: can exist in gas.allocatableDevices or be absent.
+					// Remove it from available if it is there, can be found by parent UID and VFIndex.
+					for _, availableDevice := range available {
+						if device.VFIndex == availableDevice.VFIndex && device.ParentUID == availableDevice.ParentUID {
+							delete(available, availableDevice.UID)
+							break
+						}
+					}
+					// if new allocation was requested faster than kubelet-plugin provisioned this VF,
+					// or if GAS is not yet updated - we should not use parent device.
+					delete(available, device.ParentUID)
 					continue
 				}
 				// TODO: SR-IOV millicores. Until it is implemented gpuFitsRequest relies on this counter to
@@ -262,34 +250,65 @@ func (g *GpuAllocationState) AvailableAndConsumed() (
 		klog.V(5).Infof("total consumed in device %v: %+v", duid, device)
 	}
 
-	return available, consumed
+	g.Available = available
+	g.Consumed = consumed
 }
 
-// SameOwnerVFAllocations returns true if  all VFs currently allocated from
-// parentUID belong to the same owner, otherwise false.
-func (g *GpuAllocationState) SameOwnerVFAllocations(parentUID string, owner string) bool {
-	klog.V(5).Infof("Checking if all VFs on device %v owned by %v", parentUID, owner)
-	if g.Spec.AllocatedClaims == nil {
-		klog.V(5).Infof("No allocations yet, nothing to check")
+func (g *GpuAllocationState) availableAndConsumedFromAllocatable() (map[string]*intelcrd.AllocatableGpu, map[string]*intelcrd.AllocatableGpu) {
+	available := make(map[string]*intelcrd.AllocatableGpu)
+	consumed := make(map[string]*intelcrd.AllocatableGpu)
 
-		return true
-	}
+	klog.V(5).Infof(
+		"GpuAllocationState spec has %v allocatable devices, %v allocated claims",
+		len(g.Spec.AllocatableDevices),
+		len(g.Spec.AllocatedClaims))
 
-	for _, claimAllocation := range g.Spec.AllocatedClaims {
-		for _, device := range claimAllocation.Gpus {
-			if device.Type == intelcrd.VfDeviceType && device.ParentUID == parentUID && claimAllocation.Owner != owner {
-				return false
+	// Safest way is two iterations: first - GPUs, then - VFs to prevent nil-exceptions and overwriting.
+	for _, device := range g.Spec.AllocatableDevices {
+		if device.Type == intelcrd.GpuDeviceType {
+			if g.deviceIsTainted(device.UID) {
+				continue
 			}
+			available[device.UID] = device.DeepCopy()
+			consumed[device.UID] = &intelcrd.AllocatableGpu{
+				UID:       device.UID,
+				ParentUID: device.ParentUID,
+				Type:      device.Type}
 		}
 	}
-	return true
+
+	for _, device := range g.Spec.AllocatableDevices {
+		if device.Type == intelcrd.VfDeviceType {
+			if g.deviceIsTainted(device.ParentUID) {
+				continue
+			}
+			// Test for presence in consumed, because available entry could have been deleted by preceding child VF.
+			if _, found := consumed[device.ParentUID]; !found {
+				klog.Errorf("GpuAllocationState %v is broken, parent %v of VF %v is missing", g.Name, device.ParentUID, device.UID)
+
+				return make(map[string]*intelcrd.AllocatableGpu), make(map[string]*intelcrd.AllocatableGpu)
+			}
+			available[device.UID] = device.DeepCopy()
+			consumed[device.UID] = &intelcrd.AllocatableGpu{
+				UID:       device.UID,
+				ParentUID: device.ParentUID,
+				Type:      device.Type,
+			}
+			consumed[device.ParentUID].Maxvfs++
+			consumed[device.ParentUID].Memory += device.Memory
+			consumed[device.ParentUID].Millicores += device.Millicores
+			delete(available, device.ParentUID)
+		}
+	}
+
+	return available, consumed
 }
 
 // GpuHasVFs returns true if allocatable devices have VFs with parentUID, or
 // allocated devices have pending / not yet provisioned VFs with parentUID.
 func (g *GpuAllocationState) GpuHasVFs(parentUID string) bool {
 	if _, exists := g.Spec.AllocatableDevices[parentUID]; !exists {
-		klog.Warning("Parent device %v does not exist in allocatable devices", parentUID)
+		klog.Warningf("Parent device %v does not exist in allocatable devices", parentUID)
 
 		return false
 	}
@@ -316,9 +335,24 @@ func (g *GpuAllocationState) GpuHasVFs(parentUID string) bool {
 	return false
 }
 
+// returns true (only) if device is in the TaintedDevices map.
+func (g *GpuAllocationState) deviceIsTainted(deviceUID string) bool {
+	if g.Spec.TaintedDevices == nil {
+		return false
+	}
+	if status, found := g.Spec.TaintedDevices[deviceUID]; found {
+		klog.V(5).Infof("Device %v is tainted: %s", deviceUID, status.Reason)
+		return true
+	}
+	return false
+}
+
 // DeviceIsAllocated returns true if device is present in any allocation,
 // otherwise false.
 func (g *GpuAllocationState) DeviceIsAllocated(deviceUID string) bool {
+	if deviceUID == NewVFUID {
+		klog.Error("device is a new VF with no UID, cannot check if it is allocated")
+	}
 	for claimUID, claimAllocation := range g.Spec.AllocatedClaims {
 		for _, allocatedDevice := range claimAllocation.Gpus {
 			if allocatedDevice.UID == deviceUID {
@@ -346,6 +380,8 @@ func AllocatedFromAllocatable(source *AllocatableGpu, claimParams *intelcrd.GpuC
 	if !shared {
 		// For exclusive allocation use all available millicores.
 		allocated.Millicores = source.Millicores
+		// All of the memory is allocated.
+		allocated.Memory = source.Memory
 	}
 
 	return allocated
