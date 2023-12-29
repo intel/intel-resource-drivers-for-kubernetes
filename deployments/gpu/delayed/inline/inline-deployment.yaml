@@ -1,0 +1,57 @@
+---
+apiVersion: gpu.resource.intel.com/v1alpha2
+kind: GpuClaimParameters
+metadata:
+  name: inline-gpu-deployment
+spec:
+  count: 1
+  type: "gpu"
+  memory: 1024
+---
+apiVersion: resource.k8s.io/v1alpha2
+kind: ResourceClaimTemplate
+metadata:
+  name: inline-gpu-deployment
+  namespace: default
+spec:
+  metadata:
+    labels:
+      app: inline-gpu-deployment
+  spec:
+    resourceClassName: intel-gpu
+    parametersRef:
+      apiGroup: gpu.resource.intel.com/v1alpha2
+      kind: GpuClaimParameters
+      name: inline-gpu-deployment
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inline-gpu-deployment
+  namespace: default
+  labels:
+    app: inline-gpu-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: inline-gpu-deployment
+  template:
+    metadata:
+      labels:
+        app: inline-gpu-deployment
+    spec:
+      containers:
+      - name: with-resource
+        image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+        command: ["sh", "-c", "ls -la /dev/dri/ && sleep 30"]
+        resources:
+          claims:
+          - name: resource
+      - name: without-resource
+        image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+        command: ["sh", "-c", "ls -la /dev/ && sleep 30"]
+      resourceClaims:
+      - name: resource
+        source:
+          resourceClaimTemplateName: inline-gpu-deployment

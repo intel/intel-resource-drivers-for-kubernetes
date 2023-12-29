@@ -1,0 +1,64 @@
+# Configure Intel GPU resource driver alert-webhook for Prometheus Alertmanager.
+#
+# prometheus-operator validates and generates another secret of this
+# (together with possible CRs) and gives it to alertmanager as configMap:
+# $ kubectl -n monitoring create secret generic --dry-run=client -o yaml \
+#   alertmanager-main --from-file=alertmanager.yaml | kubectl apply -f -
+#
+# Config format: https://prometheus.io/docs/alerting/latest/configuration/
+---
+global:
+  resolve_timeout: 5m
+inhibit_rules:
+- equal:
+  - namespace
+  - alertname
+  source_match:
+    severity: "critical"
+  target_match_re:
+    severity: "warning|info"
+- equal:
+  - namespace
+  - alertname
+  source_match:
+    severity: "warning"
+  target_match:
+    severity: "info"
+receivers:
+- name: "Default"
+- name: "Watchdog"
+- name: "Critical"
+- name: "GPU_Health"
+  webhook_configs:
+  - url: "http://alert-webhook.intel-gpu-resource-driver.svc.cluster.local/alertmanager/api/v1/alerts"
+    send_resolved: true
+    max_alerts: 0
+route:
+  group_by:
+  - namespace
+  group_interval: 5m
+  group_wait: 30s
+  receiver: "Default"
+  repeat_interval: 12h
+  routes:
+  - receiver: "GPU_Health"
+    # e.g. half of group_interval
+    group_wait: 4s
+    # e.g. half of "for" interval in GPU alert rules
+    group_interval: 10s
+    # TODO: at least minutes in production
+    # (it's this small just to get event retriggered for testing)
+    repeat_interval: 20s
+    group_by:
+    - alertname
+    - namespace
+    - service
+    match_re:
+      service: "intel-xpumanager|collectd-gpu-plugin"
+    continue: true
+  - receiver: "Watchdog"
+    match:
+      alertname: "Watchdog"
+  - receiver: "Critical"
+    match:
+      severity: "critical"

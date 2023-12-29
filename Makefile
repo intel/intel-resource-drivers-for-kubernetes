@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+.PHONY: list-targets
+list-targets:
+	@echo -e "\nTargets:\n$$(grep '^[-a-zA-Z/]*:' Makefile | sort | sed -e 's/^/- /' -e 's/:$$//')\n"
+
 ARCH=amd64
 PKG = github.com/intel/intel-resource-drivers-for-kubernetes
 GO111MODULE = on
@@ -22,12 +26,12 @@ export GOPATH GOBIN GO111MODULE
 GIT_COMMIT = $(shell git rev-parse HEAD)
 BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_BRANCH ?= $(shell git branch --show-current)
-VERSION ?= v0.2.0
+VERSION ?= v0.3.0
 
 EXT_LDFLAGS = -static
 LDFLAGS = \
  -s -w -extldflags $(EXT_LDFLAGS) \
- -X ${PKG}/pkg/version.driverVersion=${IMAGE_VERSION} \
+ -X ${PKG}/pkg/version.driverVersion=${GPU_IMAGE_VERSION} \
  -X ${PKG}/pkg/version.gitCommit=${GIT_COMMIT} \
  -X ${PKG}/pkg/version.buildDate=${BUILD_DATE}
 
@@ -40,9 +44,9 @@ MODULE = github.com/intel/intel-resource-drivers-for-kubernetes
 
 # Use a custom version for E2E tests if we are testing in CI
 REGISTRY ?= registry.local
-IMAGENAME ?= intel-gpu-resource-driver
-IMAGE_VERSION ?= $(VERSION)
-IMAGE_TAG ?= $(REGISTRY)/$(IMAGENAME):$(IMAGE_VERSION)
+GPU_IMAGENAME ?= intel-gpu-resource-driver
+GPU_IMAGE_VERSION ?= $(VERSION)
+GPU_IMAGE_TAG ?= $(REGISTRY)/$(GPU_IMAGENAME):$(GPU_IMAGE_VERSION)
 
 ifndef DOCKER
 	PODMAN_VERSION := $(shell command podman version 2>/dev/null)
@@ -56,7 +60,7 @@ endif
 
 .EXPORT_ALL_VARIABLES:
 
-BINARIES = bin/controller bin/kubelet-plugin bin/gas-status-updater
+GPU_BINARIES = bin/gpu-controller bin/kubelet-gpu-plugin bin/gas-status-updater bin/alert-webhook
 COMMON_SRC = \
  Makefile \
  pkg/version/version.go \
@@ -67,20 +71,23 @@ COMMON_SRC = \
  go.sum
 
 .PHONY: build
-build: $(BINARIES)
+build: $(GPU_BINARIES)
 
-bin/kubelet-plugin: cmd/kubelet-plugin/*.go $(COMMON_SRC)
+bin/kubelet-gpu-plugin: cmd/kubelet-gpu-plugin/*.go $(COMMON_SRC)
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
-	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/kubelet-plugin
+	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/kubelet-gpu-plugin
 
-bin/controller: cmd/controller/*.go $(COMMON_SRC)
+bin/gpu-controller: cmd/gpu-controller/*.go $(COMMON_SRC)
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
-	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/controller
+	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/gpu-controller
 
-.PHONY: bin/gas-status-updater
 bin/gas-status-updater: cmd/gas-status-updater/*.go $(COMMON_SRC)
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
 	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/gas-status-updater
+
+bin/alert-webhook: cmd/alert-webhook/*.go $(COMMON_SRC)
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
+	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/alert-webhook
 
 .PHONY: branch-build
 # test that all commits in $GIT_BRANCH (default=current) build
@@ -91,23 +98,24 @@ branch-build:
 	git checkout $$current
 
 .PHONY: container-build
-container-build: update-vendor
-	$(DOCKER) build --pull --platform="linux/$(ARCH)" -t $(IMAGE_TAG) \
-	--build-arg LOCAL_LICENSES=$(LOCAL_LICENSES) ./
+container-build: vendor
+	@echo "Building GPU resource driver container..."
+	$(DOCKER) build --pull --platform="linux/$(ARCH)" -t $(GPU_IMAGE_TAG) \
+	--build-arg LOCAL_LICENSES=$(LOCAL_LICENSES) -f Dockerfile.gpu .
 
 .PHONY: container-local
 container-local: container-build
-	$(DOCKER) save -o /tmp/temp_image.tar $(IMAGE_TAG)
+	$(DOCKER) save -o /tmp/temp_image.tar $(GPU_IMAGE_TAG)
 	sudo ctr -n k8s.io image import /tmp/temp_image.tar
 	rm /tmp/temp_image.tar
 
 .PHONY: container-push
 container-push: container-build
-	$(DOCKER) push $(IMAGE_TAG)
+	$(DOCKER) push $(GPU_IMAGE_TAG)
 
 .PHONY: clean cleanall
 clean:
-	rm -rf $(BINARIES)
+	rm -rf $(GPU_BINARIES)
 cleanall: clean
 	rm -rf vendor/* bin/*
 
@@ -123,7 +131,7 @@ generate-crds: generate-deepcopy
 	controller-gen \
 		crd:crdVersions=v1 \
 		paths=$(CURDIR)/pkg/intel.com/resource/gpu/v1alpha2/ \
-		output:crd:dir=$(CURDIR)/deployments/static/crds
+		output:crd:dir=$(CURDIR)/deployments/gpu/static/crds
 
 .PHONY: generate-deepcopy
 generate-deepcopy: generate-clientset
@@ -148,6 +156,10 @@ generate-clientset: rm-clientset
 		$(CURDIR)/pkg/intel.com/resource/gpu/
 	rm -rf $(CURDIR)/pkg/tmp_clientset
 
+.PHONY: vendor
+vendor:
+	go mod vendor
+
 .PHONY: update-vendor
 update-vendor:
 	go mod tidy
@@ -160,14 +172,14 @@ clean-licenses:
 .PHONY: licenses
 licenses: clean-licenses
 	GO111MODULE=on go run github.com/google/go-licenses@$(GOLICENSES_VERSION) \
-	save "./cmd/controller" "./cmd/kubelet-plugin" "./pkg/version/" "./pkg/intel.com/resource/gpu/v1alpha2" \
+	save "./cmd/gpu-controller" "./cmd/kubelet-gpu-plugin" "./pkg/version/" "./pkg/intel.com/resource/gpu/v1alpha2" \
 	"./pkg/intel.com/resource/gpu/v1alpha2/api" "./pkg/intel.com/resource/gpu/clientset/versioned/" --save_path licenses
 
 
 # linting targets for Go and other code
 .PHONY: lint format cilint vet shellcheck yamllint
 
-lint: format cilint vet build shellcheck yamllint
+lint: format cilint vet klogformat shellcheck yamllint
 
 format:
 	gofmt -w -s -l ./
@@ -178,17 +190,27 @@ cilint:
 vet:
 	go vet  $(PKG)/...
 
+# cilint does not check klog formats. Until it does, make at least sure
+# that when format parameters are given, some format function is used
+# (assumes that there are no non-format percent char usage) and vice verse.
+klogformat:
+	@echo -e "\ntesting/klog: format calls without format args, or vice verse:"
+	! git grep -n -e '\bt\..*f("[^%]*")' -e 'klog\..*f("[^%]*")' -e 'klog\..*[^f]("[^)]*%'
+
 # exclude env.sh + SC1091, shellcheck external file handling is broken
 shellcheck:
-	find . -name '*.sh' | grep -v -e vendor/ -e /env.sh |\
-	xargs shellcheck -e SC1091
+	@echo -e "\nshellcheck: validate our own shell code:"
+	find . -name '*.sh' | grep -v -e vendor/ -e /env.sh | xargs shellcheck -e SC1091
 
+# Exclude Helm template files which contain Helm templating syntax
 yamllint:
-	yamllint -d relaxed --no-warnings *.yaml deployments/ hack/
+	@echo -e "\nyamllint: lint non-templated YAML files:"
+	git ls-files '*.yaml' | xargs grep -L '^ *{{-' | xargs yamllint -d relaxed --no-warnings
+
 
 .PHONY: test coverage
 COVERAGE_FILE := coverage.out
-test: build
+test:
 	go test -v -coverprofile=$(COVERAGE_FILE) $(MODULE)/...
 
 coverage: test

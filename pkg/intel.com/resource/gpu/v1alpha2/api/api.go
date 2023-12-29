@@ -33,6 +33,8 @@ const (
 	AnyDeviceType = icrd.AnyDeviceType
 	// Unsupported device type.
 	UnknownDeviceType = icrd.UnknownDeviceType
+	// Monitor allocation type.
+	MonitorAllocType = "monitor"
 	// K8s API Kind string for GpuClaimParameters.
 	GpuClaimParametersKind = "GpuClaimParameters"
 	// K8s API Kind string for GpuClassParameters.

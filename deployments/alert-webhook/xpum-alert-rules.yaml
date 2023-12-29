@@ -1,0 +1,45 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    app.kubernetes.io/name: intel-xpumanager
+    app.kubernetes.io/part-of: intel-xpumanager
+    prometheus: k8s
+    role: alert-rules
+  name: xpum-alert-rules
+  namespace: monitoring
+spec:
+  groups:
+  # TODO: use suitable interval in "for" fields, and update summary/description accordingly
+  # TODO: alert only on error count changes, not about high but stable error counts?
+  - name: xpum-alerts
+    rules:
+    - alert: HighGpuPowerUsage
+      # TODO, switch to ratio when XPUM starts supporting it
+      # TODO, before that, set limit to value suitable for GPUs used in the cluster
+      annotations:
+        description: ">99W ({{ $value }}W) power usage >20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU"
+        summary:  ">99W GPU power usage >20s"
+      expr: |
+        xpum_power_watts > 99
+      for: 20s
+      labels:
+        severity: warning
+    - alert: HighGpuTemperature
+      annotations:
+        description: ">85C ({{ $value }}C) temperature >20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU tile"
+        summary: ">85C GPU tile temperature >20s"
+      expr: |
+        xpum_max_temperature_celsius > 85
+      for: 20s
+      labels:
+        severity: warning
+    - alert: HighMemoryUsage
+      annotations:
+        description: ">95% ({{ $value }}%) memory usage >20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU tile"
+        summary: ">95% GPU tile memory usage >20s"
+      expr: |
+        xpum_memory_ratio > 0.95
+      for: 20s
+      labels:
+        severity: warning

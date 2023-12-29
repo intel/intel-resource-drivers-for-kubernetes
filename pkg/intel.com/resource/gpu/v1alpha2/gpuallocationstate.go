@@ -48,8 +48,16 @@ type AllocatableGpu struct {
 	ParentUID string `json:"parentuid"`
 	// Greater than 0 if SR-IOV is supported / enabled.
 	Maxvfs uint64 `json:"maxvfs"`
+	// Index of SR-IOV Virtual Function
+	VFIndex uint64 `json:"vfindex"`
 	// True if ECC is enabled, might impact memory amount and VF profiles.
 	Ecc bool `json:"ecc"`
+}
+
+// TaintedGpu represents a tainted Gpu on a node.
+type TaintedGpu struct {
+	// Why device is tainted.
+	Reason string `json:"reason,omitempty"`
 }
 
 // AllocatedGpu represents an allocated Gpu on a node.
@@ -68,12 +76,14 @@ type AllocatedGpu struct {
 	Type GpuType `json:"type"` // gpu, vf
 	// Device where VF should be / is provisioned.
 	ParentUID string `json:"parentuid"`
+	// Index of SR-IOV Virtual Function
+	VFIndex uint64 `json:"vfindex"`
 	// Virtual Function profile defines amount of local memory and time slice VF gets.
 	Profile string `json:"profile"`
 }
 
 // AllocatedGpus represents a list of allocated devices on a node.
-// +kubebuilder:validation:MaxItems=8
+// +kubebuilder:validation:MaxItems=640
 type AllocatedGpus []AllocatedGpu
 
 // Type of the GPU device: physical or virtual or any.
@@ -83,8 +93,6 @@ type GpuType string
 // Resources that were allocated for the claim by controller.
 type AllocatedClaim struct {
 	Gpus AllocatedGpus `json:"gpus"`
-	// Pod UID, for delayed allocation to match Resource Claims of same Pod when allocating VFs.
-	Owner string `json:"owner"`
 }
 
 // Map of resources allocated per claim UID.
@@ -96,9 +104,13 @@ type PreparedClaim []AllocatedGpu
 // Resources prepared for the claim by kubelet-plugin.
 type PreparedClaims map[string]PreparedClaim
 
+// Map of tainted devices on a node.
+type TaintedDevices map[string]TaintedGpu
+
 // GpuAllocationStateSpec is the spec for the GpuAllocationState CRD.
 type GpuAllocationStateSpec struct {
 	AllocatableDevices map[string]AllocatableGpu `json:"allocatableDevices,omitempty"`
+	TaintedDevices     map[string]TaintedGpu     `json:"taintedDevices,omitempty"`
 	PreparedClaims     map[string]PreparedClaim  `json:"preparedClaims,omitempty"`
 	AllocatedClaims    map[string]AllocatedClaim `json:"allocatedClaims,omitempty"`
 }

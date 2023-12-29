@@ -144,7 +144,7 @@ func getClientsetConfig(f *Flags) (*rest.Config, error) {
 
 	kubeconfigEnv := os.Getenv("KUBECONFIG")
 	if kubeconfigEnv != "" {
-		klog.Infof("Found KUBECONFIG environment variable set, using that..")
+		klog.Info("Found KUBECONFIG environment variable set, using that..")
 		*f.kubeconfig = kubeconfigEnv
 	}
 
@@ -186,7 +186,7 @@ func setStatus(ctx context.Context, config *Config, nodeName string, podNamespac
 		return err
 	}
 
-	klog.V(5).Infof("GAS status updated")
+	klog.V(5).Info("GAS status updated")
 
 	return nil
 }

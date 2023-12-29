@@ -1,0 +1,17 @@
+{
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "GpuNeedsReset",
+        "node": "unknown-node",
+        "pci_dev": "0x56a0",
+        "pci_bdf": "02:00.0"
+      }
+    }
+  ],
+  "groupLabels": {
+    "namespace": "monitoring",
+    "service": "xpu-manager"
+  }
+}

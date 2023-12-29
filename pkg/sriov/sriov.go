@@ -31,7 +31,7 @@ import (
 // UnconfigureAllVfs is taking full path to the driver's DRM VFs dir
 // and loops through found VFs to write zeroes into all VFs' attributes.
 // Returns true if all operations succeeded, false otherwise.
-func UnConfigureAllVFs(vfsDir string) bool {
+func UnConfigureAllVFs(vfsDir string, model string) bool {
 	filePath := path.Join(vfsDir, "vf*")
 	files, _ := filepath.Glob(filePath)
 	clean := true
@@ -40,7 +40,7 @@ func UnConfigureAllVFs(vfsDir string) bool {
 		attrsDir := path.Join(vfDir, "gt")
 		err := UnConfigureVF(attrsDir)
 		if err != nil {
-			klog.V(5).Infof("VF cleanup failed, auto_provisioning will not be enabled")
+			klog.V(5).Info("VF cleanup failed, auto_provisioning will not be enabled")
 			clean = false // attempt to cleanup the rest nevertheless
 		}
 	}
@@ -57,7 +57,8 @@ func PreConfigureVF(vfAttrsDir string, drmVfIndex uint64, vfProfile string, eccO
 		if attrName == "lmem_quota" && eccOn {
 			attrValue = Profiles[vfProfile]["lmem_quota_ecc_on"]
 		}
-		vfAttrFile := path.Join(vfAttrsDir, fmt.Sprintf("vf%v/gt/%v", drmVfIndex, attrName))
+
+		vfAttrFile := path.Join(vfAttrsDir, fmt.Sprintf("vf%v/%v/%v", drmVfIndex, GtDirFromProfile(vfProfile), attrName))
 		klog.V(3).Infof("setting %v", attrName)
 		fhandle, err := os.OpenFile(vfAttrFile, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
 		if err != nil {
@@ -112,7 +113,7 @@ func UnConfigureVF(attrsDir string) error {
 // CleanupManualConfigurationMaybe checks whether "pf/auto_provisioning" (under given
 // sysfsVFsDir) is disabled before enabling it back. If numVfs is zero, it unconfigures
 // all available VFs regardless whether they are enabled or configured.
-func CleanupManualConfigurationMaybe(sysfsVFsDir string, numVFs uint64) error {
+func CleanupManualConfigurationMaybe(sysfsVFsDir string, numVFs uint64, model string) error {
 	filename := path.Join(sysfsVFsDir, "pf/auto_provisioning")
 	autoProvisioning, err := os.ReadFile(filename)
 	if err != nil {
@@ -120,23 +121,24 @@ func CleanupManualConfigurationMaybe(sysfsVFsDir string, numVFs uint64) error {
 	}
 
 	if strings.TrimSpace(string(autoProvisioning)) == "1" {
-		klog.V(5).Infof("auto_provisioning is enabled, skipping unconfiguration of VFs")
+		klog.V(5).Info("auto_provisioning is enabled, skipping unconfiguration of VFs")
 		return nil
 	}
 
 	clean := true
+
 	// try cleaning up only requested number of VFs
 	for vfIdx := uint64(1); vfIdx <= numVFs; vfIdx++ {
-		attrsDir := fmt.Sprintf("%v/vf%d/gt/", sysfsVFsDir, vfIdx)
+		attrsDir := fmt.Sprintf("%v/vf%d/%v/", sysfsVFsDir, vfIdx, GtDirFromModel(model))
 		err = UnConfigureVF(attrsDir)
 		if err != nil {
-			klog.V(5).Infof("VF cleanup failed, auto_provisioning will not be enabled")
+			klog.V(5).Info("VF cleanup failed, auto_provisioning will not be enabled")
 			clean = false // attempt to cleanup the rest nevertheless
 		}
 	}
 
 	// attempt to cleanup all VFs
-	if !clean && UnConfigureAllVFs(sysfsVFsDir) {
+	if !clean && UnConfigureAllVFs(sysfsVFsDir, model) {
 		return fmt.Errorf("PF is dirty, could not enable auto_provisioning")
 	}
 
@@ -149,10 +151,55 @@ func CleanupManualConfigurationMaybe(sysfsVFsDir string, numVFs uint64) error {
 
 	_, err = fhandle.WriteString("1")
 	if err != nil {
-		klog.Error("could not write to file %v", filename)
+		klog.Errorf("could not write to file %v", filename)
 		return fmt.Errorf("could not write to file %v", filename)
 	}
 
-	klog.V(5).Infof("Manual VF configuration successfully removed, auto_provisioning enabled")
+	klog.V(5).Info("Manual VF configuration successfully removed, auto_provisioning enabled")
 	return nil
+}
+
+// GtDirFromProfile returns gt or gt0 for /sys/class/drm/cardXX/prelim_iov/vfYY/
+// depending on the GPU family. Family is determined based on profile prefix.
+func GtDirFromProfile(profileName string) string {
+	if len(profileName) > 3 && profileName[:3] == "max" {
+		return "gt0"
+	}
+	return "gt"
+}
+
+// GtDirFromModel returns gt or gt0 for /sys/class/drm/cardXX/prelim_iov/vfYY/
+// depending on the GPU family. Family is determined based on the default VF profile prefix of the given GPU model.
+func GtDirFromModel(model string) string {
+	return GtDirFromProfile(PerDeviceIdDefaultProfiles[model])
+}
+
+// DeduceVFMillicores returns relative amount of millicores based on either of:
+// - number of provisioned VFs, if auto_provisioning is enabled;
+// - memory allocated to the VF, if auto_provisioning is disabled.
+func DeduceVFMillicores(parentI915Dir string, cardIdx uint64, pciVFIndex uint64, vfMemMiB uint64, deviceID string) (uint64, error) {
+	parentCardDir := path.Join(parentI915Dir, "drm", fmt.Sprintf("card%d", cardIdx))
+	filename := path.Join(parentCardDir, "prelim_iov", "pf/auto_provisioning")
+	autoProvisioning, err := os.ReadFile(filename)
+	if err != nil {
+
+		return 0, fmt.Errorf("could not read %v file: %v", filename, err)
+	}
+
+	if strings.TrimSpace(string(autoProvisioning)) == "1" {
+		// auto provisioning in place, need to check how many VFs are enabled
+		filePath := filepath.Join(parentI915Dir, "virtfn*")
+		files, _ := filepath.Glob(filePath)
+		millicores := uint64(1000 / len(files))
+
+		return millicores, nil
+	}
+
+	// trust that VFs are configured according to profiles, find most suitable profile
+	_, millicores, _, err := PickVFProfile(deviceID, vfMemMiB, 0, true)
+	if err != nil {
+		return 0, fmt.Errorf("picking profile based on memory: %v", err)
+	}
+
+	return millicores, nil
 }
