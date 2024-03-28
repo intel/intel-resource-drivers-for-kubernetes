@@ -10,14 +10,21 @@ metadata:
   namespace: monitoring
 spec:
   groups:
-  # TODO: use suitable interval in "for" fields, and update summary/description accordingly
-  # TODO: alert only on error count changes, not about high but stable error counts?
+  # TODOs:
+  # - alert only on error count changes, not about high but stable error counts?
+  # - use suitable interval [1] in "for" fields, and update summary/description accordingly
+  #
+  # [1] the time taken to generate an alarm varies between:
+  # - minimum time = [time set in the 'FOR' clause]
+  # - maximum time = [scrape_interval + evaluation_interval + 'FOR' clause time]
+  # where (scrape and) rule evalution intervals are *1 min* by default:
+  #   https://prometheus.io/docs/prometheus/latest/configuration/configuration/
   - name: collectd-alerts
     rules:
     - alert: ThrottledGpuFrequency
       annotations:
-        description: "Frequency throttled >20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU"
-        summary: GPU throttled >20s
+        description: "Frequency throttled over 20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU"
+        summary: GPU throttled 20+s
       expr: |
         count(collectd_gpu_sysman_frequency_mhz{type="actual",throttled_by!=""}) by (node,pci_bdf,throttled_by) > 1
       for: 20s
@@ -25,8 +32,8 @@ spec:
         severity: warning
     - alert: HighGpuPowerUsage
       annotations:
-        description: ">90% ({{ $value }}%) power usage >20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU"
-        summary: ">90% GPU power usage >20s"
+        description: "over 90% ({{ $value }}%) power usage over 20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU"
+        summary: "90+% GPU power usage 20+s"
       # TODO, replace absolute watts test value with:
       # collectd_gpu_sysman_power_ratio > 0.9
       expr: |
@@ -36,8 +43,8 @@ spec:
         severity: warning
     - alert: HighGpuTemperature
       annotations:
-        description: ">85C ({{ $value }}C) temperature >20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU"
-        summary: ">85C GPU temperature >20s"
+        description: "Over 85C ({{ $value }}C) temperature over 20s on '{{ $labels.node }}' node '{{ $labels.pci_bdf }}' GPU"
+        summary: "85+C GPU temperature 20+s"
       expr: |
         collectd_gpu_sysman_temperature_celsius > 85
       for: 20s

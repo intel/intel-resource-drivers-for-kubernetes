@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2023-2024, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,7 +55,6 @@ type httpFlags struct {
 type filterFlags struct {
 	alerts *string
 	groups *string
-	values *string
 }
 
 type flagsType struct {
@@ -82,10 +81,6 @@ func newCommand() *cobra.Command {
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if *flags.cli.node == "" && *flags.http.address == "" {
 			return fmt.Errorf("neither (CLI) node name nor (webhook) listen address given")
-		}
-		if (*flags.filter.groups != "" || *flags.filter.values != "") &&
-			(*flags.filter.groups == "" || *flags.filter.values == "") {
-			return fmt.Errorf("both of groups and (their accepted) values should be given, not just one of them")
 		}
 		return nil
 	}
@@ -136,18 +131,21 @@ func addFlags(cmd *cobra.Command) *flagsType {
 	fs := sharedFlagSets.FlagSet("Kubernetes client")
 	flags.kube.config = fs.String("kubeconfig", "", "Absolute path to the kube.config file")
 
-	fs = sharedFlagSets.FlagSet("Manual GPU taint settings")
-	flags.cli.node = fs.String("node", "", "Cluster node from which GPUs taint should be removed")
-	flags.cli.reason = fs.String("reason", "", "Taint given node GPUs with given reason, instead of removing taints")
+	fs = sharedFlagSets.FlagSet("Manual GPU taint updates")
+	flags.cli.node = fs.String("node", "", "Cluster node where taints should be added or removed from its GPUs")
+	flags.cli.reason = fs.String("reason", "", "Taint given node GPUs with given reason, or remove reason from them when it's prefixed with '!'")
 
 	fs = sharedFlagSets.FlagSet("Alertmanager webhook")
 	flags.http.address = fs.String("address", "", "Address to listen for Alertmanager calls")
 	flags.http.only = fs.Bool("only-http", false, "Test just HTTP server functionality without k8s / node CRD updates")
 
+	// Which alerts cause tainting can be changed either from Alertmanager config, or
+	// by using these filter rules.  Without them, all alerts webhook receives, will
+	// cause tainting (taint reason = alert name) if notification includes labels
+	// matching one of the GPUs on the specified node.
 	fs = sharedFlagSets.FlagSet("Alert filtering rules")
-	flags.filter.alerts = fs.String("alerts", "", "Comma separate list of alerts (names) setting GPU tainted")
-	flags.filter.groups = fs.String("groups", "", "Comma separate list of group labels to check against values list")
-	flags.filter.values = fs.String("values", "", "Comma separate list of accepted values for specified group labels")
+	flags.filter.alerts = fs.String("alerts", "", "Comma separated list of alerts (names) that taint the associated GPU")
+	flags.filter.groups = fs.String("groups", "", "List of accepted values for group labels in 'group1=value1,value2:group2=...' format")
 
 	fs = cmd.PersistentFlags()
 	for _, f := range sharedFlagSets.FlagSets {

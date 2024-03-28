@@ -66,9 +66,10 @@ type clientsetType struct {
 }
 
 type configType struct {
-	crdconfig *intelcrd.GpuAllocationStateConfig
-	clientset *clientsetType
-	cdiRoot   string
+	crdconfig        *intelcrd.GpuAllocationStateConfig
+	clientset        *clientsetType
+	cdiRoot          string
+	driverPluginPath string
 }
 
 func main() {
@@ -146,7 +147,8 @@ func newCommand() *cobra.Command {
 				coreclient,
 				intelclient,
 			},
-			cdiRoot: cdiRoot,
+			cdiRoot:          cdiRoot,
+			driverPluginPath: driverPluginPath,
 		}
 
 		return callPlugin(cmd.Context(), config)
@@ -210,7 +212,7 @@ func getClientSetConfig(flags *flagsType) (*rest.Config, error) {
 }
 
 func callPlugin(ctx context.Context, config *configType) error {
-	err := os.MkdirAll(driverPluginPath, 0750)
+	err := os.MkdirAll(config.driverPluginPath, 0750)
 	if err != nil {
 		return fmt.Errorf("failed to create plugin socket dir: %v", err)
 	}

@@ -3,15 +3,24 @@
 - Kubernetes 1.28+
 - Runtime with CDI support: Containerd 1.7+ or CRI-O 1.23+
 
+## Enable CDI in Containerd
+
+Containerd config file should have `enable_cdi` and `cdi_specs_dir`. Example `/etc/containerd/config.toml`:
+```
+version = 2
+[plugins]
+  [plugins."io.containerd.grpc.v1.cri"]
+    enable_cdi = true
+    cdi_specs_dir = ["/etc/cdi", "/var/run/cdi"]
+```
+
+
 ## Limitations
 
 - Currently max 640 GPUs can be requested for one resource claim (10 PCIe devices,
   each with 64 SR-IOV VFs = 640 VFs on the same node).
 
 ## Deploy resource-driver
-
-When deploying custom resource driver image, change `image:` lines in
-[resource-driver](../deployments/gpu/resource-driver.yaml) to match its location.
 
 Deploy Custom Resource Definitions, resource-class and finally resource-driver
 ```bash
@@ -21,6 +30,11 @@ kubectl apply -f deployments/gpu/resource-driver-namespace.yaml
 kubectl apply -f deployments/gpu/resource-defaults.yaml
 kubectl apply -f deployments/gpu/resource-driver.yaml
 ```
+
+By default the kubelet-plugin will be deployed on _all_  nodes in the cluster, there is no nodeSelector.
+
+When deploying custom resource driver image, change `image:` lines in
+[resource-driver](../deployments/gpu/resource-driver.yaml) to match its location.
 
 ## Migrating to latest version
 
@@ -486,3 +500,25 @@ but can be allocated to several ResourceClaims at once, when ResourceClaimParame
 is matching the remaining GPU resource. If `false`, indicates that GPUs are allocated to the
 ResourceClaim exclusively, and cannot be allocated to any other ResourceClaim. If GPU is already
 allocated to some ResourceClaim, it is not anymore eligible for exclusive allocation.
+
+### Helm Charts
+
+[Intel GPU Resource Driver Helm Chart](https://github.com/intel/helm-charts/tree/main/charts/intel-gpu-resource-driver) is located in Intel Helm Charts repository.
+
+To add repo:
+```
+helm repo add intel https://intel.github.io/helm-charts
+```
+To install Helm Chart:
+```
+helm install intel-gpu-resource-driver intel/intel-gpu-resource-driver \
+--create-namespace --namespace intel-gpu-resource-driver
+```
+CRDs of the GPU driver are installed as part of the chart first.
+
+If you change the image tag to be used in Helm chart deployment, ensure that the version of the container image is consistent with CRDs and deployment YAMLs - they might change between releases.
+
+Note that Helm does not support _upgrading_ (or deleting) CRDs, only installing them.  Rationale: https://github.com/helm/community/blob/main/hips/hip-0011.md
+
+
+I.e. making sure that CRDs are upgraded correctly is user responsibility when using Helm.

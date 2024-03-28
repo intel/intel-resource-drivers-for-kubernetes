@@ -26,7 +26,7 @@ export GOPATH GOBIN GO111MODULE
 GIT_COMMIT = $(shell git rev-parse HEAD)
 BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_BRANCH ?= $(shell git branch --show-current)
-VERSION ?= v0.3.0
+VERSION ?= v0.4.0
 
 EXT_LDFLAGS = -static
 LDFLAGS = \
@@ -44,9 +44,9 @@ MODULE = github.com/intel/intel-resource-drivers-for-kubernetes
 
 # Use a custom version for E2E tests if we are testing in CI
 REGISTRY ?= registry.local
-GPU_IMAGENAME ?= intel-gpu-resource-driver
+GPU_IMAGE_NAME ?= intel-gpu-resource-driver
 GPU_IMAGE_VERSION ?= $(VERSION)
-GPU_IMAGE_TAG ?= $(REGISTRY)/$(GPU_IMAGENAME):$(GPU_IMAGE_VERSION)
+GPU_IMAGE_TAG ?= $(REGISTRY)/$(GPU_IMAGE_NAME):$(GPU_IMAGE_VERSION)
 
 ifndef DOCKER
 	PODMAN_VERSION := $(shell command podman version 2>/dev/null)
@@ -214,4 +214,4 @@ test:
 	go test -v -coverprofile=$(COVERAGE_FILE) $(MODULE)/...
 
 coverage: test
-	go tool cover -func=$(COVERAGE_FILE)
+	go tool cover -html=$(COVERAGE_FILE) -o coverage.html

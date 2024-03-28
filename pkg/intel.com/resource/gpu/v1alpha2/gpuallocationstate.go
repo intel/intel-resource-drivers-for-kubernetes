@@ -56,8 +56,9 @@ type AllocatableGpu struct {
 
 // TaintedGpu represents a tainted Gpu on a node.
 type TaintedGpu struct {
-	// Why device is tainted.
-	Reason string `json:"reason,omitempty"`
+	// Reasons why device is tainted, which _all_ need to be
+	// resolved, before device can be dropped from taints map.
+	Reasons map[string]bool `json:"reasons,omitempty"`
 }
 
 // AllocatedGpu represents an allocated Gpu on a node.
@@ -111,7 +112,6 @@ type TaintedDevices map[string]TaintedGpu
 type GpuAllocationStateSpec struct {
 	AllocatableDevices map[string]AllocatableGpu `json:"allocatableDevices,omitempty"`
 	TaintedDevices     map[string]TaintedGpu     `json:"taintedDevices,omitempty"`
-	PreparedClaims     map[string]PreparedClaim  `json:"preparedClaims,omitempty"`
 	AllocatedClaims    map[string]AllocatedClaim `json:"allocatedClaims,omitempty"`
 }
 

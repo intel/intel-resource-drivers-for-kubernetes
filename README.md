@@ -53,6 +53,7 @@ Supported Kubernetes versions are listed below:
 | v0.1.1-beta       | Kubernetes 1.27 branch v1.27.x  | unsupported |
 | v0.2.0            | Kubernetes 1.28 branch v1.28.x  | unsupported |
 | v0.3.0            | Kubernetes 1.28+                | supported   |
+| v0.4.0            | Kubernetes 1.28+                | supported   |
 
 [Kubernetes cluster]: https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/
 

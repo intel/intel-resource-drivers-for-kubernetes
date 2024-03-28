@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2024, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,13 +68,13 @@ func discoverDevices(sysfsI915Dir string, sysfsDrmDir string) map[string]*Device
 		uid := fmt.Sprintf("%v-%v", deviceDBDF, deviceId)
 		klog.V(5).Infof("New gpu UID: %v", uid)
 		newDeviceInfo := &DeviceInfo{
-			uid:        uid,
-			model:      deviceId,
-			memoryMiB:  0,
-			millicores: initialMillicores,
-			deviceType: intelcrd.GpuDeviceType, // presume GPU, detect the physfn / parent lower
-			cardidx:    0,
-			renderdidx: 0,
+			UID:        uid,
+			Model:      deviceId,
+			MemoryMiB:  0,
+			Millicores: initialMillicores,
+			DeviceType: intelcrd.GpuDeviceType, // presume GPU, detect the physfn / parent lower
+			CardIdx:    0,
+			RenderdIdx: 0,
 		}
 
 		cardIdx, renderdIdx, err := deduceCardAndRenderdIndexes(deviceI915Dir)
@@ -82,18 +82,18 @@ func discoverDevices(sysfsI915Dir string, sysfsDrmDir string) map[string]*Device
 			continue
 		}
 
-		newDeviceInfo.cardidx = cardIdx
-		newDeviceInfo.renderdidx = renderdIdx
+		newDeviceInfo.CardIdx = cardIdx
+		newDeviceInfo.RenderdIdx = renderdIdx
 
 		drmGpuDir := filepath.Join(sysfsDrmDir, fmt.Sprintf("card%d", cardIdx))
-		newDeviceInfo.memoryMiB = getLocalMemoryAmountMiB(drmGpuDir)
+		newDeviceInfo.MemoryMiB = getLocalMemoryAmountMiB(drmGpuDir)
 
 		detectSRIOV(newDeviceInfo, sysfsI915Dir, deviceDBDF, deviceId)
 		// only GPU needs ECC information to provision VFs
-		if newDeviceInfo.deviceType == intelcrd.GpuDeviceType {
-			newDeviceInfo.eccOn = detectEcc(deviceId, newDeviceInfo.memoryMiB)
+		if newDeviceInfo.DeviceType == intelcrd.GpuDeviceType {
+			newDeviceInfo.EccOn = detectEcc(deviceId, newDeviceInfo.MemoryMiB)
 		}
-		devices[newDeviceInfo.uid] = newDeviceInfo
+		devices[newDeviceInfo.UID] = newDeviceInfo
 
 	}
 	return devices
@@ -162,19 +162,19 @@ func detectSRIOV(newDeviceInfo *DeviceInfo, sysfsI915Dir string, deviceDBDF stri
 			return
 		}
 
-		millicores, err := sriovProfiles.DeduceVFMillicores(parentI915Dir, parentCardIdx, newDeviceInfo.vfindex, newDeviceInfo.memoryMiB, deviceID)
+		millicores, err := sriovProfiles.DeduceVFMillicores(parentI915Dir, parentCardIdx, newDeviceInfo.VFIndex, newDeviceInfo.MemoryMiB, deviceID)
 		if err != nil {
 			klog.Errorf("Ignoring device %v. Error: %v", deviceDBDF, err)
 			return
 		}
 
-		klog.V(5).Infof("VF%d of device %d has %d millicores", newDeviceInfo.vfindex, parentI915Dir, millicores)
+		klog.V(5).Infof("VF%d of device %d has %d millicores", newDeviceInfo.VFIndex, parentI915Dir, millicores)
 
-		newDeviceInfo.vfindex = vfIdx
-		newDeviceInfo.millicores = millicores
-		newDeviceInfo.parentuid = parentUID
-		newDeviceInfo.deviceType = intelcrd.VfDeviceType
-		klog.V(5).Infof("physfn OK, device %v is a VF from %v", newDeviceInfo.uid, newDeviceInfo.parentuid)
+		newDeviceInfo.VFIndex = vfIdx
+		newDeviceInfo.Millicores = millicores
+		newDeviceInfo.ParentUID = parentUID
+		newDeviceInfo.DeviceType = intelcrd.VfDeviceType
+		klog.V(5).Infof("physfn OK, device %v is a VF from %v", newDeviceInfo.UID, newDeviceInfo.ParentUID)
 
 		return
 	}
@@ -203,7 +203,7 @@ func detectSRIOV(newDeviceInfo *DeviceInfo, sysfsI915Dir string, deviceDBDF stri
 		return
 	}
 	klog.V(5).Info("Driver autoprobe is enabled, enabling SR-IOV")
-	newDeviceInfo.maxvfs = totalvfsInt
+	newDeviceInfo.MaxVFs = totalvfsInt
 }
 
 func deduceVfIdx(sysfsI915Dir string, parentDBDF string, vfDBDF string) (uint64, error) {
@@ -264,27 +264,26 @@ func getLocalMemoryAmountMiB(drmGpuDir string) uint64 {
 		return 0
 	}
 
-	totalPerTile, err := strconv.ParseUint(strings.TrimSpace(string(dat)), 10, 64)
+	totalLmemBytes, err := strconv.ParseUint(strings.TrimSpace(string(dat)), 10, 64)
 	if err != nil {
 		klog.Errorf("could not convert lmem_total_bytes: %v", err)
 		return 0
 	}
 
-	totalPerTileMiB := totalPerTile / (1024 * 1024)
-	klog.V(5).Infof("detected %d MiB local memory (per tile, tiles: %v)", totalPerTileMiB, numTiles)
+	totalMiB := totalLmemBytes / (1024 * 1024)
+	klog.V(5).Infof("detected %d MiB local memory, %v tiles", totalMiB, numTiles)
 
-	return totalPerTileMiB * numTiles
+	return totalMiB
 }
 
 // deduceCardAndRenderdIndexes arg is device "<sysfs>/bus/pci/drivers/i915/<DBDF>/drm/" path.
 func deduceCardAndRenderdIndexes(deviceI915Dir string) (uint64, uint64, error) {
-	// get card and renderD indexes
-	drmDir := filepath.Join(deviceI915Dir, "drm")
-	drmFiles, err := os.ReadDir(drmDir)
-
 	var cardIdx uint64
 	var renderDidx uint64
 
+	// get card and renderD indexes
+	drmDir := filepath.Join(deviceI915Dir, "drm")
+	drmFiles, err := os.ReadDir(drmDir)
 	if err != nil { // ignore this device
 		return 0, 0, fmt.Errorf("cannot read device folder %v: %v", drmDir, err)
 	}

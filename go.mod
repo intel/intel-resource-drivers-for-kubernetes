@@ -1,6 +1,6 @@
 module github.com/intel/intel-resource-drivers-for-kubernetes
 
-go 1.20
+go 1.21
 
 require (
 	github.com/container-orchestrated-devices/container-device-interface v0.5.4

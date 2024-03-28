@@ -3,11 +3,12 @@
     {
       "status": "resolved",
       "labels": {
-        "alertname": "GpuNeedsReset",
+        "alertname": "GpuAlert_2_1",
         "node": "test-node",
         "pci_dev": "0x56a0",
-        "pci_bdf": "03:00.0"
-      }
+        "pci_bdf": "02:00.0"
+      },
+      "startsAt": "2024-01-01T00:03:00Z"
     }
   ],
   "groupLabels": {

@@ -23,7 +23,7 @@ spec:
       terminationGracePeriodSeconds: 5
       containers:
       - name: alert-webhook
-        image: intel/intel-gpu-resource-driver:v0.3.0
+        image: intel/intel-gpu-resource-driver:v0.4.0
         imagePullPolicy: Always
         securityContext:
           privileged: false
@@ -41,17 +41,16 @@ spec:
               fieldPath: metadata.namespace
         # Options:
         # * "--address": on which address to listen for Alertmanager notifications
-        # * "groups" / "values": only alerts with specified (comma separated)
-        #   group labels and their values are accepted
+        # * "--groups": only alerts with specified (double-colon separated) group
+        #               labels and their (comma separated) values are accepted
         # * "--alerts": used to restrict CR GPU tainting to be done only
-        #   for specified (comma separated) alerts
+        #               for specified (comma separated) alerts
         # * "--http-only": used to temporarily disable CR updates
-        #   (while still accepting Alertmanager notifications)
+        #                  (while still consuming Alertmanager notifications)
         command: [
           "/alert-webhook",
           "--address", ":7777",
-          "--groups", "namespace,service",
-          "--values", "monitoring,collectd-gpu-plugin",
+          "--groups", "namespace=monitoring:service=intel-xpumanager,collectd-gpu-plugin",
           "-v", "3",
         ]
         # HTTP server port
