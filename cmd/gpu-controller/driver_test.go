@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2023-2024, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"reflect"
 	"testing"
@@ -369,24 +370,19 @@ func createAllocatable(gpus map[string]*intelcrd.AllocatableGpu) map[string]inte
 
 func createTaints(uids []string) map[string]intelcrd.TaintedGpu {
 	taints := make(map[string]intelcrd.TaintedGpu, len(uids))
+	reasons := make(map[string]bool)
+	reasons["taintReason"] = true
 	for _, uid := range uids {
-		taints[uid] = intelcrd.TaintedGpu{Reason: "taintReason"}
+		taints[uid] = intelcrd.TaintedGpu{Reasons: reasons}
 	}
 	return taints
 }
 
 func mergeMaps(map1, map2 map[string]gpuv1alpha2.AllocatableGpu) map[string]gpuv1alpha2.AllocatableGpu {
 	result := map[string]gpuv1alpha2.AllocatableGpu{}
-
-	for k, v := range map1 {
-		result[k] = v
-	}
-
-	for k, v := range map2 {
-		result[k] = v
-
-	}
-
+	// shallow (top level) copy/override.
+	maps.Copy(result, map1)
+	maps.Copy(result, map2)
 	return result
 
 }

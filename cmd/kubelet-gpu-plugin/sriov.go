@@ -54,8 +54,7 @@ func (d *driver) waitUntilNoVFs(pciDBDF string) error {
 		}
 	}
 
-	klog.Errorf("timeout waiting for VFs to be disabled on device %v", pciDBDF)
-	return fmt.Errorf("timeout waiting for VFs to be disabled on device %v", pciDBDF)
+	return fmt.Errorf("timeout waiting for VFs to be disabled on device")
 }
 
 // removeAllVFsFromParents loops through devices with respective UIDs and
@@ -65,7 +64,10 @@ func (d *driver) removeAllVFsFromParents(parentDevices []string) error {
 	for _, parentUID := range parentDevices {
 		err := d.removeAllVFs(d.state.allocatable[parentUID])
 		if err != nil {
-			allErrorsStr = fmt.Sprintf("%v; %v", allErrorsStr, err)
+			if allErrorsStr != "" {
+				allErrorsStr = fmt.Sprintf("%v; ", allErrorsStr)
+			}
+			allErrorsStr = fmt.Sprintf("%v%v: %v", allErrorsStr, parentUID, err)
 		}
 	}
 	if allErrorsStr != "" {
@@ -79,11 +81,11 @@ func (d *driver) removeAllVFsFromParents(parentDevices []string) error {
 // When called, no containers is supposed to be using VFs
 // and VFs can be removed.
 func (d *driver) removeAllVFs(parentDevice *DeviceInfo) error {
-	pciDBDF := parentDevice.uid[:pciDBDFLength]
+	pciDBDF := parentDevice.UID[:pciDBDFLength]
 	klog.V(5).Infof("removing all VFs for %v", pciDBDF)
 	sriovNumvfsFile := path.Join(d.sysfsI915Dir, pciDBDF, "sriov_numvfs")
 
-	numvfsInt := parentDevice.maxvfs
+	numvfsInt := parentDevice.MaxVFs
 	numvfsBytes, err := os.ReadFile(sriovNumvfsFile)
 
 	if err != nil { // Not critical, we will just have to unconfigure all VFs present.
@@ -99,13 +101,11 @@ func (d *driver) removeAllVFs(parentDevice *DeviceInfo) error {
 	fhandle, err := os.OpenFile(sriovNumvfsFile, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
 
 	if err != nil {
-		klog.Errorf("failed to open %v file", sriovNumvfsFile)
 		return fmt.Errorf("failed to open %v file", sriovNumvfsFile)
 	}
 
 	_, err = fhandle.WriteString("0")
 	if err != nil {
-		klog.Errorf("could not write to file %v", sriovNumvfsFile)
 		return fmt.Errorf("could not write to file %v", sriovNumvfsFile)
 	}
 
@@ -115,19 +115,18 @@ func (d *driver) removeAllVFs(parentDevice *DeviceInfo) error {
 	}
 
 	if err = d.waitUntilNoVFs(pciDBDF); err != nil {
-		klog.Error("timed out waiting for VFs to be removed")
-		return fmt.Errorf("failed removing VFs")
+		return fmt.Errorf("failed removing VFs: %v", err)
 	}
 
 	klog.V(5).Infof("cleaning up profiles for %v VFs", numvfsInt)
 
-	sysfsVFsDir := fmt.Sprintf("%v/card%d/prelim_iov", d.sysfsDRMDir, parentDevice.cardidx)
-	if err2 := sriov.CleanupManualConfigurationMaybe(sysfsVFsDir, numvfsInt, parentDevice.model); err2 != nil {
-		klog.Errorf("failed to cleanup manually provisioned VFs: %v", err2)
+	sysfsVFsDir := fmt.Sprintf("%v/card%d/prelim_iov", d.sysfsDRMDir, parentDevice.CardIdx)
+	if err2 := sriov.CleanupManualConfigurationMaybe(sysfsVFsDir, numvfsInt); err2 != nil {
+
 		return fmt.Errorf("failed cleaning up VFs configuration: %v", err2)
 	}
 
-	klog.V(5).Infof("Successfully cleaned up all VFs for %v", parentDevice.uid)
+	klog.V(5).Infof("Successfully cleaned up all VFs for %v", parentDevice.UID)
 	return nil
 }
 
@@ -165,31 +164,31 @@ func (d *driver) validateVFs(pciDBDF string, vfs []*DeviceInfo) error {
 	attempt := 0
 	// Loop through sysfsI915Dir/pciDBDF/virtfn* symlinks, check drm/[cardX, renderDY].
 	for _, vf := range vfs {
-		klog.V(5).Infof("Validating vf %v on device %v", vf.vfindex, vf.parentuid)
-		virtfnLinkPath := path.Join(d.sysfsI915Dir, pciDBDF, fmt.Sprintf("virtfn%d", vf.vfindex))
+		klog.V(5).Infof("Validating vf %v on device %v", vf.VFIndex, vf.ParentUID)
+		virtfnLinkPath := path.Join(d.sysfsI915Dir, pciDBDF, fmt.Sprintf("virtfn%d", vf.VFIndex))
 		drmDir := path.Join(virtfnLinkPath, "drm")
 		vfOK := false
 		for ; attempt < attemptsLimit; attempt++ {
 			if err := validateVF(drmDir); err == nil {
-				klog.V(5).Infof("vf %v on GPU %v is OK", vf.vfindex, pciDBDF)
+				klog.V(5).Infof("vf %v on GPU %v is OK", vf.VFIndex, pciDBDF)
 
 				newPciDBDF, err := newVFpciDBDF(virtfnLinkPath)
 				if err != nil {
 					return fmt.Errorf("cannot get new VF PCI address: %v", err)
 				}
 
-				vf.uid = fmt.Sprintf("%v-%v", newPciDBDF, vf.model)
-				klog.V(5).Infof("New UID for vf %v on GPU %v is %v", vf.vfindex, vf.parentuid, vf.uid)
+				vf.UID = fmt.Sprintf("%v-%v", newPciDBDF, vf.Model)
+				klog.V(5).Infof("New UID for vf %v on GPU %v is %v", vf.VFIndex, vf.ParentUID, vf.UID)
 				vfOK = true
 				break
 			} else {
-				klog.V(5).Infof("vf %v of GPU %v is NOT OK on attempt %v. ERR: %v", vf.vfindex, pciDBDF, attempt, err)
+				klog.V(5).Infof("vf %v of GPU %v is NOT OK on attempt %v. ERR: %v", vf.VFIndex, pciDBDF, attempt, err)
 			}
 			time.Sleep(attemptDelay)
 		}
 		if !vfOK {
-			klog.Errorf("vf %d of GPU %s is NOT OK, did not check the rest of new VFs", vf.vfindex, pciDBDF)
-			return fmt.Errorf("vf %d of GPU %s is NOT OK, did not check the rest of new VFs", vf.vfindex, pciDBDF)
+			klog.Errorf("vf %d of GPU %s is NOT OK, did not check the rest of new VFs", vf.VFIndex, pciDBDF)
+			return fmt.Errorf("vf %d of GPU %s is NOT OK, did not check the rest of new VFs", vf.VFIndex, pciDBDF)
 		}
 	}
 	return nil
@@ -223,13 +222,13 @@ func (d *driver) validateVFsToBeProvisioned(toProvision map[string][]*DeviceInfo
 
 		vfIndexes := map[uint64]bool{}
 		for _, vf := range vfsList {
-			if vf.vfprofile == sriov.FairShareProfile {
+			if vf.VFProfile == sriov.FairShareProfile {
 				fairShared++
 			}
-			if _, found := vfIndexes[vf.vfindex]; found {
+			if _, found := vfIndexes[vf.VFIndex]; found {
 				return fmt.Errorf("one or more allocated VFs have same VF index")
 			}
-			vfIndexes[vf.vfindex] = true
+			vfIndexes[vf.VFIndex] = true
 		}
 
 		if fairShared != len(vfsList) && fairShared != 0 {
@@ -260,16 +259,18 @@ func (d *driver) provisionVFs(toProvision map[string][]*DeviceInfo) (DevicesInfo
 		klog.V(5).Infof("provisioning %v VFs for GPU %v ", numvfs, parentUID)
 
 		if needToPreconfigureVFs(vfs) {
-			sysfsVFsDir := fmt.Sprintf("%v/card%d/prelim_iov", d.sysfsDRMDir, d.state.allocatable[parentUID].cardidx)
-			err := preConfigureVFs(sysfsVFsDir, vfs, d.state.allocatable[parentUID].eccOn)
+			sysfsVFsDir := fmt.Sprintf("%v/card%d/prelim_iov", d.sysfsDRMDir, d.state.allocatable[parentUID].CardIdx)
+			err := preConfigureVFs(sysfsVFsDir, vfs, d.state.allocatable[parentUID].EccOn)
 			if err != nil {
 				klog.Error("failed preconfiguring VFs, attempting to unconfigure them")
-				// try to unconfigure VFs
-				if !sriov.UnConfigureAllVFs(sysfsVFsDir, d.state.allocatable[parentUID].model) {
-					klog.Errorf("failed to unconfigure VFs for GPU %v", parentUID)
+
+				// try to unconfigure all needed VFs, in case there was unexpected configuration in them
+				cleanupErr := sriov.CleanupManualConfigurationMaybe(sysfsVFsDir, uint64(numvfs))
+				if cleanupErr != nil {
+					return nil, fmt.Errorf("failed to unconfigure VFs for GPU %v. Err: %v", parentUID, cleanupErr)
 				}
 
-				return nil, fmt.Errorf("failed preconfiguring VFs")
+				return nil, fmt.Errorf("failed preconfiguring VFs: %v", err)
 			}
 		}
 
@@ -309,8 +310,8 @@ func (d *driver) provisionVFs(toProvision map[string][]*DeviceInfo) (DevicesInfo
 	// Amount of provisioned VFs on device might be more than requested, announce all VFs, not only
 	// requested.
 	for duid, device := range allDevices {
-		if device.deviceType == intelcrd.VfDeviceType {
-			if _, wasRequested := toProvision[device.parentuid]; wasRequested {
+		if device.DeviceType == intelcrd.VfDeviceType {
+			if _, wasRequested := toProvision[device.ParentUID]; wasRequested {
 				provisionedVFs[duid] = device
 			}
 		}
@@ -321,7 +322,7 @@ func (d *driver) provisionVFs(toProvision map[string][]*DeviceInfo) (DevicesInfo
 
 func needToPreconfigureVFs(vfs []*DeviceInfo) bool {
 	for _, vf := range vfs {
-		if vf.vfprofile != sriov.FairShareProfile {
+		if vf.VFProfile != sriov.FairShareProfile {
 			return true
 		}
 	}
@@ -345,7 +346,7 @@ func (d *driver) pickupMoreClaims(currentClaimUID string, toProvision map[string
 						device.UID,
 						claimUID)
 					newDevice := d.state.DeviceInfoFromAllocated(device)
-					newDevice.vfindex = uint64(len(toProvision[device.ParentUID]))
+					newDevice.VFIndex = uint64(len(toProvision[device.ParentUID]))
 					toProvision[device.ParentUID] = append(toProvision[device.ParentUID], newDevice)
 					if perClaimDevices[claimUID] == nil {
 						perClaimDevices[claimUID] = []*DeviceInfo{}
@@ -366,7 +367,7 @@ func (d *driver) reuseLeftoverSRIOVResources(toProvision map[string][]*DeviceInf
 	klog.V(5).Info("ReuseLeftoverSRIOVResources is called")
 	for gpuUID, gpuVFs := range toProvision {
 		klog.V(5).Infof("trying to reuse leftovers of GPU %v", gpuUID)
-		memoryLeftMiB := d.state.allocatable[gpuUID].memoryMiB
+		memoryLeftMiB := d.state.allocatable[gpuUID].MemoryMiB
 
 		// If all profiles are fair-share, controller has decided
 		// to split all resources to specified VFs
@@ -374,15 +375,15 @@ func (d *driver) reuseLeftoverSRIOVResources(toProvision map[string][]*DeviceInf
 		// If all VFs have same profile - the amount of VFs can be
 		// safely increased up to profile.numvfs.
 		sameProfiles := true
-		firstProfile := gpuVFs[0].vfprofile
+		firstProfile := gpuVFs[0].VFProfile
 
 		for _, vf := range gpuVFs {
-			memoryLeftMiB -= vf.memoryMiB
-			if vf.vfprofile != sriov.FairShareProfile {
+			memoryLeftMiB -= vf.MemoryMiB
+			if vf.VFProfile != sriov.FairShareProfile {
 				fairShareProfilesOnly = false
 			}
 
-			if vf.vfprofile != firstProfile {
+			if vf.VFProfile != firstProfile {
 				sameProfiles = false
 			}
 		}
@@ -399,11 +400,12 @@ func (d *driver) reuseLeftoverSRIOVResources(toProvision map[string][]*DeviceInf
 		// In case the GPU has lower limit of sriov_totalvfs configured, not all VFs of same profile
 		// will be provisioned which will result in resources idling. For this case to maximize
 		// resources utilization the VFs have to be of different profile.
-		if sameProfiles && d.state.allocatable[gpuUID].maxvfs >= sriov.Profiles[firstProfile]["numvfs"] {
+		if sameProfiles && d.state.allocatable[gpuUID].MaxVFs >= sriov.Profiles[firstProfile]["numvfs"] {
 			klog.V(5).Info("all the requested VFs have the same profile, adding more same-profile VFs to reuse remaining resources")
 			for uint64(len(gpuVFs)) < sriov.Profiles[firstProfile]["numvfs"] {
 				newVFIndex := smallestFreeVFIndex(gpuVFs)
-				gpuVFs = append(gpuVFs, newVFWithProfile(newVFIndex, gpuUID, firstProfile))
+				newVF := newVFWithProfile(newVFIndex, gpuUID, firstProfile, d.state.allocatable[gpuUID].Model)
+				gpuVFs = append(gpuVFs, newVF)
 			}
 			toProvision[gpuUID] = gpuVFs
 			continue
@@ -420,17 +422,17 @@ func (d *driver) reuseLeftoverSRIOVResources(toProvision map[string][]*DeviceInf
 // provisioning.
 func newCustomVFs(vfs []*DeviceInfo, parentDeviceInfo *DeviceInfo, memoryLeftMiB uint64) []*DeviceInfo {
 	newVFs := []*DeviceInfo{}
-	doorbellsLeft := sriov.GetMaximumVFDoorbells(parentDeviceInfo.model)
-	klog.V(5).Infof("device %v total doorbells: %v", parentDeviceInfo.model, doorbellsLeft)
+	doorbellsLeft := sriov.GetMaximumVFDoorbells(parentDeviceInfo.Model)
+	klog.V(5).Infof("device %v total doorbells: %v", parentDeviceInfo.Model, doorbellsLeft)
 	for _, vf := range vfs {
-		doorbellsLeft -= sriov.GetProfileDoorbells(vf.vfprofile)
+		doorbellsLeft -= sriov.GetProfileDoorbells(vf.VFProfile)
 	}
-	klog.V(5).Infof("device %v doorbells left: %v", parentDeviceInfo.model, doorbellsLeft)
+	klog.V(5).Infof("device %v doorbells left: %v", parentDeviceInfo.Model, doorbellsLeft)
 
 	// The set of VFs is heterogeneous, need to find out the best split of leftover resources.
 
-	deviceId := parentDeviceInfo.model
-	minVFMemoryMiB, _ := sriov.GetMimimumVFMemorySizeMiB(deviceId, parentDeviceInfo.eccOn)
+	deviceId := parentDeviceInfo.Model
+	minVFMemoryMiB, _ := sriov.GetMimimumVFMemorySizeMiB(deviceId, parentDeviceInfo.EccOn)
 	minVFDoorbells := sriov.GetMimimumVFDoorbells(deviceId)
 
 	modelProfileNames := sriov.PerDeviceIdProfiles[deviceId]
@@ -443,7 +445,7 @@ func newCustomVFs(vfs []*DeviceInfo, parentDeviceInfo *DeviceInfo, memoryLeftMiB
 
 	// Get current GPU's default VF memory amount and profile for this cluster from config map
 	// or fallback to driver defaults.
-	vfMemMiB, _, vfProfileName, err := getGpuVFDefaults(deviceId, parentDeviceInfo.eccOn)
+	vfMemMiB, _, vfProfileName, err := getGpuVFDefaults(deviceId, parentDeviceInfo.EccOn)
 	if err != nil {
 		klog.Errorf("could not get default VF memory size: %v", err)
 		return newVFs
@@ -455,10 +457,10 @@ func newCustomVFs(vfs []*DeviceInfo, parentDeviceInfo *DeviceInfo, memoryLeftMiB
 	allVFs := vfs
 	// Generate new VFs until even the smallest VF won't fit any longer.
 	for memoryLeftMiB > minVFMemoryMiB && doorbellsLeft > minVFDoorbells {
-		klog.V(5).Infof("gpu %v has %v memory left, %v doorbells", parentDeviceInfo.uid, memoryLeftMiB, doorbellsLeft)
+		klog.V(5).Infof("gpu %v has %v memory left, %v doorbells", parentDeviceInfo.UID, memoryLeftMiB, doorbellsLeft)
 		for memoryLeftMiB > vfMemMiB && doorbellsLeft > vfDoorbells {
 			newVFIndex := smallestFreeVFIndex(allVFs)
-			newVF := newVFWithProfile(newVFIndex, parentDeviceInfo.uid, vfProfileName)
+			newVF := newVFWithProfile(newVFIndex, parentDeviceInfo.UID, vfProfileName, parentDeviceInfo.Model)
 			newVFs = append(newVFs, newVF)
 			allVFs = append(allVFs, newVF) // just to track VF indexes
 			memoryLeftMiB -= vfMemMiB
@@ -473,7 +475,7 @@ func newCustomVFs(vfs []*DeviceInfo, parentDeviceInfo *DeviceInfo, memoryLeftMiB
 				for _, nextProfileName := range modelProfileNames[profileIdx:] {
 					// err does not need to be checked because the loop is through unit-tested
 					// list of profiles that are guaranteed to exist.
-					profileMemoryMiB, _ := sriov.ProfileMemoryMiB(nextProfileName, parentDeviceInfo.eccOn)
+					profileMemoryMiB, _ := sriov.ProfileMemoryMiB(nextProfileName, parentDeviceInfo.EccOn)
 					profileDoorbells := sriov.GetProfileDoorbells(nextProfileName)
 					klog.V(5).Infof("checking profile %v", nextProfileName)
 					if memoryLeftMiB > profileMemoryMiB && doorbellsLeft > profileDoorbells {
@@ -498,7 +500,7 @@ func smallestFreeVFIndex(newVFs []*DeviceInfo) int {
 	for newIdx := 0; ; newIdx++ {
 		found := false
 		for _, vf := range newVFs {
-			if vf.vfindex == uint64(newIdx) {
+			if vf.VFIndex == uint64(newIdx) {
 				found = true
 				break
 			}
@@ -509,14 +511,15 @@ func smallestFreeVFIndex(newVFs []*DeviceInfo) int {
 	}
 }
 
-func newVFWithProfile(vfIndex int, gpuUID string, vfProfileName string) *DeviceInfo {
+func newVFWithProfile(vfIndex int, gpuUID string, vfProfileName string, model string) *DeviceInfo {
 	klog.V(5).Infof("Adding new VF #%v with profile %v on device %v", vfIndex, vfProfileName, gpuUID)
 
 	newVF := &DeviceInfo{
-		deviceType: intelcrd.VfDeviceType,
-		vfprofile:  vfProfileName,
-		parentuid:  gpuUID,
-		vfindex:    uint64(vfIndex),
+		DeviceType: intelcrd.VfDeviceType,
+		VFProfile:  vfProfileName,
+		ParentUID:  gpuUID,
+		VFIndex:    uint64(vfIndex),
+		Model:      model,
 	}
 
 	return newVF
@@ -604,9 +607,10 @@ func getDefaultVFMemoryFromConfigMap(vfMemConfigFile string, deviceId string, ec
 // pf/auto_provisioning will be automatically set to 0 in this case.
 func preConfigureVFs(sysfsVFsDir string, vfs []*DeviceInfo, eccOn bool) error {
 	for _, vf := range vfs {
-		klog.V(5).Infof("preconfiguring VF %v on GPU %v", vf.vfindex, vf.parentuid)
-		if err := sriov.PreConfigureVF(sysfsVFsDir, vf.drmVFIndex(), vf.vfprofile, eccOn); err != nil {
-			return fmt.Errorf("failed preconfiguring vf #%v: %v", vf.vfindex, err)
+
+		klog.V(5).Infof("preconfiguring VF %v on GPU %v", vf.VFIndex, vf.ParentUID)
+		if err := sriov.PreConfigureVF(sysfsVFsDir, vf.drmVFIndex(), vf.VFProfile, eccOn); err != nil {
+			return fmt.Errorf("failed preconfiguring vf #%v: %v", vf.VFIndex, err)
 		}
 	}
 

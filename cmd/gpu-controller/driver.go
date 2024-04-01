@@ -154,8 +154,8 @@ func validateGpuClaimParameters(claimParams *intelcrd.GpuClaimParametersSpec, cl
 	}
 
 	// Valid use cases:
-	// - X millicores of shared    GPU, requested device type is 'gpu' only.
-	// - X millicores of non-share GPU, requested device type is 'VF'  only.
+	// - X millicores of shared     GPU, requested device type is 'gpu' only.
+	// - X millicores of non-shared GPU, requested device type is 'VF'  only.
 	// In other words, sharing the compute power by millicores can be either non-guaranteed / virtual
 	// with shared ResourceClass, or by using SR-IOV VFs.
 	if claimParams.Millicores > 0 {
@@ -895,6 +895,9 @@ func (d *driver) pendingClaimStillValid(
 			parentUID := device.ParentUID
 
 			klog.V(5).Infof("Pending device %v is a VF, checking parent %v", device.UID, parentUID)
+			if _, found := gas.Available[parentUID]; !found {
+				return false
+			}
 			if gas.Available[parentUID].Maxvfs == 0 || gas.Consumed[parentUID].Maxvfs >= gas.Available[parentUID].Maxvfs {
 				return false
 			}

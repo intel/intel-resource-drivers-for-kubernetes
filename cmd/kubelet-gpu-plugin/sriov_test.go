@@ -173,7 +173,7 @@ func TestGetGpuVFDefaults(t *testing.T) {
 			name:             "OK",
 			deviceId:         "0x56c0",
 			eccOn:            false,
-			expectedResponse: response{memory: 2016, profileName: "flex170_m8", errorStr: ""},
+			expectedResponse: response{memory: 2000, profileName: "flex170_m8", errorStr: ""},
 		},
 		{
 			name:             "Unsupported device ID",

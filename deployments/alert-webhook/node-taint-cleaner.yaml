@@ -15,9 +15,10 @@ spec:
       serviceAccountName: intel-gpu-alert-webhook-service-account
       containers:
       - name: node-taint-cleaner
-        # Change reason to non-empty string to taint all node GPUs
-        command: ["/alert-webhook", "-v", "5", "--node", "cml-s-2", "--reason", ""]
-        image: intel/intel-gpu-resource-driver:v0.3.0
+        # clear given taint reason from GPU taints on given node
+        # (untaints its GPUs completely only if that was the last taint reason)
+        command: ["/alert-webhook", "-v", "5", "--node", NODENAME, "--reason", "!HighGpuPowerUsage"]
+        image: intel/intel-gpu-resource-driver:v0.4.0
         imagePullPolicy: Always
         securityContext:
           privileged: false

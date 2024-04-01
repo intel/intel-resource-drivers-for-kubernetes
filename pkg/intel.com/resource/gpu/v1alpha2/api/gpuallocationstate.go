@@ -208,7 +208,6 @@ func (g *GpuAllocationState) ListNames(ctx context.Context) ([]string, error) {
 // Do not use this after the GAS.Spec was modified and changes not submitted to API.
 func (g *GpuAllocationState) UpdateAvailableAndConsumed() {
 	available, consumed := g.availableAndConsumedFromAllocatable()
-	klog.V(3).Infof("Available %v devices: %v", len(available), available)
 
 	for claimUID, claimAllocation := range g.Spec.AllocatedClaims {
 		klog.V(5).Infof("Claim %v: %+v", claimUID, claimAllocation)
@@ -244,6 +243,10 @@ func (g *GpuAllocationState) UpdateAvailableAndConsumed() {
 			consumed[device.UID].Memory += device.Memory
 			consumed[device.UID].Millicores += device.Millicores
 		}
+	}
+
+	for duid, device := range available {
+		klog.V(5).Infof("total available in device %v: %+v", duid, device)
 	}
 
 	for duid, device := range consumed {
@@ -341,7 +344,7 @@ func (g *GpuAllocationState) deviceIsTainted(deviceUID string) bool {
 		return false
 	}
 	if status, found := g.Spec.TaintedDevices[deviceUID]; found {
-		klog.V(5).Infof("Device %v is tainted: %s", deviceUID, status.Reason)
+		klog.V(5).Infof("Device %v is tainted due to: %v", deviceUID, status.Reasons)
 		return true
 	}
 	return false

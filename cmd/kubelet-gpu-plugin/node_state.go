@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2024, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -34,18 +36,18 @@ import (
 
 // DeviceInfo is an internal structure type to store info about discovered device.
 type DeviceInfo struct {
-	uid        string // unique identifier, pci_DBDF-pci_device_id
-	model      string // pci_device_id
-	cardidx    uint64 // card device number (e.g. 0 for /dev/dri/card0)
-	renderdidx uint64 // renderD device number (e.g. 128 for /dev/dri/renderD128)
-	memoryMiB  uint64 // in MiB
-	millicores uint64 // [0-1000] where 1000 means whole GPU.
-	deviceType string // gpu, vf, any
-	maxvfs     uint64 // if enabled, non-zero maximum amount of VFs
-	parentuid  string // uid of gpu device where VF is
-	vfprofile  string // name of the SR-IOV profile
-	vfindex    uint64 // 0-based PCI index of the VF on the GPU, DRM indexing starts with 1
-	eccOn      bool   // true of ECC is enabled, false otherwise
+	UID        string `json:"uid"`        // unique identifier, pci_DBDF-pci_device_id
+	Model      string `json:"model"`      // pci_device_id
+	CardIdx    uint64 `json:"cardidx"`    // card device number (e.g. 0 for /dev/dri/card0)
+	RenderdIdx uint64 `json:"renderdidx"` // renderD device number (e.g. 128 for /dev/dri/renderD128)
+	MemoryMiB  uint64 `json:"memorymib"`  // in MiB
+	Millicores uint64 `json:"millicores"` // [0-1000] where 1000 means whole GPU.
+	DeviceType string `json:"devicetype"` // gpu, vf, any
+	MaxVFs     uint64 `json:"maxvfs"`     // if enabled, non-zero maximum amount of VFs
+	ParentUID  string `json:"parentuid"`  // uid of gpu device where VF is
+	VFProfile  string `json:"vfprofile"`  // name of the SR-IOV profile
+	VFIndex    uint64 `json:"vfindex"`    // 0-based PCI index of the VF on the GPU, DRM indexing starts with 1
+	EccOn      bool   `json:"eccon"`      // true of ECC is enabled, false otherwise
 }
 
 func (g *DeviceInfo) DeepCopy() *DeviceInfo {
@@ -54,7 +56,7 @@ func (g *DeviceInfo) DeepCopy() *DeviceInfo {
 }
 
 func (g *DeviceInfo) drmVFIndex() uint64 {
-	return g.vfindex + 1
+	return g.VFIndex + 1
 }
 
 // DevicesInfo is a dictionary with DeviceInfo.uid being the key.
@@ -70,19 +72,20 @@ func (g *DevicesInfo) DeepCopy() DevicesInfo {
 
 // ClaimAllocations maps a slice of allocated DeviceInfos to Claim.Uid.
 type ClaimAllocations map[string][]*DeviceInfo
+type ClaimPreparations map[string][]*DeviceInfo
 
 type nodeState struct {
 	sync.Mutex
 	cdi         cdiapi.Registry
 	allocatable DevicesInfo
-	prepared    ClaimAllocations
+	prepared    ClaimPreparations
 }
 
 func (g DeviceInfo) CDIName() string {
-	return fmt.Sprintf("%s=%s", cdiKind, g.uid)
+	return fmt.Sprintf("%s=%s", cdiKind, g.UID)
 }
 
-func newNodeState(gas *intelcrd.GpuAllocationState, detectedDevices map[string]*DeviceInfo, cdiRoot string) (*nodeState, error) {
+func newNodeState(gas *intelcrd.GpuAllocationState, detectedDevices map[string]*DeviceInfo, cdiRoot string, preparedClaimFilePath string) (*nodeState, error) {
 	for ddev := range detectedDevices {
 		klog.V(3).Infof("new device: %+v", ddev)
 	}
@@ -118,11 +121,17 @@ func newNodeState(gas *intelcrd.GpuAllocationState, detectedDevices map[string]*
 	state := &nodeState{
 		cdi:         cdi,
 		allocatable: detectedDevices,
-		prepared:    make(ClaimAllocations),
+		prepared:    make(ClaimPreparations),
+	}
+
+	preparedClaims, err := state.getOrCreatePreparedClaims(preparedClaimFilePath)
+	if err != nil {
+		klog.Errorf("Error getting prepared claims: %v", err)
+		return nil, fmt.Errorf("failed to get prepared claims: %v", err)
 	}
 
 	klog.V(5).Info("Syncing allocatable devices")
-	err = state.syncPreparedGpusFromGASSpec(&gas.Spec)
+	err = state.syncPreparedGpusFromFile(preparedClaims)
 	if err != nil {
 		return nil, fmt.Errorf("unable to sync allocated devices from GpuAllocationState: %v", err)
 	}
@@ -242,9 +251,9 @@ func syncDeviceNodes(
 				klog.Errorf("Failed to parse index of DRI card device '%v', skipping", driFileName)
 				continue // deviceNode loop
 			}
-			if cardIdx != detectedDevice.cardidx {
-				klog.V(5).Infof("Fixing card index for CDI device %v", detectedDevice.uid)
-				deviceNode.Path = filepath.Join(dridevpath, fmt.Sprintf("card%d", detectedDevice.cardidx))
+			if cardIdx != detectedDevice.CardIdx {
+				klog.V(5).Infof("Fixing card index for CDI device %v", detectedDevice.UID)
+				deviceNode.Path = filepath.Join(dridevpath, fmt.Sprintf("card%d", detectedDevice.CardIdx))
 				specChanged = true
 			} else {
 				klog.V(5).Info("card index for CDI device is correct")
@@ -256,9 +265,9 @@ func syncDeviceNodes(
 				klog.Errorf("Failed to parse index of DRI renderD device '%v', skipping", driFileName)
 				continue // deviceNode loop
 			}
-			if renderdIdx != detectedDevice.renderdidx {
-				klog.V(5).Infof("Fixing renderD index for CDI device %v", detectedDevice.uid)
-				deviceNode.Path = filepath.Join(dridevpath, fmt.Sprintf("renderD%d", detectedDevice.renderdidx))
+			if renderdIdx != detectedDevice.RenderdIdx {
+				klog.V(5).Infof("Fixing renderD index for CDI device %v", detectedDevice.UID)
+				deviceNode.Path = filepath.Join(dridevpath, fmt.Sprintf("renderD%d", detectedDevice.RenderdIdx))
 				specChanged = true
 			} else {
 				klog.V(5).Info("renderD index for CDI device is correct")
@@ -276,19 +285,19 @@ func addDevicesToCDISpec(devices DevicesInfo, spec *specs.Spec) {
 	for _, device := range devices {
 		// primary / control node (for modesetting)
 		newDevice := specs.Device{
-			Name: device.uid,
+			Name: device.UID,
 			ContainerEdits: specs.ContainerEdits{
 				DeviceNodes: []*specs.DeviceNode{
-					{Path: filepath.Join(dridevpath, fmt.Sprintf("card%d", device.cardidx)), Type: "c"},
+					{Path: filepath.Join(dridevpath, fmt.Sprintf("card%d", device.CardIdx)), Type: "c"},
 				},
 			},
 		}
 		// render nodes can be optional: https://www.kernel.org/doc/html/latest/gpu/drm-uapi.html#render-nodes
-		if device.renderdidx != 0 {
+		if device.RenderdIdx != 0 {
 			newDevice.ContainerEdits.DeviceNodes = append(
 				newDevice.ContainerEdits.DeviceNodes,
 				&specs.DeviceNode{
-					Path: filepath.Join(dridevpath, fmt.Sprintf("renderD%d", device.renderdidx)),
+					Path: filepath.Join(dridevpath, fmt.Sprintf("renderD%d", device.RenderdIdx)),
 					Type: "c",
 				},
 			)
@@ -335,7 +344,7 @@ func addNewDevicesToNewRegistry(devices DevicesInfo) error {
 func (s *nodeState) parentCanHaveVFs(toProvision map[string][]*DeviceInfo) bool {
 	for _, preparedClaim := range s.prepared {
 		for _, device := range preparedClaim {
-			if _, found := toProvision[device.parentuid]; found {
+			if _, found := toProvision[device.ParentUID]; found {
 				return false
 			}
 		}
@@ -344,7 +353,7 @@ func (s *nodeState) parentCanHaveVFs(toProvision map[string][]*DeviceInfo) bool 
 }
 
 // FreeClaimDevices returns slice of gpu IDs where all VFs can be removed.
-func (s *nodeState) FreeClaimDevices(claimUID string) ([]string, error) {
+func (s *nodeState) FreeClaimDevices(preparedClaimFilePath string, claimUID string) ([]string, error) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -357,14 +366,14 @@ func (s *nodeState) FreeClaimDevices(claimUID string) ([]string, error) {
 	parentUIDs := []string{}
 	for _, device := range s.prepared[claimUID] {
 		var err error
-		switch device.deviceType {
+		switch device.DeviceType {
 		case intelcrd.GpuDeviceType:
 			klog.V(5).Info("Freeing GPU, nothing to do")
 		case intelcrd.VfDeviceType:
-			parentUIDs = append(parentUIDs, device.parentuid)
+			parentUIDs = append(parentUIDs, device.ParentUID)
 		default:
-			klog.Errorf("unsupported device type: %v", device.deviceType)
-			err = fmt.Errorf("unsupported device type: %v", device.deviceType)
+			klog.Errorf("unsupported device type: %v", device.DeviceType)
+			err = fmt.Errorf("unsupported device type: %v", device.DeviceType)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("freeClaimDevices failed: %v", err)
@@ -386,6 +395,12 @@ func (s *nodeState) FreeClaimDevices(claimUID string) ([]string, error) {
 	}
 
 	delete(s.prepared, claimUID)
+	// write prepared claims to file
+	err = s.writePreparedClaimToFile(preparedClaimFilePath, s.prepared)
+	if err != nil {
+		klog.Errorf("Error writing prepared claims to file: %v", err)
+		return nil, fmt.Errorf("failed to write prepared claims to file: %v", err)
+	}
 	return parentsToCleanup, nil
 }
 
@@ -395,23 +410,22 @@ func (s *nodeState) GetUpdatedSpec(inspec *intelcrd.GpuAllocationStateSpec) *int
 
 	outspec := inspec.DeepCopy()
 	s.syncAllocatableDevicesToGASSpec(outspec)
-	s.syncPreparedToGASSpec(outspec)
 	return outspec
 }
 
 func (s *nodeState) DeviceInfoFromAllocated(allocatedGpu intelcrd.AllocatedGpu) *DeviceInfo {
 	device := DeviceInfo{
-		uid:        allocatedGpu.UID,
-		deviceType: string(allocatedGpu.Type),
-		parentuid:  allocatedGpu.ParentUID,
-		memoryMiB:  uint64(allocatedGpu.Memory),
-		millicores: uint64(allocatedGpu.Millicores),
-		vfprofile:  allocatedGpu.Profile,
-		vfindex:    uint64(allocatedGpu.VFIndex),
+		UID:        allocatedGpu.UID,
+		DeviceType: string(allocatedGpu.Type),
+		ParentUID:  allocatedGpu.ParentUID,
+		MemoryMiB:  uint64(allocatedGpu.Memory),
+		Millicores: uint64(allocatedGpu.Millicores),
+		VFProfile:  allocatedGpu.Profile,
+		VFIndex:    uint64(allocatedGpu.VFIndex),
 	}
 	// model will be needed to construct uid for new VF device in validateVFs()
 	if allocatedGpu.ParentUID != "" {
-		device.model = s.allocatable[device.parentuid].model
+		device.Model = s.allocatable[device.ParentUID].Model
 	}
 	return &device
 }
@@ -488,11 +502,11 @@ func (s *nodeState) freeVFs(claimUIDBeingDeleted string, parentUIDs []string) ([
 				continue
 			}
 			for _, usedGpu := range usedGpus {
-				if usedGpu.deviceType == intelcrd.VfDeviceType && usedGpu.parentuid == parentDevice.uid {
+				if usedGpu.DeviceType == intelcrd.VfDeviceType && usedGpu.ParentUID == parentDevice.UID {
 					klog.V(5).Infof(
 						"Parent device %v is still used by %v (claim %v)",
-						usedGpu.parentuid,
-						usedGpu.uid,
+						usedGpu.ParentUID,
+						usedGpu.UID,
 						claimUID)
 					vfsCanBeRemoved = false
 				}
@@ -509,16 +523,16 @@ func (s *nodeState) freeVFs(claimUIDBeingDeleted string, parentUIDs []string) ([
 func (s *nodeState) syncAllocatableDevicesToGASSpec(spec *intelcrd.GpuAllocationStateSpec) {
 	gpus := make(map[string]intelcrd.AllocatableGpu)
 	for _, device := range s.allocatable {
-		gpus[device.uid] = intelcrd.AllocatableGpu{
-			Memory:     device.memoryMiB,
-			Millicores: device.millicores,
-			Model:      device.model,
-			Type:       v1alpha2.GpuType(device.deviceType),
-			UID:        device.uid,
-			Maxvfs:     device.maxvfs,
-			VFIndex:    device.vfindex,
-			ParentUID:  device.parentuid,
-			Ecc:        device.eccOn,
+		gpus[device.UID] = intelcrd.AllocatableGpu{
+			Memory:     device.MemoryMiB,
+			Millicores: device.Millicores,
+			Model:      device.Model,
+			Type:       v1alpha2.GpuType(device.DeviceType),
+			UID:        device.UID,
+			Maxvfs:     device.MaxVFs,
+			VFIndex:    device.VFIndex,
+			ParentUID:  device.ParentUID,
+			Ecc:        device.EccOn,
 		}
 	}
 
@@ -526,20 +540,20 @@ func (s *nodeState) syncAllocatableDevicesToGASSpec(spec *intelcrd.GpuAllocation
 }
 
 // On startup read what was previously prepared where we left off.
-func (s *nodeState) syncPreparedGpusFromGASSpec(spec *intelcrd.GpuAllocationStateSpec) error {
-	klog.V(5).Infof("Syncing %d Prepared allocations from GpuAllocationState to internal state", len(spec.PreparedClaims))
+func (s *nodeState) syncPreparedGpusFromFile(preparedClaims map[string][]*DeviceInfo) error {
+	klog.V(5).Infof("Syncing %d Prepared allocations from GpuAllocationState to internal state", len(preparedClaims))
 
 	if s.prepared == nil {
-		s.prepared = make(ClaimAllocations)
+		s.prepared = make(ClaimPreparations)
 	}
 
-	for claimuid, preparedDevices := range spec.PreparedClaims {
+	for claimuid, preparedDevices := range preparedClaims {
 		klog.V(5).Infof("claim %v has %v gpus", claimuid, len(preparedDevices))
 		skipClaimAllocation := false
 		prepared := []*DeviceInfo{}
 		for _, preparedDevice := range preparedDevices {
 			klog.V(5).Infof("Device: %+v", preparedDevice)
-			switch preparedDevice.Type {
+			switch preparedDevice.DeviceType {
 			case intelcrd.GpuDeviceType:
 				klog.V(5).Info("Matched GPU type in sync")
 				if _, exists := s.allocatable[preparedDevice.UID]; !exists {
@@ -549,13 +563,13 @@ func (s *nodeState) syncPreparedGpusFromGASSpec(spec *intelcrd.GpuAllocationStat
 						preparedDevice.UID, claimuid)
 				}
 				newdevice := s.allocatable[preparedDevice.UID].DeepCopy()
-				newdevice.memoryMiB = preparedDevice.Memory
-				newdevice.millicores = preparedDevice.Millicores
+				newdevice.MemoryMiB = preparedDevice.MemoryMiB
+				newdevice.Millicores = preparedDevice.Millicores
 				prepared = append(prepared, newdevice)
 			case intelcrd.VfDeviceType:
 				if _, exists := s.allocatable[preparedDevice.UID]; !exists {
 					klog.Errorf("allocated device %v does not exist in allocatable", preparedDevice.UID)
-					if _, parentExists := spec.AllocatableDevices[preparedDevice.ParentUID]; !parentExists {
+					if _, parentExists := s.allocatable[preparedDevice.ParentUID]; !parentExists {
 						klog.Errorf("parent %v does not exist in allocatable", preparedDevice.ParentUID)
 					}
 					skipClaimAllocation = true
@@ -565,7 +579,7 @@ func (s *nodeState) syncPreparedGpusFromGASSpec(spec *intelcrd.GpuAllocationStat
 				newdevice := s.allocatable[preparedDevice.UID].DeepCopy()
 				prepared = append(prepared, newdevice)
 			default:
-				klog.Errorf("unsupported device type: %v", preparedDevice.Type)
+				klog.Errorf("unsupported device type: %v", preparedDevice.DeviceType)
 			}
 		}
 		if !skipClaimAllocation {
@@ -574,32 +588,6 @@ func (s *nodeState) syncPreparedGpusFromGASSpec(spec *intelcrd.GpuAllocationStat
 	}
 
 	return nil
-}
-
-func (s *nodeState) syncPreparedToGASSpec(gasspec *intelcrd.GpuAllocationStateSpec) {
-	out := make(intelcrd.PreparedClaims)
-	for claimuid, devices := range s.prepared {
-		claimGpus := intelcrd.PreparedClaim{}
-		for _, device := range devices {
-			switch device.deviceType {
-			case intelcrd.GpuDeviceType, intelcrd.VfDeviceType:
-				outdevice := intelcrd.AllocatedGpu{
-					UID:        device.uid,
-					Memory:     device.memoryMiB,
-					Millicores: device.millicores,
-					Type:       v1alpha2.GpuType(device.deviceType),
-					Profile:    device.vfprofile,
-					VFIndex:    device.vfindex,
-					ParentUID:  device.parentuid,
-				}
-				claimGpus = append(claimGpus, outdevice)
-			default:
-				klog.Errorf("unsupported device type: %v", device.deviceType)
-			}
-		}
-		out[claimuid] = claimGpus
-	}
-	gasspec.PreparedClaims = out
 }
 
 // addNewVFs adds new VFs into CDI registries and into internal
@@ -640,7 +628,7 @@ func (s *nodeState) removeVFs(parentUID string) error {
 	cdiDevicesToDelete := map[string]bool{}
 	// GAS spec will be updated with s.allocatable in NodeUnprepareResource call to getUpdatedSpec
 	for devUID, dev := range s.allocatable {
-		if dev.parentuid == parentUID {
+		if dev.ParentUID == parentUID {
 			cdiDevicesToDelete[devUID] = true
 			delete(s.allocatable, devUID)
 		}
@@ -680,14 +668,14 @@ func (s *nodeState) removeVFs(parentUID string) error {
 	return nil
 }
 
-func (s *nodeState) makePreparedClaimAllocation(perClaimDevices map[string][]*DeviceInfo) error {
+func (s *nodeState) makePreparedClaimAllocation(preparedClaimFilePath string, perClaimDevices map[string][]*DeviceInfo) error {
 
 	for claimUID, devices := range perClaimDevices {
 		for _, device := range devices {
-			_, provisioned := s.allocatable[device.uid]
+			_, provisioned := s.allocatable[device.UID]
 			if !provisioned {
 				klog.Errorf("could not find allocated device %v for claim %v while making prepared claim allocation",
-					device.uid, claimUID)
+					device.UID, claimUID)
 				return fmt.Errorf("could not find allocated device %v", claimUID)
 			}
 		}
@@ -696,5 +684,56 @@ func (s *nodeState) makePreparedClaimAllocation(perClaimDevices map[string][]*De
 		klog.V(5).Infof("Created prepared claim allocation %v: %+v", claimUID, devices)
 	}
 
+	// write prepared claims to file
+	err := s.writePreparedClaimToFile(preparedClaimFilePath, s.prepared)
+	if err != nil {
+		klog.Errorf("Error writing prepared claims to file: %v", err)
+		return fmt.Errorf("failed to write prepared claims to file: %v", err)
+	}
+
 	return nil
+}
+
+// getOrCreatePreparedClaims reads a PreparedClaim from a file and deserializes it or creates the file.
+func (s *nodeState) getOrCreatePreparedClaims(preparedClaimFilePath string) (ClaimPreparations, error) {
+	preparedClaims := make(ClaimPreparations)
+
+	if _, err := os.Stat(preparedClaimFilePath); os.IsNotExist(err) {
+		klog.V(5).Infof("could not find file %v. Creating file", preparedClaimFilePath)
+		f, err := os.OpenFile(preparedClaimFilePath, os.O_CREATE|os.O_WRONLY, 0600)
+		if err != nil {
+			return nil, fmt.Errorf("failed creating file %v. Err: %v", preparedClaimFilePath, err)
+		}
+		defer f.Close()
+
+		if _, err := f.WriteString("{}"); err != nil {
+			return nil, fmt.Errorf("failed writing to file %v. Err: %v", preparedClaimFilePath, err)
+		}
+
+		klog.V(5).Infof("empty prepared claims file created %v", preparedClaimFilePath)
+
+		return preparedClaims, nil
+	}
+
+	preparedClaimsConfigBytes, err := os.ReadFile(preparedClaimFilePath)
+	if err != nil {
+		klog.V(5).Infof("could not read prepared claims configuration from file %v. Err: %v", preparedClaimFilePath, err)
+		return nil, fmt.Errorf("failed reading file %v. Err: %v", preparedClaimFilePath, err)
+	}
+
+	if err := json.Unmarshal(preparedClaimsConfigBytes, &preparedClaims); err != nil {
+		klog.V(5).Infof("Could not parse default prepared claims configuration from file %v. Err: %v", preparedClaimFilePath, err)
+		return nil, fmt.Errorf("failed parsing file %v. Err: %v", preparedClaimFilePath, err)
+	}
+
+	return preparedClaims, nil
+}
+
+// writePreparedClaimToFile serializes PreparedClaims and writes it to a file.
+func (s *nodeState) writePreparedClaimToFile(preparedClaimFilePath string, preparedClaims ClaimPreparations) error {
+	encodedPreparedClaims, err := json.MarshalIndent(preparedClaims, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed encoding json. Err: %v", err)
+	}
+	return os.WriteFile(preparedClaimFilePath, encodedPreparedClaims, 0600)
 }

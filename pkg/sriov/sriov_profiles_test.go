@@ -64,11 +64,11 @@ func TestAllDefaultProfilesArePresent(t *testing.T) {
 
 func TestProfileSelection(t *testing.T) {
 	t.Log("Profile selection works correctly")
-	memory, profileMillicores, profileName, err := PickVFProfile("0x56c0", 13650, 0, true)
-	if err != nil || profileName != "flex170_m1" || memory != 13670 || profileMillicores != 1000 {
+	memory, profileMillicores, profileName, err := PickVFProfile("0x56c0", 13500, 0, true)
+	if err != nil || profileName != "flex170_m1" || memory != 13542 || profileMillicores != 1000 {
 		t.Errorf("unexpected response from PickVFProfile: %v / %v / %v ; expected %v / %v / %v",
 			memory, profileName, err,
-			13670, "flex170_m1", nil)
+			13542, "flex170_m1", nil)
 	}
 }
 

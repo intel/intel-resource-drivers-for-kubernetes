@@ -37,8 +37,8 @@ var Profiles = map[string]map[string]uint64{
 		"doorbells_quota":    240,
 		"exec_quantum_ms":    64,
 		"ggtt_quota":         4026531840,
-		"lmem_quota":         16911433728, // 16128 MiB
-		"lmem_quota_ecc_on":  14334453350, // ~13670.4 MiB
+		"lmem_quota":         16777216000, // 16000 MiB
+		"lmem_quota_ecc_on":  14199816192, // 13542
 		"preempt_timeout_us": 128000,
 		"numvfs":             1,
 	},
@@ -47,8 +47,8 @@ var Profiles = map[string]map[string]uint64{
 		"doorbells_quota":    120,
 		"exec_quantum_ms":    32,
 		"ggtt_quota":         2013265920,
-		"lmem_quota":         8455716864, // 8064 MiB
-		"lmem_quota_ecc_on":  7167226675, // ~6835.2 MiB
+		"lmem_quota":         8388608000, // 8000 MiB
+		"lmem_quota_ecc_on":  7098859520, // 6770 MiB
 		"preempt_timeout_us": 64000,
 		"numvfs":             2,
 	},
@@ -57,8 +57,8 @@ var Profiles = map[string]map[string]uint64{
 		"doorbells_quota":    60,
 		"exec_quantum_ms":    16,
 		"ggtt_quota":         1006632960,
-		"lmem_quota":         4227858432, // 4032 MiB
-		"lmem_quota_ecc_on":  3583613337, // ~3417.6 MiB
+		"lmem_quota":         4194304000, // 4000 MiB
+		"lmem_quota_ecc_on":  3548381184, // 3384 MiB
 		"preempt_timeout_us": 32000,
 		"numvfs":             4,
 	},
@@ -67,8 +67,8 @@ var Profiles = map[string]map[string]uint64{
 		"doorbells_quota":    48,
 		"exec_quantum_ms":    12,
 		"ggtt_quota":         805306368,
-		"lmem_quota":         3380609024, // 3224 MiB
-		"lmem_quota_ecc_on":  2866890670, // ~2734.1 MiB
+		"lmem_quota":         3355443200, // 3200 MiB
+		"lmem_quota_ecc_on":  2839543808, // 2708 MiB
 		"preempt_timeout_us": 24000,
 		"numvfs":             5,
 	},
@@ -77,8 +77,8 @@ var Profiles = map[string]map[string]uint64{
 		"doorbells_quota":    30,
 		"exec_quantum_ms":    8,
 		"ggtt_quota":         503316480,
-		"lmem_quota":         2113929216, // 2016 MiB
-		"lmem_quota_ecc_on":  1791806668, // ~1708.8 MiB
+		"lmem_quota":         2097152000, // 2000 MiB
+		"lmem_quota_ecc_on":  1774190592, // 1692 MiB
 		"preempt_timeout_us": 16000,
 		"numvfs":             8,
 	},
@@ -87,8 +87,8 @@ var Profiles = map[string]map[string]uint64{
 		"doorbells_quota":    15,
 		"exec_quantum_ms":    4,
 		"ggtt_quota":         251658240,
-		"lmem_quota":         1056964608, // 1008 MiB
-		"lmem_quota_ecc_on":  895903334,  // ~854.4 MiB
+		"lmem_quota":         1048576000, // 1000 MiB
+		"lmem_quota_ecc_on":  887095296,  // 846 MiB
 		"preempt_timeout_us": 8000,
 		"numvfs":             16,
 	},
@@ -98,8 +98,8 @@ var Profiles = map[string]map[string]uint64{
 		"doorbells_quota":    240,
 		"exec_quantum_ms":    64,
 		"ggtt_quota":         4026531840,
-		"lmem_quota":         6174015488, // 5888 MiB
-		"lmem_quota_ecc_on":  5014290432, // 4782 MiB
+		"lmem_quota":         6039797760, // 5760 MiB
+		"lmem_quota_ecc_on":  4880072704, // 4654 MiB
 		"preempt_timeout_us": 128000,
 		"numvfs":             1,
 	},
@@ -108,8 +108,8 @@ var Profiles = map[string]map[string]uint64{
 		"doorbells_quota":    80,
 		"exec_quantum_ms":    22,
 		"ggtt_quota":         1342177280,
-		"lmem_quota":         2057306112, // 1962 MiB
-		"lmem_quota_ecc_on":  1671430144, // 1594 MiB
+		"lmem_quota":         2013265920, // 1920 MiB
+		"lmem_quota_ecc_on":  1625292800, // 1550 MiB
 		"preempt_timeout_us": 44000,
 		"numvfs":             3,
 	},
@@ -118,8 +118,8 @@ var Profiles = map[string]map[string]uint64{
 		"doorbells_quota":    40,
 		"exec_quantum_ms":    16,
 		"ggtt_quota":         671088640,
-		"lmem_quota":         1027604480, // 980 MiB
-		"lmem_quota_ecc_on":  834666496,  // 796 MiB
+		"lmem_quota":         1006632960, // 960 MiB
+		"lmem_quota_ecc_on":  811597824,  // 774 MiB
 		"preempt_timeout_us": 32000,
 		"numvfs":             6,
 	},
@@ -128,20 +128,20 @@ var Profiles = map[string]map[string]uint64{
 		"doorbells_quota":    20,
 		"exec_quantum_ms":    8,
 		"ggtt_quota":         335544320,
-		"lmem_quota":         513802240, // 490 MiB
-		"lmem_quota_ecc_on":  417333248, // 398 MiB
+		"lmem_quota":         503316480, // 480 MiB
+		"lmem_quota_ecc_on":  404750336, // 386 MiB
 		"preempt_timeout_us": 16000,
 		"numvfs":             12,
 	},
-	// Max Series
+	// Max Series, two-tiles, resources per VF
 	"max_128g_c1": {
-		"contexts_quota":     1024,
-		"doorbells_quota":    240,
-		"exec_quantum_ms":    64,
-		"ggtt_quota":         4026531840,
-		"lmem_quota":         64424509440, // 61440 MiB
+		"contexts_quota":     1024,        // up to 64k in GPU, seemingly not affecting performance
+		"doorbells_quota":    240,         // needs to be split across tiles
+		"exec_quantum_ms":    64,          // 0 in auto-provisioning mode
+		"ggtt_quota":         4026531840,  // needs to be split across tiles
+		"lmem_quota":         64424509440, // 61440 MiB needs to be split across tiles
 		"lmem_quota_ecc_on":  64424509440, // 61440 MiB
-		"preempt_timeout_us": 128000,
+		"preempt_timeout_us": 128000,      // 0 in auto-provisioning mode
 		"numvfs":             1,
 	},
 	"max_128g_c2": {

@@ -155,65 +155,16 @@ spec:
                   - gpus
                   type: object
                 type: object
-              preparedClaims:
-                additionalProperties:
-                  description: Resources prepared for the claim by kubelet-plugin.
-                  items:
-                    description: AllocatedGpu represents an allocated Gpu on a node.
-                    properties:
-                      memory:
-                        description: Amount of local memory in MiB.
-                        format: int64
-                        maximum: 1048576
-                        minimum: 0
-                        type: integer
-                      millicores:
-                        description: Amount of GPU millicores.
-                        format: int64
-                        maximum: 1000
-                        minimum: 0
-                        type: integer
-                      parentuid:
-                        description: Device where VF should be / is provisioned.
-                        type: string
-                      profile:
-                        description: Virtual Function profile defines amount of local
-                          memory and time slice VF gets.
-                        type: string
-                      type:
-                        description: 'Type of the device: bare-metal Gpu or SR-IOV
-                          Virtual Function (VF).'
-                        enum:
-                        - gpu
-                        - vf
-                        - any
-                        type: string
-                      uid:
-                        description: 'Unique identifier of device: PCI address and
-                          PCI Device ID.'
-                        type: string
-                      vfindex:
-                        description: Index of SR-IOV Virtual Function
-                        format: int64
-                        type: integer
-                    required:
-                    - memory
-                    - millicores
-                    - parentuid
-                    - profile
-                    - type
-                    - uid
-                    - vfindex
-                    type: object
-                  type: array
-                type: object
               taintedDevices:
                 additionalProperties:
                   description: TaintedGpu represents a tainted Gpu on a node.
                   properties:
-                    reason:
-                      description: Why device is tainted.
-                      type: string
+                    reasons:
+                      additionalProperties:
+                        type: boolean
+                      description: Reasons why device is tainted, which _all_ need
+                        to be resolved, before device can be dropped from taints map.
+                      type: object
                   type: object
                 type: object
             type: object

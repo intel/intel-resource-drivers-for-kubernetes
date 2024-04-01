@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2024, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,10 +37,11 @@ import (
 var _ drav1.NodeServer = (*driver)(nil)
 
 type driver struct {
-	gas          *intelcrd.GpuAllocationState
-	state        *nodeState
-	sysfsI915Dir string
-	sysfsDRMDir  string
+	gas                   *intelcrd.GpuAllocationState
+	state                 *nodeState
+	sysfsI915Dir          string
+	sysfsDRMDir           string
+	preparedClaimFilePath string
 }
 
 const (
@@ -69,6 +70,8 @@ func newDriver(ctx context.Context, config *configType) (*driver, error) {
 
 	gas := intelcrd.NewGpuAllocationState(config.crdconfig, config.clientset.intel)
 
+	preparedClaimFilePath := path.Join(config.driverPluginPath, "preparedClaims.json")
+
 	setupErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		klog.V(3).Info("Creating new GpuAllocationState")
 		err := gas.GetOrCreate(ctx)
@@ -88,7 +91,7 @@ func newDriver(ctx context.Context, config *configType) (*driver, error) {
 		}
 
 		klog.V(3).Info("Creating new NodeState")
-		state, err = newNodeState(gas, detectedDevices, config.cdiRoot)
+		state, err = newNodeState(gas, detectedDevices, config.cdiRoot, preparedClaimFilePath)
 		if err != nil {
 			return fmt.Errorf("failed to create new NodeState: %v", err)
 		}
@@ -112,10 +115,11 @@ func newDriver(ctx context.Context, config *configType) (*driver, error) {
 	}
 
 	d := &driver{
-		gas:          gas,
-		state:        state,
-		sysfsI915Dir: sysfsI915Dir,
-		sysfsDRMDir:  sysfsDRMDir,
+		gas:                   gas,
+		state:                 state,
+		sysfsI915Dir:          sysfsI915Dir,
+		sysfsDRMDir:           sysfsDRMDir,
+		preparedClaimFilePath: preparedClaimFilePath,
 	}
 	klog.V(3).Info("Finished creating new driver")
 
@@ -152,14 +156,15 @@ func (d *driver) nodePrepareResources(
 
 	// TODO: move retry and gas.Get outside of caller's Claims loop
 	prepareErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+
+		if _, found := d.state.prepared[claim.Uid]; found {
+			klog.V(3).Infof("Claim %s was already prepared, nothing to do", claim.Uid)
+			return nil
+		}
+
 		err := d.gas.Get(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get GpuAllocationState: %v", err)
-		}
-
-		if _, found := d.gas.Spec.PreparedClaims[claim.Uid]; found {
-			klog.V(3).Infof("Claim %s was already prepared, nothing to do", claim.Uid)
-			return nil
 		}
 
 		// perClaimDevices and toProvision are mutated below by calls taking them as parameters
@@ -195,19 +200,19 @@ func (d *driver) nodePrepareResources(
 			if err != nil {
 				return err
 			}
+
+			// GAS needs to be updated even if no VFs were provisioned to have preparedClaims entry
+			err = d.gas.Update(ctx, d.state.GetUpdatedSpec(&d.gas.Spec))
+			if err != nil {
+				klog.V(5).Infof("failed to update GpuAllocationState: %v", err)
+				return err
+			}
 		}
 
 		// add resource claim to prepared list
-		err = d.state.makePreparedClaimAllocation(perClaimDevices)
+		err = d.state.makePreparedClaimAllocation(d.preparedClaimFilePath, perClaimDevices)
 		if err != nil {
 			return fmt.Errorf("failed creating prepared claim allocation: %v", err)
-		}
-
-		// GAS needs to be updated even if no VFs were provisioned to have preparedClaims entry
-		err = d.gas.Update(ctx, d.state.GetUpdatedSpec(&d.gas.Spec))
-		if err != nil {
-			klog.V(5).Infof("failed to update GpuAllocationState: %v", err)
-			return err
 		}
 
 		return nil
@@ -228,7 +233,7 @@ func (d *driver) nodePrepareResources(
 }
 
 func (d *driver) NodeUnprepareResources(ctx context.Context, req *drav1.NodeUnprepareResourcesRequest) (*drav1.NodeUnprepareResourcesResponse, error) {
-	klog.Infof("NodeUnprepareResource is called: number of claims: %d", len(req.Claims))
+	klog.V(5).Infof("NodeUnprepareResource is called: number of claims: %d", len(req.Claims))
 	unpreparedResources := &drav1.NodeUnprepareResourcesResponse{
 		Claims: map[string]*drav1.NodeUnprepareResourceResponse{},
 	}
@@ -258,22 +263,26 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claim *drav1.Claim) 
 			return fmt.Errorf("error freeing devices for claim '%v': %v", claim.Uid, err)
 		}
 
-		parentsToCleanup, err := d.state.FreeClaimDevices(claim.Uid)
+		parentsToCleanup, err := d.state.FreeClaimDevices(d.preparedClaimFilePath, claim.Uid)
 		if err != nil {
 			return fmt.Errorf("error freeing devices for claim '%v': %v", claim.Uid, err)
 		}
 
-		// If there are no VFs used in prepared, remove VFs from this Gpu.
-		// uid is pci DBDF with device pci id, e.g. 0000:00:02.0-0x56c0
-		if err := d.removeAllVFsFromParents(parentsToCleanup); err != nil {
-			klog.Errorf("failed to remove VFs: %v", err)
-			return fmt.Errorf("failed to remove VFs: %v", err)
-		}
+		if len(parentsToCleanup) != 0 {
 
-		err = d.gas.Update(ctx, d.state.GetUpdatedSpec(&d.gas.Spec))
-		if err != nil {
-			klog.V(5).Infof("failed to update GpuAllocationState: %v", err)
-			return err
+			// If there are no VFs used in prepared, remove VFs from this Gpu.
+			// uid is pci DBDF with device pci id, e.g. 0000:00:02.0-0x56c0
+			if err := d.removeAllVFsFromParents(parentsToCleanup); err != nil {
+				klog.Errorf("failed to remove VFs: %v", err)
+				return fmt.Errorf("failed to remove VFs: %v", err)
+			}
+
+			err = d.gas.Update(ctx, d.state.GetUpdatedSpec(&d.gas.Spec))
+			if err != nil {
+				klog.V(5).Infof("failed to update GpuAllocationState: %v", err)
+				return err
+			}
+
 		}
 
 		return nil
@@ -303,7 +312,7 @@ func (d *driver) sanitizedClaimDevicesToBeProvisioned(claim *drav1.Claim) (map[s
 
 					klog.V(5).Infof("VF %v is already provisioned", device.UID)
 					// verify profile and parent fields
-					if existingVF.parentuid != device.ParentUID || existingVF.memoryMiB != device.Memory || (device.Profile != "" && existingVF.vfprofile != device.Profile) {
+					if existingVF.ParentUID != device.ParentUID || existingVF.MemoryMiB != device.Memory || (device.Profile != "" && existingVF.VFProfile != device.Profile) {
 
 						return nil, nil, fmt.Errorf("malformed allocated device %v: fields mismatch existing allocatable device", device.UID)
 					}
@@ -326,14 +335,14 @@ func (d *driver) sanitizedClaimDevicesToBeProvisioned(claim *drav1.Claim) (map[s
 			// and VFs dismantling began before the claim came into preparation,
 			// the allocated device profile is effectively lost -> pick up new suitable profile.
 			if device.Profile == "" {
-				_, _, newProfile, err := sriov.PickVFProfile(parentDevice.model, device.Memory, device.Millicores, parentDevice.eccOn)
+				_, _, newProfile, err := sriov.PickVFProfile(parentDevice.Model, device.Memory, device.Millicores, parentDevice.EccOn)
 				if err != nil {
 					return nil, nil, fmt.Errorf("no suitable VF profile for device %v", device.UID)
 				}
 				klog.V(5).Infof("picked profile %v for device %v", newProfile, device.UID)
 				device.Profile = newProfile
-			} else if !sriov.DeviceProfileExists(parentDevice.model, device.Profile) {
-				return nil, nil, fmt.Errorf("no profile %v found for device %v (deviceId: %v)", device.Profile, device.UID, parentDevice.model)
+			} else if !sriov.DeviceProfileExists(parentDevice.Model, device.Profile) {
+				return nil, nil, fmt.Errorf("no profile %v found for device %v (deviceId: %v)", device.Profile, device.UID, parentDevice.Model)
 			}
 
 			if _, parentInPlanned := toProvision[device.ParentUID]; !parentInPlanned {

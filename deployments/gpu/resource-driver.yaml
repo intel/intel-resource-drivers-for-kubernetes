@@ -19,7 +19,7 @@ spec:
       serviceAccountName: intel-gpu-resource-driver-service-account
       initContainers:
       - name: init
-        image: intel/intel-gpu-resource-driver:v0.3.0
+        image: intel/intel-gpu-resource-driver:v0.4.0
         imagePullPolicy: Always
         command: ["/gas-status-updater", "--status", "NotReady"]
         env:
@@ -43,7 +43,7 @@ spec:
             type: RuntimeDefault
       containers:
       - name: kubelet-plugin
-        image: intel/intel-gpu-resource-driver:v0.3.0
+        image: intel/intel-gpu-resource-driver:v0.4.0
         imagePullPolicy: Always
         command: ["/kubelet-gpu-plugin"]
         env:
@@ -126,7 +126,7 @@ spec:
       serviceAccountName: intel-gpu-resource-driver-service-account
       containers:
       - name: controller
-        image: intel/intel-gpu-resource-driver:v0.3.0
+        image: intel/intel-gpu-resource-driver:v0.4.0
         imagePullPolicy: Always
         command: ["/gpu-controller"]
         env:
