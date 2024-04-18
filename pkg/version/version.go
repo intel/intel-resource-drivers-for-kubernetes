@@ -19,7 +19,6 @@ package version
 import (
 	"runtime"
 
-	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
 	"k8s.io/klog/v2"
 )
 
@@ -31,17 +30,19 @@ var (
 )
 
 // GetVersion returns the version information of the driver.
-func PrintDriverVersion() {
+func PrintDriverVersion(apiGroupName string, apiGroupVersion string) {
 	klog.Infof(`
-DriverName:    %v,
-DriverVersion: %v,
-GitCommit:     %v,
-BuildDate:     %v,
-GoVersion:     %v,
-Compiler:      %v,
-Platform:      %v/%v`,
-		intelcrd.APIGroupName,
+Driver Name:        %v,
+Driver Version:     %v,
+Driver API Version: %v,
+Git Commit:         %v,
+Build Date:         %v,
+Go Version:         %v,
+Compiler:           %v,
+Platform:           %v/%v`,
+		apiGroupName,
 		driverVersion,
+		apiGroupVersion,
 		gitCommit,
 		buildDate,
 		runtime.Version(),

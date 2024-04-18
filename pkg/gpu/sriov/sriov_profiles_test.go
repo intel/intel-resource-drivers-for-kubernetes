@@ -30,7 +30,6 @@ func TestAllProfilesArePresent(t *testing.T) {
 			}
 		}
 	}
-
 }
 
 func TestNoUnusedProfilesArePresent(t *testing.T) {

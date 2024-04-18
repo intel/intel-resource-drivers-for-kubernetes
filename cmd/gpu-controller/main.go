@@ -68,18 +68,18 @@ type flagsType struct {
 	allocationPolicyResource  *string
 }
 
-type clientsetType struct {
+type clientsetsType struct {
 	core  coreclientset.Interface
 	intel intelclientset.Interface
 }
 
 type configType struct {
-	namespace string
-	flags     *flagsType
-	csconfig  *rest.Config
-	clientset *clientsetType
-	ctx       context.Context
-	mux       *http.ServeMux
+	namespace  string
+	flags      *flagsType
+	csconfig   *rest.Config
+	clientsets *clientsetsType
+	ctx        context.Context
+	mux        *http.ServeMux
 }
 
 func main() {
@@ -153,7 +153,7 @@ func newCommand() *cobra.Command {
 			flags:     flags,
 			csconfig:  csconfig,
 			namespace: nsname,
-			clientset: &clientsetType{
+			clientsets: &clientsetsType{
 				coreclient,
 				intelclient,
 			},
@@ -164,6 +164,10 @@ func newCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("create http endpoint: %v", err)
 			}
+		}
+
+		if err := startClaimParametersGenerator(ctx, config); err != nil {
+			return fmt.Errorf("failed to start ResourceClaimParamaters generator: %v", err)
 		}
 
 		startController(config)
@@ -325,8 +329,8 @@ func checkFlags(flags *flagsType) error {
 func startController(config *configType) {
 	klog.V(3).Info("Starting controller without leader election")
 	driver := newDriver(config)
-	informerFactory := informers.NewSharedInformerFactory(config.clientset.core, 0 /* resync period */)
-	ctrl := controller.New(config.ctx, intelcrd.APIGroupName, driver, config.clientset.core, informerFactory)
+	informerFactory := informers.NewSharedInformerFactory(config.clientsets.core, 0 /* resync period */)
+	ctrl := controller.New(config.ctx, intelcrd.APIGroupName, driver, config.clientsets.core, informerFactory)
 	informerFactory.Start(config.ctx.Done())
 	ctrl.Run(*config.flags.workers)
 }

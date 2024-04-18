@@ -7,9 +7,9 @@ Contents:
   - Alert resolving on alert rule changes
 * YAML files
 * Setup
-* Manual testing
-  - Sending taint notifications to webhook
-  - Clearing / setting taint reason for all node GPUs
+* Manual tainting / untainting
+  - Using webhook binary
+  - Using Curl
 * TODOs
 
 
@@ -26,7 +26,7 @@ Intel GPU monitor names are routed to `alert-webhook`.
 Webhook maps (GPU metric) labels in the alert notifications to GPU
 UIDs used in node GAS CR (GpuAllocationState CustomResource) and
 taints matching GPUs in that CR.  Each named alert is tracked as as
-separate taint reason, and all of those alert reasons need to be
+a separate taint reason, and all of those alert reasons need to be
 resolved before webhook clears the GPU taint.
 
 Intel GPU resource driver checks that GPU is not tainted, before
@@ -72,10 +72,11 @@ webhook receiving Alert notification about it:
 
 ### Alert resolving on alert rule changes
 
-As long as only the rule conditions are changed (nor other alert
-details, nor Alertmanager configuration), Alertmanager will resolve
-current alerts, if current values are not any more within the updated
-rule conditions (e.g. alert power limit is increased).
+As long as only the rule conditions for an alert are changed (not
+other alert details, nor Alertmanager configuration), Alertmanager
+will resolve that alert if its new rule conditions do not trigger any
+more with the related metric values.  E.g. after power limit for an
+alert is increased.
 
 
 ## YAML files
@@ -93,9 +94,6 @@ collectd-alert-rules.yaml:
 xpum-alert-rules.yaml:
 * Alertmanager rules for Intel XPU manager GPU metrics based alerts:
   https://github.com/intel/xpumanager
-
-node-taint-cleaner.yaml:
-* Example Job for clearing GPU taint reasons from specified node
 
 
 ## Setup
@@ -131,15 +129,67 @@ $ kubectl -n monitoring create secret generic --dry-run=client -o yaml \
 ```
 
 
-## Manual testing
+## Manual tainting / untainting
 
-### Sending taint notifications to webhook
+### Using webhook binary
 
-GPUs can be tainted manually, by calling webhook HTTP server with
-suitable GPU alert notification.
+Webhook binary provides options for listing and manually updating
+taints reasons for given GPUs on given nodes.
 
-Sending "GpuNeedsReset" alert for NODE node from cluster master host,
-using service IP:
+By default `list` and `untaint` actions concern all GPU devices and
+all their taint reasons, but one can limit action to specific ones.
+
+As example, this removes given taint REASON1 from one GPU on given
+NODE1, using already running webhook deployment:
+```
+$ kubectl exec -it deployment/intel-gpu-dra-alert-webhook \
+  -n intel-gpu-resource-driver -- /alert-webhook -v 3 \
+  --reasons REASON1 --devices 0000:03:00.0-0x4905 \
+  --nodes NODE1 --action untaint
+```
+
+One can then ask it to list the GPUs and their taints to
+verify taint removal:
+```
+$ kubectl exec -it deployment/intel-gpu-dra-alert-webhook \
+  -n intel-gpu-resource-driver -- /alert-webhook -v 3 \
+  --nodes NODE1 --action list
+I0520 11:57:50.423141 3608388 taint.go:411] NODE1:
+I0520 11:57:50.423301 3608388 taint.go:470] - 0000:03:00.0-0x4905:
+I0520 11:57:50.423268 3608388 taint.go:470] - 0000:0a:00.0-0x4905: [REASON2]
+I0520 11:57:50.423327 3608388 taint.go:231] DONE!
+I0520 11:57:50.423340 3608388 taint.go:242] Specified nodes:
+I0520 11:57:50.423353 3608388 taint.go:253] - all matched
+I0520 11:57:50.423364 3608388 taint.go:268] Summary:
+I0520 11:57:50.423380 3608388 taint.go:273] - 2 devices on 1 nodes
+I0520 11:57:50.423398 3608388 taint.go:287] - 1 of them tainted
+I0520 11:57:50.423415 3608388 taint.go:289] Unique taint reasons:
+I0520 11:57:50.423433 3608388 taint.go:291] - REASON2
+```
+
+If webhook binary is run directly instead of using its deployment,
+correct namespace and Kubernetes config may need to be given.
+This will list GPUs and their taints for the whole cluster:
+```
+$ POD_NAMESPACE=intel-gpu-resource-driver ./alert-webhook -v 3 \
+  --kubeconfig ~/.kube/config --nodes all --action list
+```
+
+
+### Using Curl
+
+GPU taint reasons can be added and removed manually also by calling
+webhook HTTP server directly with suitable GPU alert notification
+message(s).
+
+For webhook to accept such messages, names of the taint reasons and
+service (supposedly) sending them, must match webhook accept list for
+alert names & group labels (if such constraints are specified for it).
+
+For example, if `AdminTaint` reason from `GpuAdmin` service are
+accepted, this will taint a _single_ GPU with `AdminTaint`, by sending
+such alert message for NODE node from cluster master host, using
+webhook service IP:
 ```
 $ kubectl -n intel-gpu-resource-driver get service
 NAME            TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
@@ -149,60 +199,23 @@ $ WEBHOOK_IP=10.101.165.71
 
 $ curl -H "Content-Type: application/json" -d '
   {"alerts":[{"status": "firing","labels":{
-    "alertname":"GpuNeedsReset","node":"NODE","pci_dev":"0x56a0","pci_bdf":"03:00.0"
-  }}],"groupLabels":{"namespace":"monitoring","service":"intel-xpumanager"}}' \
+    "alertname":"AdminTaint","node":"NODE","pci_dev":"0x56a0","pci_bdf":"03:00.0"
+  }}],"groupLabels":{"namespace":"monitoring","service":"GpuAdmin"}}' \
   ${WEBHOOK_IP}/alertmanager/api/v1/alerts
 ```
 
-Calling webhook HTTP server from ad-hoc pod:
-```
-$ kubectl run -n monitoring -it busybox --image=busybox:stable --restart=Never -- sh
-
-# wget -S -O- --header "Content-Type: application/json" --post-data '
-  {"alerts":[{"status": "firing","labels":{
-    "alertname":"GpuNeedsReset","node":"NODE","pci_dev":"0x56a0","pci_bdf":"03:00.0"
-  }}],"groupLabels":{"namespace":"monitoring","service":"intel-xpumanager"}}' \
-  http://alert-webhook.intel-gpu-resource-driver.svc.cluster.local/alertmanager/api/v1/alerts
-# exit
-```
-
-Removing the ad-hoc pod, before another call:
-```
-$ kubectl -n monitoring delete pod/busybox
-```
-
-
-### Clearing / setting taint reason for all node GPUs
-
-This removes given taint REASON from GPUs on given NODE, using
-webhook image, and service account created by "alert-webhook.yaml":
-```
-$ IMAGE=$(kubectl -n intel-gpu-resource-driver describe \
-  deployment.apps/intel-gpu-dra-alert-webhook | awk '/Image:/{print $2}')
-
-$ kubectl -n intel-gpu-resource-driver run -it clear-taints \
-  --env=POD_NAMESPACE=intel-gpu-resource-driver --restart=Never \
-  --overrides='{"spec":{"serviceAccount":"intel-gpu-alert-webhook-service-account"}}' \
-  --image=${IMAGE} -- /alert-webhook -v 5 --node NODE --reason '!REASON'
-```
-
-To taint GPUs on given node (instead of clearing taint reasons), just
-drop '!' from front of the taint REASON name.
-
-Removing the ad-hoc pod, before running it again:
-```
-$ kubectl -n intel-gpu-resource-driver delete pod/clear-taints
-```
+(Changing `firing` status to `resolved` would clear the specified taint reason.)
 
 
 ## TODOS
 
 Before installing the webhook by default with Helm (production use):
 * Test with latest Prometheus / Alertmanager release
-* Switch webhook to secure transport from plain unauthenticated http,
-  and handle potential connection timeout
-* Finish migrating collectd to OpenTelemetry spec & update rules file accordingly
+* Handle connection timeouts + secure transport support (HTTP -> HTTPS)
 * Document how to configure XPUM / Prometheus / Alertmanager to produce health alerts
-  (as there is not yet collectd v6 release / container with Sysman plugin)
 * Add (internal) E2E testing for XPUM / webhook-based health management
 * Fine-tune *-rules.yaml files alert thresholds & timings for production use
+
+Before adding collectd metric alerts to Helm install:
+* Collectd Sysman plugin migration to OpenTelemetry spec + corresponding rules file update
+* Collectd v6 release / container with Sysman plugin

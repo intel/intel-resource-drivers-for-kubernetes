@@ -1,0 +1,10 @@
+apiVersion: resource.k8s.io/v1alpha2
+kind: ResourceClaimTemplate
+metadata:
+  name: intel-gpu-monitor-claim
+spec:
+  metadata:
+    labels:
+      app: intel-gpu-monitor-claim
+  spec:
+    resourceClassName: intel-gpu-monitor

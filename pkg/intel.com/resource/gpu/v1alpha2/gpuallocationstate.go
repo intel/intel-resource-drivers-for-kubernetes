@@ -99,12 +99,6 @@ type AllocatedClaim struct {
 // Map of resources allocated per claim UID.
 type AllocatedClaims map[string]AllocatedClaim
 
-// Resources prepared for the claim by kubelet-plugin.
-type PreparedClaim []AllocatedGpu
-
-// Resources prepared for the claim by kubelet-plugin.
-type PreparedClaims map[string]PreparedClaim
-
 // Map of tainted devices on a node.
 type TaintedDevices map[string]TaintedGpu
 

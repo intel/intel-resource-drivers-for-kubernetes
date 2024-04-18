@@ -21,21 +21,28 @@ import (
 	"reflect"
 	"testing"
 
-	fakeclient "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/clientset/versioned/fake"
-	gpuv1alpha2 "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2"
-	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
 	resourcev1 "k8s.io/api/resource/v1alpha2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/dynamic-resource-allocation/controller"
+
+	helpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/controllerhelpers"
+	fakeclient "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/clientset/versioned/fake"
+	gpuv1alpha2 "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2"
+	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
+)
+
+const (
+	AllFlexMem  = 5068 // Flex140
+	halfFlexMem = 2534
 )
 
 func newAllocatableFlex140(duuid string) intelcrd.AllocatableGpu {
 	return intelcrd.AllocatableGpu{
 		Ecc:        true,
 		Maxvfs:     12,
-		Memory:     5068,
+		Memory:     AllFlexMem,
 		Millicores: 1000,
 		Model:      "0x56c1",
 		ParentUID:  "",
@@ -67,11 +74,12 @@ func TestAllocateImmediate(t *testing.T) {
 		claims              []*controller.ClaimAllocation
 		gasspecs            map[string]*intelcrd.GpuAllocationStateSpec
 		expectedAllocations map[string]intelcrd.AllocatedClaims
+		expectedErrors      map[string]string // Maps claim UIDs to expected error messages
 	}
 
 	testcases := []testcaseType{
 		{
-			name: "one",
+			name: "single_node_one_gpu",
 			claims: []*controller.ClaimAllocation{
 				{
 					Claim: createFakeClaim("cuuid1"),
@@ -84,16 +92,168 @@ func TestAllocateImmediate(t *testing.T) {
 				},
 			},
 			gasspecs: map[string]*intelcrd.GpuAllocationStateSpec{
-				fakeNodeName: newGAS2xFlex140(),
+				fakeNodeName: {
+					AllocatableDevices: map[string]intelcrd.AllocatableGpu{
+						"duuid1": newAllocatableFlex140("duuid1"),
+					},
+				},
 			},
 			expectedAllocations: map[string]intelcrd.AllocatedClaims{
 				fakeNodeName: {
 					"cuuid1": {
 						Gpus: intelcrd.AllocatedGpus{
-							{UID: "duuid1", Memory: 5068, Millicores: 1000, Type: "gpu"},
+							{UID: "duuid1", Memory: AllFlexMem, Millicores: 1000, Type: "gpu"},
 						},
 					},
 				},
+			},
+			expectedErrors: map[string]string{},
+		},
+		{
+			name: "multi_node_one_suitable",
+			claims: []*controller.ClaimAllocation{
+				{
+					Claim: createFakeClaim("cuuid2"),
+					ClaimParameters: &intelcrd.GpuClaimParametersSpec{
+						Count: 1,
+						Type:  "gpu",
+					},
+					Class:           &resourcev1.ResourceClass{},
+					ClassParameters: &intelcrd.GpuClassParametersSpec{},
+				},
+			},
+			gasspecs: map[string]*intelcrd.GpuAllocationStateSpec{
+				fakeNodeName: {},
+				fakeNodeName2: {
+					AllocatableDevices: map[string]intelcrd.AllocatableGpu{
+						"duuid1": newAllocatableFlex140("duuid1"),
+					},
+				},
+			},
+			expectedAllocations: map[string]intelcrd.AllocatedClaims{
+				fakeNodeName2: {
+					"cuuid2": {
+						Gpus: intelcrd.AllocatedGpus{
+							{UID: "duuid1", Memory: AllFlexMem, Millicores: 1000, Type: "gpu"},
+						},
+					},
+				},
+			},
+			expectedErrors: map[string]string{},
+		},
+		{
+			name: "multi_node_no_suitable",
+			claims: []*controller.ClaimAllocation{
+				{
+					Claim: createFakeClaim("cuuid3"),
+					ClaimParameters: &intelcrd.GpuClaimParametersSpec{
+						Count: 1,
+						Type:  "gpu",
+					},
+					Class:           &resourcev1.ResourceClass{},
+					ClassParameters: &intelcrd.GpuClassParametersSpec{},
+				},
+			},
+			gasspecs: map[string]*intelcrd.GpuAllocationStateSpec{
+				fakeNodeName:  {},
+				fakeNodeName2: {},
+				fakeNodeName3: {},
+			},
+			expectedAllocations: map[string]intelcrd.AllocatedClaims{},
+			expectedErrors: map[string]string{
+				"cuuid3": "No suitable GPUs available",
+			},
+		},
+		{
+			name: "dual_gpu_allocation",
+			claims: []*controller.ClaimAllocation{
+				{
+					Claim: createFakeClaim("cuuid5"),
+					ClaimParameters: &intelcrd.GpuClaimParametersSpec{
+						Count: 2,
+						Type:  "gpu",
+					},
+					Class:           &resourcev1.ResourceClass{},
+					ClassParameters: &intelcrd.GpuClassParametersSpec{},
+				},
+			},
+			gasspecs: map[string]*intelcrd.GpuAllocationStateSpec{
+				fakeNodeName: {
+					AllocatableDevices: map[string]intelcrd.AllocatableGpu{
+						"duuid1": newAllocatableFlex140("duuid1"),
+						"duuid2": newAllocatableFlex140("duuid2"),
+					},
+				},
+			},
+			expectedAllocations: map[string]intelcrd.AllocatedClaims{
+				fakeNodeName: {
+					"cuuid5": {
+						Gpus: intelcrd.AllocatedGpus{
+							{UID: "duuid1", Memory: AllFlexMem, Millicores: 1000, Type: "gpu"},
+							{UID: "duuid2", Memory: AllFlexMem, Millicores: 1000, Type: "gpu"},
+						},
+					},
+				},
+			},
+			expectedErrors: map[string]string{},
+		},
+		{
+			name: "2x_gpus_requested_but_1x_available",
+			claims: []*controller.ClaimAllocation{
+				{
+					Claim: createFakeClaim("cuuid10"),
+					ClaimParameters: &intelcrd.GpuClaimParametersSpec{
+						Count: 2,
+						Type:  "gpu",
+					},
+					Class:           &resourcev1.ResourceClass{},
+					ClassParameters: &intelcrd.GpuClassParametersSpec{},
+				},
+			},
+			gasspecs: map[string]*intelcrd.GpuAllocationStateSpec{
+				fakeNodeName: {
+					AllocatableDevices: map[string]intelcrd.AllocatableGpu{
+						"duuid1": newAllocatableFlex140("duuid1"),
+					},
+				},
+			},
+			expectedAllocations: map[string]intelcrd.AllocatedClaims{},
+			expectedErrors: map[string]string{
+				"cuuid10": "Requested 2 GPUs, but only 1 available",
+			},
+		},
+		{
+			name: "2x_vf_requested_when_all_gpus_shared",
+			claims: []*controller.ClaimAllocation{
+				{
+					Claim: createFakeClaim("cuuid12"),
+					ClaimParameters: &intelcrd.GpuClaimParametersSpec{
+						Count: 2,
+						Type:  "vf",
+					},
+					Class:           &resourcev1.ResourceClass{},
+					ClassParameters: &intelcrd.GpuClassParametersSpec{Shared: true},
+				},
+			},
+			gasspecs: map[string]*intelcrd.GpuAllocationStateSpec{
+				fakeNodeName: {
+					AllocatableDevices: map[string]intelcrd.AllocatableGpu{
+						"duuid1": newAllocatableFlex140("duuid1"),
+						"duuid2": newAllocatableFlex140("duuid2"),
+					},
+					AllocatedClaims: intelcrd.AllocatedClaims{
+						"cuuid13": {
+							Gpus: intelcrd.AllocatedGpus{
+								{UID: "duuid1", Memory: halfFlexMem, Millicores: 500, Type: "vf"},
+								{UID: "duuid2", Memory: halfFlexMem, Millicores: 500, Type: "vf"},
+							},
+						},
+					},
+				},
+			},
+			expectedAllocations: map[string]intelcrd.AllocatedClaims{},
+			expectedErrors: map[string]string{
+				"cuuid12": "All GPUs are already allocated as shared resources",
 			},
 		},
 	}
@@ -105,13 +265,13 @@ func TestAllocateImmediate(t *testing.T) {
 		driver := createFakeDriver(t, kubefake.NewSimpleClientset(), fakeDRAClient)
 
 		// create GAS for all nodes for test
-		for nodename := range testcase.gasspecs {
+		for nodeName, gasSpec := range testcase.gasspecs {
 			fakeGAS := &gpuv1alpha2.GpuAllocationState{
 				TypeMeta:   metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{Namespace: testNameSpace, Name: nodename},
+				ObjectMeta: metav1.ObjectMeta{Namespace: testNameSpace, Name: nodeName},
 				Status:     intelcrd.GpuAllocationStateStatusReady,
 			}
-			fakeGAS.Spec = *testcase.gasspecs[fakeNodeName]
+			fakeGAS.Spec = *gasSpec
 			_, err := fakeDRAClient.GpuV1alpha2().GpuAllocationStates(testNameSpace).Create(context.TODO(), fakeGAS, metav1.CreateOptions{})
 			if err != nil {
 				t.Fatalf("Could not create GpuClaimParameters for test: %v", err)
@@ -121,21 +281,26 @@ func TestAllocateImmediate(t *testing.T) {
 		driver.Allocate(context.TODO(), testcase.claims, "")
 
 		// check results by comparing GAS' contents with expectations
-		for nodename := range testcase.expectedAllocations {
+		for nodeName, expectedAllocs := range testcase.expectedAllocations {
 			gas, err := fakeDRAClient.GpuV1alpha2().GpuAllocationStates(testNameSpace).Get(
-				context.TODO(), nodename, metav1.GetOptions{},
+				context.TODO(), nodeName, metav1.GetOptions{},
 			)
 			if err != nil {
-				t.Errorf("Could not get GAS: %v", err)
+				t.Errorf("Could not get GAS for node %s: %v", nodeName, err)
+				continue
 			}
-			if !reflect.DeepEqual(
-				testcase.expectedAllocations[nodename]["cuuid1"].Gpus,
-				gas.Spec.AllocatedClaims["cuuid1"].Gpus) {
-				t.Errorf(
-					"wrong result\nexpected allocatedClaims %+v\ngot %+v",
-					testcase.expectedAllocations[nodename]["cuuid1"].Gpus,
-					gas.Spec.AllocatedClaims["cuuid1"].Gpus,
-				)
+
+			// check actual allocations against expected allocations
+			for claimID, expectedGpuAlloc := range expectedAllocs {
+				actualAlloc, ok := gas.Spec.AllocatedClaims[claimID]
+				if !ok {
+					t.Errorf("Expected allocation for claim %s was not found on node %s", claimID, nodeName)
+				} else if !reflect.DeepEqual(expectedGpuAlloc.Gpus, actualAlloc.Gpus) {
+					t.Errorf(
+						"Wrong result for node %s, claim %s\nexpected allocatedClaims %+v\ngot %+v",
+						nodeName, claimID, expectedGpuAlloc.Gpus, actualAlloc.Gpus,
+					)
+				}
 			}
 		}
 	}
@@ -391,7 +556,7 @@ func TestAllocatePending(t *testing.T) {
 func TestDeallocateClaim(t *testing.T) {
 
 	claim := createFakeClaim("cuuid1")
-	claim.Status.Allocation = buildAllocationResult(fakeNodeName, false)
+	claim.Status.Allocation = helpers.BuildAllocationResult(fakeNodeName, false)
 
 	fakeGAS := &gpuv1alpha2.GpuAllocationState{
 		TypeMeta:   metav1.TypeMeta{},
