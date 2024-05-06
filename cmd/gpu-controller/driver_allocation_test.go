@@ -21,14 +21,16 @@ import (
 	"reflect"
 	"testing"
 
-	fakeclient "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/clientset/versioned/fake"
-	gpuv1alpha2 "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2"
-	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
 	resourcev1 "k8s.io/api/resource/v1alpha2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/dynamic-resource-allocation/controller"
+
+	helpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/controllerhelpers"
+	fakeclient "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/clientset/versioned/fake"
+	gpuv1alpha2 "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2"
+	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
 )
 
 func newAllocatableFlex140(duuid string) intelcrd.AllocatableGpu {
@@ -391,7 +393,7 @@ func TestAllocatePending(t *testing.T) {
 func TestDeallocateClaim(t *testing.T) {
 
 	claim := createFakeClaim("cuuid1")
-	claim.Status.Allocation = buildAllocationResult(fakeNodeName, false)
+	claim.Status.Allocation = helpers.BuildAllocationResult(fakeNodeName, false)
 
 	fakeGAS := &gpuv1alpha2.GpuAllocationState{
 		TypeMeta:   metav1.TypeMeta{},

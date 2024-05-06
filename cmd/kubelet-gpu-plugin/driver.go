@@ -62,7 +62,7 @@ var (
 func newDriver(ctx context.Context, config *configType) (*driver, error) {
 	var state *nodeState
 
-	driverVersion.PrintDriverVersion()
+	driverVersion.PrintDriverVersion(intelcrd.APIGroupName, intelcrd.APIVersion)
 
 	sysfsDir := getSysfsDir()
 	sysfsI915Dir := filepath.Join(sysfsDir, sysfsI915path)

@@ -28,6 +28,7 @@ import (
 	"k8s.io/dynamic-resource-allocation/controller"
 	"k8s.io/klog/v2"
 
+	helpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/controllerhelpers"
 	intelclientset "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/clientset/versioned"
 	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
 	sriov "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/sriov"
@@ -53,7 +54,7 @@ var _ controller.Driver = (*driver)(nil)
 
 func newDriver(config *configType) *driver {
 	klog.V(5).Info("Creating new driver")
-	driverVersion.PrintDriverVersion()
+	driverVersion.PrintDriverVersion(intelcrd.APIGroupName, intelcrd.APIVersion)
 
 	driver := driver{
 		lock:                 newPerNodeMutex(),
@@ -274,12 +275,12 @@ func (d driver) allocateSinglePendingClaim(
 
 	if classParams.Monitor {
 		// Monitoring requests use neither pending nor allocated claims structs
-		return buildMonitorAllocationResult(nodename, true), nil
+		return helpers.BuildMonitorAllocationResult(nodename, true, intelcrd.APIGroupName, intelcrd.MonitorAllocType), nil
 	}
 
 	if _, exists := gas.Spec.AllocatedClaims[claimUID]; exists {
 		klog.V(5).Infof("GpuAllocationState already has AllocatedClaim %v, nothing to do", claimUID)
-		return buildAllocationResult(nodename, claimParams.Shareable), nil
+		return helpers.BuildAllocationResult(nodename, claimParams.Shareable), nil
 	}
 
 	if !d.PendingClaimRequests.exists(claimUID, nodename) {
@@ -303,7 +304,7 @@ func (d driver) allocateSinglePendingClaim(
 	gas.Spec.AllocatedClaims[claimUID] = d.PendingClaimRequests.get(claimUID, nodename)
 	klog.V(5).Infof("enough resources for claim %v: %+v", claimUID, gas.Spec.AllocatedClaims[claimUID])
 
-	return buildAllocationResult(nodename, claimParams.Shareable), nil
+	return helpers.BuildAllocationResult(nodename, claimParams.Shareable), nil
 }
 
 func (d driver) allocateImmediateClaim(
@@ -409,13 +410,13 @@ func (d driver) allocateImmediateClaimOnNode(
 		return nil, fmt.Errorf("allocating devices on node %v: %v", nodename, allocateErr)
 	}
 
-	return buildAllocationResult(nodename, claimParams.Shareable), nil
+	return helpers.BuildAllocationResult(nodename, claimParams.Shareable), nil
 }
 
 func (d driver) Deallocate(ctx context.Context, claim *resourcev1.ResourceClaim) error {
 	klog.V(5).InfoS("Deallocate called", "resource claim", claim.Namespace+"/"+claim.Name)
 
-	selectedNode := getSelectedNode(claim)
+	selectedNode := helpers.GetSelectedNode(claim)
 	if selectedNode == "" {
 		return nil
 	}
@@ -476,7 +477,7 @@ func (d driver) UnsuitableNodes(
 	}
 
 	for _, ca := range allcas {
-		ca.UnsuitableNodes = unique(ca.UnsuitableNodes)
+		ca.UnsuitableNodes = helpers.Unique(ca.UnsuitableNodes)
 	}
 
 	return nil
@@ -986,58 +987,4 @@ func validateResourceAvailability(resourceName, deviceUID string, requested, all
 		klog.V(5).Infof("Disregarding zero %v request value", resourceName)
 	}
 	return true
-}
-
-func buildAllocationResult(selectedNode string, shareable bool) *resourcev1.AllocationResult {
-	nodeSelector := &corev1.NodeSelector{
-		NodeSelectorTerms: []corev1.NodeSelectorTerm{
-			{
-				MatchFields: []corev1.NodeSelectorRequirement{
-					{
-						Key:      "metadata.name",
-						Operator: "In",
-						Values:   []string{selectedNode},
-					},
-				},
-			},
-		},
-	}
-	allocation := &resourcev1.AllocationResult{
-		AvailableOnNodes: nodeSelector,
-		Shareable:        shareable,
-	}
-	return allocation
-}
-
-func buildMonitorAllocationResult(selectedNode string, shareable bool) *resourcev1.AllocationResult {
-	allocation := buildAllocationResult(selectedNode, shareable)
-	allocation.ResourceHandles = []resourcev1.ResourceHandle{
-		{
-			DriverName: intelcrd.APIGroupName,
-			Data:       intelcrd.MonitorAllocType,
-		},
-	}
-	return allocation
-}
-
-func getSelectedNode(claim *resourcev1.ResourceClaim) string {
-	if claim.Status.Allocation == nil {
-		return ""
-	}
-	if claim.Status.Allocation.AvailableOnNodes == nil {
-		return ""
-	}
-	return claim.Status.Allocation.AvailableOnNodes.NodeSelectorTerms[0].MatchFields[0].Values[0]
-}
-
-func unique(s []string) []string {
-	set := make(map[string]struct{})
-	var news []string
-	for _, str := range s {
-		if _, exists := set[str]; !exists {
-			set[str] = struct{}{}
-			news = append(news, str)
-		}
-	}
-	return news
 }
