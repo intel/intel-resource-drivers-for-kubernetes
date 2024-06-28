@@ -41,6 +41,8 @@ import (
 const (
 	testNameSpace = "nsname"
 	fakeNodeName  = "fakeNode"
+	fakeNodeName2 = "fakeNode2"
+	fakeNodeName3 = "fakeNode3"
 )
 
 type keyValue struct {
@@ -147,7 +149,7 @@ func TestSelectPotentialGpuDevices(t *testing.T) {
 	for _, testCase := range testCases {
 		resource := "memory"
 		driver := newDriver(&configType{
-			clientset: &clientsetType{intel: versioned.New(nil)},
+			clientsets: &clientsetsType{intel: versioned.New(nil)},
 			flags: &flagsType{
 				preferredAllocationPolicy: &testCase.policy,
 				allocationPolicyResource:  &resource,
@@ -311,7 +313,7 @@ func createFakeDriverWithPolicy(t *testing.T, coreclient *kubefake.Clientset, in
 		},
 		csconfig:  csconfig,
 		namespace: testNameSpace,
-		clientset: &clientsetType{
+		clientsets: &clientsetsType{
 			coreclient,
 			intelclient,
 		},

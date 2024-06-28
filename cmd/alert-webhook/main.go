@@ -41,8 +41,10 @@ type kubeFlags struct {
 
 // manual settings.
 type cliFlags struct {
-	node   *string
-	reason *string
+	action  *string
+	nodes   *string
+	reasons *string
+	devices *string
 }
 
 // alert notification HTTP server settings.
@@ -79,8 +81,8 @@ func newCommand() *cobra.Command {
 	flags := addFlags(cmd)
 
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		if *flags.cli.node == "" && *flags.http.address == "" {
-			return fmt.Errorf("neither (CLI) node name nor (webhook) listen address given")
+		if *flags.cli.action == "" && *flags.http.address == "" {
+			return fmt.Errorf("neither (CLI) action nor (webhook) listen address given")
 		}
 		return nil
 	}
@@ -131,9 +133,11 @@ func addFlags(cmd *cobra.Command) *flagsType {
 	fs := sharedFlagSets.FlagSet("Kubernetes client")
 	flags.kube.config = fs.String("kubeconfig", "", "Absolute path to the kube.config file")
 
-	fs = sharedFlagSets.FlagSet("Manual GPU taint updates")
-	flags.cli.node = fs.String("node", "", "Cluster node where taints should be added or removed from its GPUs")
-	flags.cli.reason = fs.String("reason", "", "Taint given node GPUs with given reason, or remove reason from them when it's prefixed with '!'")
+	fs = sharedFlagSets.FlagSet("Manual GPU taint maintenance")
+	flags.cli.action = fs.String("action", "", "list|taint|untaint")
+	flags.cli.nodes = fs.String("nodes", "", "Nodes where device taints should be listed/updated, 'all' for all")
+	flags.cli.devices = fs.String("devices", "all", "Comma separated list of IDs for node devices which taints should be updated")
+	flags.cli.reasons = fs.String("reasons", "all", "Comma separated list of taint reasons to update")
 
 	fs = sharedFlagSets.FlagSet("Alertmanager webhook")
 	flags.http.address = fs.String("address", "", "Address to listen for Alertmanager calls")

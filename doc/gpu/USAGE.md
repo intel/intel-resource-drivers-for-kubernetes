@@ -1,11 +1,15 @@
 ## Requirements
 
-- Kubernetes 1.28+
-- Runtime with CDI support: Containerd 1.7+ or CRI-O 1.23+
+- Kubernetes 1.28+, with `DynamicResourceAllocation` feature-flag enabled, and [other cluster parameters](hack/clusterconfig.yaml)
+- Container runtime needs to support CDI:
+  - CRI-O v1.23.0 or newer
+  - Containerd v1.7 or newer
 
-## Enable CDI in Containerd
+### Enable CDI in Containerd
 
-Containerd config file should have `enable_cdi` and `cdi_specs_dir`. Example `/etc/containerd/config.toml`:
+Containerd has CDI enabled by default since version 2.0. For older versions (1.7 and above)
+CDI has to be enabled in Containerd config by enabling `enable_cdi` and `cdi_specs_dir`.
+Example `/etc/containerd/config.toml`:
 ```
 version = 2
 [plugins]
@@ -13,7 +17,6 @@ version = 2
     enable_cdi = true
     cdi_specs_dir = ["/etc/cdi", "/var/run/cdi"]
 ```
-
 
 ## Limitations
 
@@ -31,7 +34,7 @@ kubectl apply -f deployments/gpu/resource-defaults.yaml
 kubectl apply -f deployments/gpu/resource-driver.yaml
 ```
 
-By default the kubelet-plugin will be deployed on _all_  nodes in the cluster, there is no nodeSelector.
+By default the kubelet-plugin will be deployed on _all_ nodes in the cluster, there is no nodeSelector.
 
 When deploying custom resource driver image, change `image:` lines in
 [resource-driver](../deployments/gpu/resource-driver.yaml) to match its location.

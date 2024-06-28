@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2024, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,8 +26,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/discovery"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/sriov"
 	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/sriov"
 	"k8s.io/klog/v2"
 )
 
@@ -35,12 +37,11 @@ const (
 	attemptsLimitBase = 10
 	attemptDelay      = 1000 * time.Millisecond
 	vfMemConfigFile   = "/defaults/vf-memory.config"
-	pciDBDFLength     = len("0000:00:00.0")
 )
 
 // waitUntilNoVFs waits until timeout for all virtfnX symlinks to be gone from parent pci device.
-func (d *driver) waitUntilNoVFs(pciDBDF string) error {
-	filePath := filepath.Join(d.sysfsI915Dir, pciDBDF, "virtfn*")
+func (d *driver) waitUntilNoVFs(pciAddress string) error {
+	filePath := path.Join(d.sysfsDir, device.SysfsI915path, pciAddress, "virtfn*")
 
 	for attempt := 0; attempt < attemptsLimitBase; attempt++ {
 		klog.V(5).Infof("waiting until VFs %v are gone, attempt %v", filePath, attempt)
@@ -80,10 +81,9 @@ func (d *driver) removeAllVFsFromParents(parentDevices []string) error {
 // removeAllVFs - calls sysfs to disable all VFs on a GPU.
 // When called, no containers is supposed to be using VFs
 // and VFs can be removed.
-func (d *driver) removeAllVFs(parentDevice *DeviceInfo) error {
-	pciDBDF := parentDevice.UID[:pciDBDFLength]
-	klog.V(5).Infof("removing all VFs for %v", pciDBDF)
-	sriovNumvfsFile := path.Join(d.sysfsI915Dir, pciDBDF, "sriov_numvfs")
+func (d *driver) removeAllVFs(parentDevice *device.DeviceInfo) error {
+	klog.V(5).Infof("removing all VFs for %v", parentDevice.PCIAddress)
+	sriovNumvfsFile := path.Join(d.sysfsDir, device.SysfsI915path, parentDevice.PCIAddress, "sriov_numvfs")
 
 	numvfsInt := parentDevice.MaxVFs
 	numvfsBytes, err := os.ReadFile(sriovNumvfsFile)
@@ -110,17 +110,17 @@ func (d *driver) removeAllVFs(parentDevice *DeviceInfo) error {
 	}
 
 	if err = fhandle.Close(); err != nil {
-		klog.Error("(ignored) could not close file %v", sriovNumvfsFile)
+		klog.Errorf("(ignored) could not close file %v", sriovNumvfsFile)
 		// Do not fail here, main job is done by now.
 	}
 
-	if err = d.waitUntilNoVFs(pciDBDF); err != nil {
+	if err = d.waitUntilNoVFs(parentDevice.PCIAddress); err != nil {
 		return fmt.Errorf("failed removing VFs: %v", err)
 	}
 
 	klog.V(5).Infof("cleaning up profiles for %v VFs", numvfsInt)
 
-	sysfsVFsDir := fmt.Sprintf("%v/card%d/prelim_iov", d.sysfsDRMDir, parentDevice.CardIdx)
+	sysfsVFsDir := path.Join(d.sysfsDir, device.SysfsDRMpath, fmt.Sprintf("card%d/prelim_iov", parentDevice.CardIdx))
 	if err2 := sriov.CleanupManualConfigurationMaybe(sysfsVFsDir, numvfsInt); err2 != nil {
 
 		return fmt.Errorf("failed cleaning up VFs configuration: %v", err2)
@@ -142,7 +142,7 @@ func validateVF(drmDir string) error {
 	cardFound := false
 	for _, filename := range files {
 		klog.V(5).Infof("checking file %v", filename.Name())
-		if cardRegexp.MatchString(filename.Name()) {
+		if device.CardRegexp.MatchString(filename.Name()) {
 			klog.V(5).Info("found cardX file")
 			cardFound = true
 		}
@@ -157,65 +157,65 @@ func validateVF(drmDir string) error {
 
 // validateVFs ensures that all new VFs were created and DRM devices are created, waits if needed.
 // vf.model has to be set for new UID to be set.
-func (d *driver) validateVFs(pciDBDF string, vfs []*DeviceInfo) error {
-	klog.V(5).Infof("validationg %v VFs creation on %v, ignoring profiles (NOT IMPLEMENTED)", len(vfs), pciDBDF)
+func (d *driver) validateVFs(pciAddress string, vfs []*device.DeviceInfo) error {
+	klog.V(5).Infof("validationg %v VFs creation on %v, ignoring profiles (NOT IMPLEMENTED)", len(vfs), pciAddress)
 
 	attemptsLimit := attemptsLimitBase + len(vfs)
 	attempt := 0
-	// Loop through sysfsI915Dir/pciDBDF/virtfn* symlinks, check drm/[cardX, renderDY].
+	// Loop through sysfsI915Dir/<pciAddress>/virtfn* symlinks, check drm/[cardX, renderDY].
 	for _, vf := range vfs {
 		klog.V(5).Infof("Validating vf %v on device %v", vf.VFIndex, vf.ParentUID)
-		virtfnLinkPath := path.Join(d.sysfsI915Dir, pciDBDF, fmt.Sprintf("virtfn%d", vf.VFIndex))
+		virtfnLinkPath := path.Join(d.sysfsDir, device.SysfsI915path, pciAddress, fmt.Sprintf("virtfn%d", vf.VFIndex))
 		drmDir := path.Join(virtfnLinkPath, "drm")
 		vfOK := false
 		for ; attempt < attemptsLimit; attempt++ {
 			if err := validateVF(drmDir); err == nil {
-				klog.V(5).Infof("vf %v on GPU %v is OK", vf.VFIndex, pciDBDF)
+				klog.V(5).Infof("vf %v on GPU %v is OK", vf.VFIndex, pciAddress)
 
-				newPciDBDF, err := newVFpciDBDF(virtfnLinkPath)
+				newPciAddress, err := newVFpciAddress(virtfnLinkPath)
 				if err != nil {
 					return fmt.Errorf("cannot get new VF PCI address: %v", err)
 				}
 
-				vf.UID = fmt.Sprintf("%v-%v", newPciDBDF, vf.Model)
+				vf.UID = device.DeviceUIDFromPCIinfo(newPciAddress, vf.Model)
 				klog.V(5).Infof("New UID for vf %v on GPU %v is %v", vf.VFIndex, vf.ParentUID, vf.UID)
 				vfOK = true
 				break
 			} else {
-				klog.V(5).Infof("vf %v of GPU %v is NOT OK on attempt %v. ERR: %v", vf.VFIndex, pciDBDF, attempt, err)
+				klog.V(5).Infof("vf %v of GPU %v is NOT OK on attempt %v. ERR: %v", vf.VFIndex, pciAddress, attempt, err)
 			}
 			time.Sleep(attemptDelay)
 		}
 		if !vfOK {
-			klog.Errorf("vf %d of GPU %s is NOT OK, did not check the rest of new VFs", vf.VFIndex, pciDBDF)
-			return fmt.Errorf("vf %d of GPU %s is NOT OK, did not check the rest of new VFs", vf.VFIndex, pciDBDF)
+			klog.Errorf("vf %d of GPU %s is NOT OK, did not check the rest of new VFs", vf.VFIndex, pciAddress)
+			return fmt.Errorf("vf %d of GPU %s is NOT OK, did not check the rest of new VFs", vf.VFIndex, pciAddress)
 		}
 	}
 	return nil
 }
 
-func newVFpciDBDF(virtfnPath string) (string, error) {
+func newVFpciAddress(virtfnPath string) (string, error) {
 	virtfnTarget, err := os.Readlink(virtfnPath)
 	if err != nil {
 		return "", fmt.Errorf("failed reading virtfn symlink %v: %v", virtfnPath, err)
 	}
 
-	// ../0000:00:02.1  # 15 chars
+	// ../0000-00-02-1  # 15 chars
 	if len(virtfnTarget) != 15 {
 		return "", fmt.Errorf("symlink target does not match expected length: %v", virtfnTarget)
 	}
 
-	targetDBDF := virtfnTarget[3:]
-	if !pciRegexp.MatchString(targetDBDF) {
-		return "", fmt.Errorf("symlink target does not match PCI DBDF pattern: %v", virtfnTarget)
+	targetPciAddress := virtfnTarget[3:]
+	if !device.PciRegexp.MatchString(targetPciAddress) {
+		return "", fmt.Errorf("symlink target does not match PCI address pattern: %v", virtfnTarget)
 	}
 
-	return targetDBDF, nil
+	return targetPciAddress, nil
 }
 
 // validateVFsToBeProvisioned iterates through the per-GPU lists of VFs to be provisioned
 // and checks for profiles to be either all FairShare, or none to be FairShare.
-func (d *driver) validateVFsToBeProvisioned(toProvision map[string][]*DeviceInfo) error {
+func (d *driver) validateVFsToBeProvisioned(toProvision map[string][]*device.DeviceInfo) error {
 	for _, vfsList := range toProvision {
 		// Either all fairShare or all non-fairShare.
 		fairShared := 0
@@ -246,20 +246,20 @@ func (d *driver) validateVFsToBeProvisioned(toProvision map[string][]*DeviceInfo
 // provisionVFs calls sysfs to tell KMD to create VFs.
 // Should only work if no VFs exist at the moment on given GPU.
 // Returns newly provisioned VFs as map of DeviceInfo.
-func (d *driver) provisionVFs(toProvision map[string][]*DeviceInfo) (DevicesInfo, error) {
+func (d *driver) provisionVFs(toProvision map[string][]*device.DeviceInfo) (device.DevicesInfo, error) {
 	klog.V(5).Infof("provisionVFs is called for %v GPUs.", len(toProvision))
 
-	provisionedVFs := DevicesInfo{}
+	provisionedVFs := device.DevicesInfo{}
 
 	for parentUID, vfs := range toProvision {
-		pciDBDF := parentUID[:pciDBDFLength]
+		pciAddress, _ := device.PciInfoFromDeviceUID(parentUID)
 		// At least as many VFs as requested has to be provisioned.
 		// It could be possible to create more based on the maximum requested memory for VF.
 		numvfs := len(vfs)
 		klog.V(5).Infof("provisioning %v VFs for GPU %v ", numvfs, parentUID)
 
 		if needToPreconfigureVFs(vfs) {
-			sysfsVFsDir := fmt.Sprintf("%v/card%d/prelim_iov", d.sysfsDRMDir, d.state.allocatable[parentUID].CardIdx)
+			sysfsVFsDir := path.Join(d.sysfsDir, device.SysfsDRMpath, fmt.Sprintf("card%d/prelim_iov", d.state.allocatable[parentUID].CardIdx))
 			err := preConfigureVFs(sysfsVFsDir, vfs, d.state.allocatable[parentUID].EccOn)
 			if err != nil {
 				klog.Error("failed preconfiguring VFs, attempting to unconfigure them")
@@ -274,7 +274,7 @@ func (d *driver) provisionVFs(toProvision map[string][]*DeviceInfo) (DevicesInfo
 			}
 		}
 
-		sriovNumvfsFile := path.Join(d.sysfsI915Dir, pciDBDF, "sriov_numvfs")
+		sriovNumvfsFile := path.Join(d.sysfsDir, device.SysfsI915path, pciAddress, "sriov_numvfs")
 
 		fhandle, err := os.OpenFile(sriovNumvfsFile, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
 		if err != nil {
@@ -294,10 +294,10 @@ func (d *driver) provisionVFs(toProvision map[string][]*DeviceInfo) (DevicesInfo
 		}
 
 		// Wait for VFs and attempt to dismantle the VFs if DRM devices did not come up properly.
-		if err2 := d.validateVFs(pciDBDF, vfs); err2 != nil {
+		if err2 := d.validateVFs(pciAddress, vfs); err2 != nil {
 			cleanupErr := d.removeAllVFs(d.state.allocatable[parentUID])
 			if cleanupErr != nil {
-				klog.Errorf("VFs cleanup failed for %v: %v", pciDBDF, cleanupErr)
+				klog.Errorf("VFs cleanup failed for %v: %v", pciAddress, cleanupErr)
 				return nil, fmt.Errorf("failed to clean up VFs after failed provisioning: %v", cleanupErr)
 			}
 			return nil, fmt.Errorf("failed to validate provisioned VFs: %v, cleaned up successfully", err2)
@@ -305,7 +305,7 @@ func (d *driver) provisionVFs(toProvision map[string][]*DeviceInfo) (DevicesInfo
 	}
 
 	// If no errors - discover all new VFs.
-	allDevices := discoverDevices(d.sysfsI915Dir, d.sysfsDRMDir)
+	allDevices := discovery.DiscoverDevices(d.sysfsDir)
 
 	// Amount of provisioned VFs on device might be more than requested, announce all VFs, not only
 	// requested.
@@ -320,7 +320,7 @@ func (d *driver) provisionVFs(toProvision map[string][]*DeviceInfo) (DevicesInfo
 	return provisionedVFs, nil
 }
 
-func needToPreconfigureVFs(vfs []*DeviceInfo) bool {
+func needToPreconfigureVFs(vfs []*device.DeviceInfo) bool {
 	for _, vf := range vfs {
 		if vf.VFProfile != sriov.FairShareProfile {
 			return true
@@ -332,24 +332,24 @@ func needToPreconfigureVFs(vfs []*DeviceInfo) bool {
 // pickupMoreClaims searches for more VFs in other resourceClaimAllocation that potentially need
 // provisioning on same GPU together with current claim, because SR-IOV config can only be
 // set once.
-func (d *driver) pickupMoreClaims(currentClaimUID string, toProvision map[string][]*DeviceInfo, perClaimDevices map[string][]*DeviceInfo) {
+func (d *driver) pickupMoreClaims(currentClaimUID string, toProvision map[string][]*device.DeviceInfo, perClaimDevices map[string][]*device.DeviceInfo) {
 	for claimUID, ca := range d.gas.Spec.AllocatedClaims {
 		if claimUID == currentClaimUID {
 			continue
 		}
-		for _, device := range ca.Gpus {
-			if device.Type == intelcrd.VfDeviceType {
-				_, vfExists := d.state.allocatable[device.UID]
-				_, affectedParent := toProvision[device.ParentUID]
+		for _, gpu := range ca.Gpus {
+			if gpu.Type == intelcrd.VfDeviceType {
+				_, vfExists := d.state.allocatable[gpu.UID]
+				_, affectedParent := toProvision[gpu.ParentUID]
 				if !vfExists && affectedParent {
 					klog.V(5).Infof("Picking VF %v for claim %v to be provisioned (was not requested yet)",
-						device.UID,
+						gpu.UID,
 						claimUID)
-					newDevice := d.state.DeviceInfoFromAllocated(device)
-					newDevice.VFIndex = uint64(len(toProvision[device.ParentUID]))
-					toProvision[device.ParentUID] = append(toProvision[device.ParentUID], newDevice)
+					newDevice := d.state.DeviceInfoFromAllocated(gpu)
+					newDevice.VFIndex = uint64(len(toProvision[gpu.ParentUID]))
+					toProvision[gpu.ParentUID] = append(toProvision[gpu.ParentUID], newDevice)
 					if perClaimDevices[claimUID] == nil {
-						perClaimDevices[claimUID] = []*DeviceInfo{}
+						perClaimDevices[claimUID] = []*device.DeviceInfo{}
 					}
 					perClaimDevices[claimUID] = append(perClaimDevices[claimUID], newDevice)
 				}
@@ -363,7 +363,7 @@ func (d *driver) pickupMoreClaims(currentClaimUID string, toProvision map[string
 // to maximize GPU utilization.
 // Added VFs will be provisioned and announced, but not immediately used. Instead,
 // the driver will be able to allocate them, once suitable resource claim request arrives.
-func (d *driver) reuseLeftoverSRIOVResources(toProvision map[string][]*DeviceInfo) {
+func (d *driver) reuseLeftoverSRIOVResources(toProvision map[string][]*device.DeviceInfo) {
 	klog.V(5).Info("ReuseLeftoverSRIOVResources is called")
 	for gpuUID, gpuVFs := range toProvision {
 		klog.V(5).Infof("trying to reuse leftovers of GPU %v", gpuUID)
@@ -420,8 +420,8 @@ func (d *driver) reuseLeftoverSRIOVResources(toProvision map[string][]*DeviceInf
 // newCustomVFs tries to find the default memory amount the VF should have. It splits leftover
 // resources into VFs that can be utilized by future workloads, and adds these VFs into the map for
 // provisioning.
-func newCustomVFs(vfs []*DeviceInfo, parentDeviceInfo *DeviceInfo, memoryLeftMiB uint64) []*DeviceInfo {
-	newVFs := []*DeviceInfo{}
+func newCustomVFs(vfs []*device.DeviceInfo, parentDeviceInfo *device.DeviceInfo, memoryLeftMiB uint64) []*device.DeviceInfo {
+	newVFs := []*device.DeviceInfo{}
 	doorbellsLeft := sriov.GetMaximumVFDoorbells(parentDeviceInfo.Model)
 	klog.V(5).Infof("device %v total doorbells: %v", parentDeviceInfo.Model, doorbellsLeft)
 	for _, vf := range vfs {
@@ -496,7 +496,7 @@ func newCustomVFs(vfs []*DeviceInfo, parentDeviceInfo *DeviceInfo, memoryLeftMiB
 
 // smallestFreeVFIndex checks vfindex values in newVFs and returns smallest unused Vf index.
 // newVFs are not guaranteed to be ordered or with sequential Vf indexes.
-func smallestFreeVFIndex(newVFs []*DeviceInfo) int {
+func smallestFreeVFIndex(newVFs []*device.DeviceInfo) int {
 	for newIdx := 0; ; newIdx++ {
 		found := false
 		for _, vf := range newVFs {
@@ -511,10 +511,10 @@ func smallestFreeVFIndex(newVFs []*DeviceInfo) int {
 	}
 }
 
-func newVFWithProfile(vfIndex int, gpuUID string, vfProfileName string, model string) *DeviceInfo {
+func newVFWithProfile(vfIndex int, gpuUID string, vfProfileName string, model string) *device.DeviceInfo {
 	klog.V(5).Infof("Adding new VF #%v with profile %v on device %v", vfIndex, vfProfileName, gpuUID)
 
-	newVF := &DeviceInfo{
+	newVF := &device.DeviceInfo{
 		DeviceType: intelcrd.VfDeviceType,
 		VFProfile:  vfProfileName,
 		ParentUID:  gpuUID,
@@ -523,18 +523,6 @@ func newVFWithProfile(vfIndex int, gpuUID string, vfProfileName string, model st
 	}
 
 	return newVF
-}
-
-var deviceToModelMap = map[string]string{
-	"0x56c0": "flex170",
-	"0x56c1": "flex140",
-	"0x0b69": "max1550",
-	"0x0bd0": "max1550",
-	"0x0bd5": "max1550",
-	"0x0bd6": "max1450",
-	"0x0bd9": "max1100",
-	"0x0bda": "max1100",
-	"0x0bdb": "max1100",
 }
 
 // getGpuVFDefaults tries to read default amount of local memory the VF
@@ -560,7 +548,7 @@ func getGpuVFDefaults(deviceId string, eccOn bool) (uint64, uint64, string, erro
 	// from config map and not from hardcoded driver defaults.
 	vfMemMiB, vfMillicores, profileName, err := sriov.PickVFProfile(deviceId, vfMemMiB, 0, eccOn)
 	if err != nil {
-		klog.Errorf("failed getting suitable profile for device %d with %d MiB memory. Err: %v", deviceId, vfMemMiB, err)
+		klog.Errorf("failed getting suitable profile for device %v with %d MiB memory. Err: %v", deviceId, vfMemMiB, err)
 		return 0, 0, "", fmt.Errorf("failed picking VF profile: %v", err)
 	}
 
@@ -568,7 +556,7 @@ func getGpuVFDefaults(deviceId string, eccOn bool) (uint64, uint64, string, erro
 }
 
 func getDefaultVFMemoryFromConfigMap(vfMemConfigFile string, deviceId string, eccOn bool) (uint64, error) {
-	model, found := deviceToModelMap[deviceId]
+	model, found := device.SRIOVDeviceToModelMap[deviceId]
 	if !found {
 		klog.V(5).Infof("could not find device model by PCI ID %v", deviceId)
 		return 0, fmt.Errorf("unsupported device %v", deviceId)
@@ -605,11 +593,11 @@ func getDefaultVFMemoryFromConfigMap(vfMemConfigFile string, deviceId string, ec
 // preConfigureVFs loops through vfs map and calls preconfiguration of given profile
 // for manual provisioning mode, in case fair share is not suitable.
 // pf/auto_provisioning will be automatically set to 0 in this case.
-func preConfigureVFs(sysfsVFsDir string, vfs []*DeviceInfo, eccOn bool) error {
+func preConfigureVFs(sysfsVFsDir string, vfs []*device.DeviceInfo, eccOn bool) error {
 	for _, vf := range vfs {
 
 		klog.V(5).Infof("preconfiguring VF %v on GPU %v", vf.VFIndex, vf.ParentUID)
-		if err := sriov.PreConfigureVF(sysfsVFsDir, vf.drmVFIndex(), vf.VFProfile, eccOn); err != nil {
+		if err := sriov.PreConfigureVF(sysfsVFsDir, vf.DrmVFIndex(), vf.VFProfile, eccOn); err != nil {
 			return fmt.Errorf("failed preconfiguring vf #%v: %v", vf.VFIndex, err)
 		}
 	}

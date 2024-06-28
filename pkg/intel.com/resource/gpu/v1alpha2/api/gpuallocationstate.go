@@ -64,12 +64,6 @@ type AllocatedClaim = intelcrd.AllocatedClaim
 // Map of resources allocated per claim UID.
 type AllocatedClaims = intelcrd.AllocatedClaims
 
-// Resources prepared for the claim by kubelet-plugin.
-type PreparedClaim = intelcrd.PreparedClaim
-
-// Resources prepared for the claim by kubelet-plugin.
-type PreparedClaims = intelcrd.PreparedClaims
-
 // GpuAllocationStateSpec is the spec for the GpuAllocationState CRD.
 type GpuAllocationStateSpec = intelcrd.GpuAllocationStateSpec
 

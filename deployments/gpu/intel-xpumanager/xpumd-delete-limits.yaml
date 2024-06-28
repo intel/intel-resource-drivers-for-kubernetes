@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: intel-xpumanager
+spec:
+  template:
+    spec:
+      containers:
+      - name: xpumd
+        resources:
+          limits:
+            # gpu.intel.com/i915_monitoring: 1
+            $patch: delete

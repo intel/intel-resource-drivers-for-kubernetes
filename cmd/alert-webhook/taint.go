@@ -18,11 +18,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	coreclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -113,36 +117,182 @@ func getClientsetConfig(kubeconfig string) (*rest.Config, error) {
 	return csconfig, nil
 }
 
-// parseReason returns stripped reason string, and true if it was prefixed with "!".
-func parseReason(value *string) (string, bool) {
-	if value == nil || len(*value) < 2 {
-		return "", false
+// convert string with comma separated items to map[name]false, with nil indicating "all" items.
+func string2map(value *string) (map[string]bool, error) {
+	if value == nil || *value == "" {
+		return nil, errors.New("invalid (empty) option value")
 	}
-
-	reason := *value
-	if reason[0] == '!' {
-		return reason[1:], true
+	if *value == "all" {
+		return nil, nil
 	}
-
-	return reason, false
+	items := make(map[string]bool)
+	for _, name := range strings.Split(*value, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return nil, errors.New("invalid comma separated (empty) option value")
+		}
+		items[name] = false
+	}
+	return items, nil
 }
 
-// Add given taint reason for all GPUs on indicated node.
-// Remove reason from them if reason name is prefixed with '!'.
+// if nodes names are specified, return those as a map[name]false,
+// otherwise fetch & return that mapping for all cluster nodes,
+// and a bool to indicate whether all were returned + error.
+func (t *tainter) expandNodes(value *string) (map[string]bool, bool, error) {
+	all := false
+
+	nodes, err := string2map(value)
+	if nodes != nil || err != nil {
+		return nodes, all, err
+	}
+
+	// get all node names from cluster
+	all = true
+
+	items, err := t.clientset.core.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nodes, all, fmt.Errorf("cluster nodes List() call failed: %v", err)
+	}
+
+	nodes = make(map[string]bool, len(items.Items))
+	for _, node := range items.Items {
+		nodes[node.Name] = false
+	}
+
+	return nodes, all, nil
+}
+
+const (
+	actionList    = "list"
+	actionTaint   = "taint"
+	actionUntaint = "untaint"
+)
+
+type taintInfoType struct {
+	reasons map[string]bool // unique taint reasons
+	devices int             // total devices count
+	tainted int             // tainted devices count
+}
+
+// initially all map keys are false, and later set to true, if matched.
+type taintArgsType struct {
+	// 'nil' value = all items
+	devices map[string]bool // which devices to taint/untaint/list
+	reasons map[string]bool // which reasons to use for tainting, or to untaint/list
+	// on which nodes to act
+	nodes    map[string]bool
+	allNodes bool
+}
+
+// Depending on CLI flags, list or update specified (or all) taint reasons for
+// specified (or all) devices on specified (or all) nodes.
 func (t *tainter) setTaintsFromFlags(f *cliFlags) error {
 	klog.V(5).Info("setTaintsFromFlags()")
-	if f.node == nil || *f.node == "" {
-		klog.V(5).Info("No node given which GPUs should be un/tainted")
+	if f.action == nil || *f.action == "" {
+		klog.V(5).Info("No CLI action requested")
 		return nil
 	}
 
-	node := *f.node
-	reason, untaint := parseReason(f.reason)
-	if reason == "" {
-		klog.V(5).Infof("Missing or too short node '%s' un/taint reason", node)
-		return nil
+	action := *f.action
+	if action != actionList && action != actionTaint && action != actionUntaint {
+		return fmt.Errorf("invalid CLI action '%s'", action)
 	}
 
+	var err error
+	args := taintArgsType{}
+
+	if args.nodes, args.allNodes, err = t.expandNodes(f.nodes); err != nil {
+		return fmt.Errorf("nodes mapping for action '%s' failed: %v", action, err)
+	}
+
+	if args.reasons, err = string2map(f.reasons); err != nil {
+		return fmt.Errorf("taint reasons mapping for action '%s' failed: %v", action, err)
+	}
+
+	if args.devices, err = string2map(f.devices); err != nil {
+		return fmt.Errorf("devices mapping for action '%s' failed: %v", action, err)
+	}
+
+	if action == actionTaint && args.reasons == nil {
+		return fmt.Errorf("no reasons specified for tainting")
+	}
+
+	info := taintInfoType{
+		reasons: make(map[string]bool),
+	}
+
+	for node := range args.nodes {
+		if err := t.handleNodeAction(&args, &info, action, node); err != nil {
+			return err
+		}
+	}
+
+	klog.Info("DONE!")
+	taintInfoSummary(args, info, action)
+
+	return nil
+}
+
+func logMatchInfo(kinds string, items map[string]bool) {
+	if items == nil {
+		return
+	}
+
+	klog.Infof("Specified %s:", kinds)
+	missing := 0
+
+	for name, found := range items {
+		if !found {
+			klog.Infof("- %s: NO MATCH", name)
+			missing++
+		}
+	}
+
+	if missing == 0 {
+		klog.Info("- all matched")
+	}
+}
+
+func taintInfoSummary(args taintArgsType, info taintInfoType, action string) {
+	if !args.allNodes {
+		logMatchInfo("nodes", args.nodes)
+	}
+	logMatchInfo("devices", args.devices)
+	logMatchInfo("reasons", args.reasons)
+
+	if action != actionList {
+		return
+	}
+
+	klog.Info("Summary:")
+	if info.devices == 0 {
+		klog.Infof("- No (matching) devices on specified %d nodes", len(args.nodes))
+		return
+	}
+	klog.Infof("- %d devices on %d nodes", info.devices, len(args.nodes))
+
+	if info.tainted == 0 {
+		if len(info.reasons) > 0 {
+			panic("taint reasons not empty, although tainted dev count = 0")
+		}
+		klog.Info("- None tainted (matching specified devices/reasons)")
+		return
+	}
+
+	if len(info.reasons) == 0 {
+		panic("taint reasons is empty, although tainted dev count != 0")
+	}
+
+	klog.Infof("- %d of them tainted", info.tainted)
+
+	klog.Info("Unique taint reasons:")
+	for name := range info.reasons {
+		klog.Infof("- %s", name)
+	}
+}
+
+func (t *tainter) handleNodeAction(args *taintArgsType, info *taintInfoType, action, node string) error {
 	// CRD access serialization
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
@@ -152,62 +302,206 @@ func (t *tainter) setTaintsFromFlags(f *cliFlags) error {
 		Name:      node,
 	}
 
-	klog.V(5).Infof("New GAS for node '%s' in '%s' ns", node, t.nsname)
+	klog.V(5).Infof("New '%s' action for '%s' node in '%s' ns", action, node, t.nsname)
 	gas := intelcrd.NewGpuAllocationState(crdconfig, t.clientset.intel)
 
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 
 		if err := gas.Get(t.ctx); err != nil {
-			return err
-		}
-
-		if untaint {
-			klog.V(3).Infof("Remove '%s' taint from all node '%s' GPUs (in '%s' ns)", reason, node, t.nsname)
-
-			// Remove given taint reason from all node GPUs
-			if !removeTaintFromAllGpus(&gas.Spec, node, reason) {
-				klog.V(3).Infof("There were no '%s' taints on node '%s' GPUs (in '%s' ns)")
-				return nil
-			}
-
-			if err := gas.Update(t.ctx, &gas.Spec); err != nil {
-				return err
-			}
-
 			return nil
 		}
 
-		klog.V(3).Infof("Taint all node '%s' GPUs with '%s' (in '%s' ns)", node, reason, t.nsname)
+		args.nodes[node] = true
 
-		if gas.Spec.AllocatableDevices == nil {
-			klog.V(3).Infof("Node '%s' has no GPU devices to taint", node)
-			return nil
-		}
-
-		changed := false
-		// Add given taint reason to all GPUs on given node
-		for uid := range gas.Spec.AllocatableDevices {
-			// no need to taint VFs, PFs are enough
-			if gas.Spec.AllocatableDevices[uid].Type == intelcrd.VfDeviceType {
-				continue
-			}
-
-			if addGpuTaint(&gas.Spec, node, uid, reason) {
-				klog.V(3).Infof("Tainting node '%s' GPU '%s' with '%s'", node, uid, reason)
-				changed = true
-			}
+		var changed bool
+		switch action {
+		case actionList:
+			return t.listNodeTaints(args, info, &gas.Spec, node)
+		case actionTaint:
+			klog.V(3).Infof("Taint node '%s' GPUs with specified reasons", node)
+			changed = addNodeTaints(args, &gas.Spec, node)
+		case actionUntaint:
+			klog.V(3).Infof("Remove specified taint reasons from node '%s' GPUs", node)
+			changed = removeNodeTaints(args, &gas.Spec, node)
+		default:
+			panic(fmt.Sprintf("unknown action %v", action)) // bug in caller
 		}
 
 		if !changed {
+			klog.V(3).Info("=> No changes needed")
 			return nil
 		}
 
-		if err := gas.Update(t.ctx, &gas.Spec); err != nil {
-			return err
+		return gas.Update(t.ctx, &gas.Spec)
+	})
+}
+
+// add specified taint reasons for specified devices (nil=all) on node.
+func addNodeTaints(args *taintArgsType, spec *intelcrd.GpuAllocationStateSpec, node string) bool {
+	changed := false
+	if spec.AllocatableDevices == nil {
+		return changed
+	}
+
+	// Add given taint reason to specified GPUs on given node
+	for uid := range spec.AllocatableDevices {
+		// no need to taint VFs, PFs are enough
+		if spec.AllocatableDevices[uid].Type == intelcrd.VfDeviceType {
+			continue
 		}
 
+		if args.devices != nil {
+			if !args.devices[uid] {
+				continue
+			}
+			args.devices[uid] = true
+		}
+
+		for reason := range args.reasons {
+			if addGpuTaint(spec, node, uid, reason) {
+				args.reasons[reason] = true
+				changed = true
+			}
+		}
+	}
+
+	return changed
+}
+
+// remove specified taint reasons (nil=all) for specified devices (nil=all) on node.
+func removeNodeTaints(args *taintArgsType, spec *intelcrd.GpuAllocationStateSpec, node string) bool {
+	changed := false
+	if spec.TaintedDevices == nil {
+		return changed
+	}
+
+	for uid := range spec.TaintedDevices {
+		if args.devices != nil {
+			if !args.devices[uid] {
+				continue
+			}
+			args.devices[uid] = true
+		}
+
+		if args.reasons == nil {
+			// remove all reasons
+			delete(spec.TaintedDevices, uid)
+
+			if len(spec.TaintedDevices) == 0 {
+				spec.TaintedDevices = nil
+			}
+			changed = true
+			continue
+		}
+
+		for reason := range args.reasons {
+			if removeGpuTaint(spec, node, uid, reason) {
+				args.reasons[reason] = true
+				changed = true
+			}
+		}
+	}
+
+	return changed
+}
+
+// list all available devices and their taint reasons on given node, filtered by
+// given devices + reasons lists. Output warnings on invalid taint information.
+func (t *tainter) listNodeTaints(args *taintArgsType, info *taintInfoType, spec *intelcrd.GpuAllocationStateSpec, node string) error {
+	klog.Infof("%s:", node)
+
+	checkTaints(spec)
+
+	if spec.AllocatableDevices == nil {
+		klog.Info("- NO devices")
 		return nil
-	})
+	}
+
+	total := 0
+	tainted := 0
+	unique := make(map[string]bool)
+
+	for uid := range spec.AllocatableDevices {
+		if args.devices != nil {
+			if !args.devices[uid] {
+				continue
+			}
+			args.devices[uid] = true
+		}
+		total++
+
+		if spec.TaintedDevices == nil {
+			klog.Infof("- %s", uid)
+			continue
+		}
+
+		taint, found := spec.TaintedDevices[uid]
+		if !found || len(taint.Reasons) == 0 {
+			klog.Infof("- %s", uid)
+			if found {
+				klog.Info("  - WARN: empty (instead of missing) taint reasons")
+			}
+			continue
+		}
+
+		names := make([]string, 0)
+
+		if args.reasons != nil {
+			// filtered list of reasons
+			for reason := range args.reasons {
+				if _, found := taint.Reasons[reason]; found {
+					names = append(names, reason)
+					args.reasons[reason] = true
+					unique[reason] = true
+				}
+			}
+		} else {
+			// all reasons
+			for reason := range taint.Reasons {
+				names = append(names, reason)
+				unique[reason] = true
+			}
+		}
+
+		if len(names) > 0 {
+			tainted++
+		}
+
+		klog.Infof("- %s: %v", uid, names)
+	}
+
+	if len(unique) > 0 {
+		maps.Copy(info.reasons, unique)
+	}
+	info.tainted += tainted
+	info.devices += total
+
+	return nil
+}
+
+// check taint info against available device info and warn of mismatches.
+func checkTaints(spec *intelcrd.GpuAllocationStateSpec) {
+	if spec.TaintedDevices == nil {
+		return
+	}
+
+	if len(spec.TaintedDevices) == 0 {
+		klog.Info("- WARN: empty (instead of missing) tainted devices list")
+		return
+	}
+
+	if spec.AllocatableDevices == nil {
+		klog.Infof("- WARN: %d tainted devices, although no available devices",
+			len(spec.TaintedDevices))
+		return
+	}
+
+	for uid := range spec.TaintedDevices {
+		if _, found := spec.AllocatableDevices[uid]; found {
+			continue
+		}
+		klog.Infof("- WARN: '%s' device listed as tainted, does not exist!", uid)
+	}
 }
 
 // getNodeTaints reads pre-existing taints from node's GAS CR, and returns
@@ -215,7 +509,7 @@ func (t *tainter) setTaintsFromFlags(f *cliFlags) error {
 func (t *tainter) getNodeTaints(node string, start time.Time) gpuTaints {
 	klog.V(5).Info("getNodeTaints()")
 	if node == "" {
-		panic("getNodeTaints: no node or GPUs to update")
+		panic("getNodeTaints: no node specified")
 	}
 
 	// CRD access serialization
@@ -407,21 +701,4 @@ func removeGpuTaint(spec *intelcrd.GpuAllocationStateSpec, node, uid, reason str
 		spec.TaintedDevices = nil
 	}
 	return true
-}
-
-// removeTaintFromAllGpus removes given taint reason from all of node's GPUs in GAS spec,
-// or returns false if no GPU taints needed to be removed.
-func removeTaintFromAllGpus(spec *intelcrd.GpuAllocationStateSpec, node, reason string) bool {
-	if spec.TaintedDevices == nil {
-		return false
-	}
-
-	changed := false
-	for uid := range spec.TaintedDevices {
-		if removeGpuTaint(spec, node, uid, reason) {
-			changed = true
-		}
-	}
-
-	return changed
 }

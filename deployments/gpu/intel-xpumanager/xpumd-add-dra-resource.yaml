@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: intel-xpumanager
+spec:
+  template:
+    spec:
+      resourceClaims:
+      - name: intel-gpu-resource
+        source:
+          resourceClaimTemplateName: intel-gpu-monitor-claim
+      containers:
+      - name: xpumd
+        resources:
+          claims:
+          - name: intel-gpu-resource

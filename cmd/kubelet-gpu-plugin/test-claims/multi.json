@@ -1,0 +1,50 @@
+{
+  "uid1": [
+    {
+      "uid": "0000-af-00-1-0xabcd",
+      "model": "0xabcd",
+      "cardidx": 1,
+      "renderdidx": 0,
+      "memorymib": 22528,
+      "millicores": 500,
+      "devicetype": "vf",
+      "maxvfs": 0,
+      "parentuid": "0000-af-00-0-0xabcd",
+      "vfprofile": "",
+      "vfindex": 1,
+      "eccon": false
+    }
+  ],
+  "uid2": [
+    {
+      "uid": "0000-af-00-2-0xabcd",
+      "model": "0xabcd",
+      "cardidx": 2,
+      "renderdidx": 0,
+      "memorymib": 22528,
+      "millicores": 500,
+      "devicetype": "vf",
+      "maxvfs": 0,
+      "parentuid": "0000-af-00-0-0xabcd",
+      "vfprofile": "",
+      "vfindex": 2,
+      "eccon": false
+    }
+  ],
+  "uid3": [
+    {
+      "uid": "0000-af-00-3-0xabcd",
+      "model": "0xabcd",
+      "cardidx": 3,
+      "renderdidx": 0,
+      "memorymib": 22528,
+      "millicores": 500,
+      "devicetype": "vf",
+      "maxvfs": 0,
+      "parentuid": "0000-af-00-0-0xabcd",
+      "vfprofile": "",
+      "vfindex": 3,
+      "eccon": false
+    }
+  ]
+}

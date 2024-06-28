@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -31,6 +32,7 @@ import (
 	coreclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/retry"
 
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/featuregate"
@@ -58,6 +60,7 @@ type flagsType struct {
 	kubeconfig   *string
 	kubeAPIQPS   *float32
 	kubeAPIBurst *int
+	status       *string
 }
 
 type clientsetType struct {
@@ -89,7 +92,7 @@ func newCommand() *cobra.Command {
 		Short: "Intel GPU resource-driver kubelet plugin",
 	}
 
-	flags := addFlags(cmd, logsconfig, fgate)
+	flags := addFlags(cmd, logsconfig)
 
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		cmd.SetContext(metadata.AppendToOutgoingContext(context.Background(), "pre", "run"))
@@ -102,17 +105,22 @@ func newCommand() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		clientsetconfig, err := getClientSetConfig(flags)
+		err := validateFlags(flags)
+		if err != nil {
+			return fmt.Errorf("validate flags: %v", err)
+		}
+
+		csconfig, err := getClientSetConfig(flags)
 		if err != nil {
 			return fmt.Errorf("create client configuration: %v", err)
 		}
 
-		coreclient, err := coreclientset.NewForConfig(clientsetconfig)
+		coreclient, err := coreclientset.NewForConfig(csconfig)
 		if err != nil {
 			return fmt.Errorf("create core client: %v", err)
 		}
 
-		intelclient, err := intelclientset.NewForConfig(clientsetconfig)
+		intelclient, err := intelclientset.NewForConfig(csconfig)
 		if err != nil {
 			return fmt.Errorf("create Intel client: %v", err)
 		}
@@ -151,15 +159,31 @@ func newCommand() *cobra.Command {
 			driverPluginPath: driverPluginPath,
 		}
 
+		if flags.status != nil {
+			gas := intelcrd.NewGpuAllocationState(config.crdconfig, intelclient)
+			return setStatus(cmd.Context(), *flags.status, gas)
+		}
+
 		return callPlugin(cmd.Context(), config)
 	}
 
 	return cmd
 }
 
-func addFlags(cmd *cobra.Command,
-	logsconfig *logsapi.LoggingConfiguration,
-	fgate featuregate.MutableFeatureGate) *flagsType {
+func validateFlags(f *flagsType) error {
+
+	switch strings.ToLower(*f.status) {
+	case strings.ToLower(intelcrd.GpuAllocationStateStatusReady):
+		*f.status = intelcrd.GpuAllocationStateStatusReady
+	case strings.ToLower(intelcrd.GpuAllocationStateStatusNotReady):
+		*f.status = intelcrd.GpuAllocationStateStatusNotReady
+	default:
+		return fmt.Errorf("unknown status: %v", *f.status)
+	}
+	return nil
+}
+
+func addFlags(cmd *cobra.Command, logsconfig *logsapi.LoggingConfiguration) *flagsType {
 	flags := &flagsType{}
 
 	sharedFlagSets := cliflag.NamedFlagSets{}
@@ -171,6 +195,7 @@ func addFlags(cmd *cobra.Command,
 	flags.kubeconfig = fs.String("kubeconfig", "", "Absolute path to the kube.config file")
 	flags.kubeAPIQPS = fs.Float32("kube-api-qps", 15, "QPS to use while communicating with the kubernetes apiserver.")
 	flags.kubeAPIBurst = fs.Int("kube-api-burst", 45, "Burst to use while communicating with the kubernetes apiserver.")
+	flags.status = fs.String("status", "", "The status to set [Ready | NotReady].")
 
 	fs = cmd.PersistentFlags()
 	for _, f := range sharedFlagSets.FlagSets {
@@ -249,6 +274,31 @@ KubeletPluginSocketPath: %v`,
 	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
 	<-sigc
 	kubeletPlugin.Stop()
+
+	return nil
+}
+
+func setStatus(ctx context.Context, status string, gas *intelcrd.GpuAllocationState) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+
+		klog.V(5).Infof("fetching GAS %v", gas.Name)
+		err := gas.GetOrCreate(ctx)
+		if err != nil {
+			return fmt.Errorf("error retrieving GAS CRD for node %v: %v", gas.Name, err)
+		}
+
+		if gas.Status == status {
+			return nil
+		}
+
+		return gas.UpdateStatus(ctx, status)
+	})
+
+	if err != nil {
+		return err
+	}
+
+	klog.V(5).Info("GAS status updated")
 
 	return nil
 }

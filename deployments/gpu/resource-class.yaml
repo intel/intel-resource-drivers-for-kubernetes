@@ -1,3 +1,11 @@
+---
+apiVersion: resource.k8s.io/v1alpha2
+kind: ResourceClass
+metadata:
+  name: intel-gpu-structured
+driverName: gpu.resource.intel.com
+structuredParameters: true
+---
 apiVersion: gpu.resource.intel.com/v1alpha2
 kind: GpuClassParameters
 metadata:

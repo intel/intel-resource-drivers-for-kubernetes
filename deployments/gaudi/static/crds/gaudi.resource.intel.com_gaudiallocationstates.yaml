@@ -1,0 +1,103 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.15.0
+  name: gaudiallocationstates.gaudi.resource.intel.com
+spec:
+  group: gaudi.resource.intel.com
+  names:
+    kind: GaudiAllocationState
+    listKind: GaudiAllocationStateList
+    plural: gaudiallocationstates
+    singular: gas
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: GaudiAllocationState holds the state required for allocation
+          on a node.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: GaudiAllocationStateSpec is the spec for the GaudiAllocationState
+              CRD.
+            properties:
+              allocatableDevices:
+                additionalProperties:
+                  description: AllocatableDevice represents an allocatable Gaudi on
+                    a node.
+                  properties:
+                    model:
+                      description: PCI ID of the Gaudi device.
+                      type: string
+                    uid:
+                      description: 'Unique identifier of device: PCI address and PCI
+                        Device ID.'
+                      type: string
+                  required:
+                  - model
+                  - uid
+                  type: object
+                type: object
+              allocatedClaims:
+                additionalProperties:
+                  description: Resources that were allocated for the claim by controller.
+                  properties:
+                    devices:
+                      description: AllocatedDevices represents a list of allocated
+                        devices on a node.
+                      items:
+                        description: AllocatedDevice represents an allocated Gaudi
+                          on a node.
+                        properties:
+                          uid:
+                            description: 'Unique identifier of device: PCI address
+                              and PCI Device ID.'
+                            type: string
+                        required:
+                        - uid
+                        type: object
+                      maxItems: 640
+                      type: array
+                  required:
+                  - devices
+                  type: object
+                type: object
+              taintedDevices:
+                additionalProperties:
+                  description: TaintedDevice represents a tainted Gaudi on a node.
+                  properties:
+                    reasons:
+                      additionalProperties:
+                        type: boolean
+                      description: |-
+                        Reasons why device is tainted, which _all_ need to be
+                        resolved, before device can be dropped from taints map.
+                      type: object
+                  type: object
+                type: object
+            type: object
+          status:
+            type: string
+        type: object
+    served: true
+    storage: true

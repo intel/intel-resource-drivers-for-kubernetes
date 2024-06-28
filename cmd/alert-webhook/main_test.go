@@ -22,7 +22,7 @@ import (
 	"maps"
 	"net/http"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 	"sync"
 	"testing"
@@ -40,7 +40,7 @@ const (
 	// labels and their values used in JSON test files.
 	testNode  = "test-node"             // <node>
 	testSpace = "monitoring"            // <namespace>
-	uidFormat = "0000:%02d:00.0-0x56a0" // 0000:<pci_bdf>-<pci_dev>
+	uidFormat = "0000-%02d-00-0-0x56a0" // 0000:<pci_bdf>-<pci_dev>
 	// path to JSON files used in notification tests.
 	jsonPath     = "notifications"
 	singleReason = "GpuNeedsReset"
@@ -103,7 +103,7 @@ type notification struct {
 func applyNotifications(t *testing.T, alerter *alerter, files []notification) {
 	klog.V(5).Infof("processNotifications(alerter: %+v, files: %v)", alerter, files)
 	for _, file := range files {
-		path := filepath.Join(jsonPath, file.name+".json")
+		path := path.Join(jsonPath, file.name+".json")
 
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -225,9 +225,13 @@ func TestWholeWebhook(t *testing.T) {
 	}
 
 	fakeNode := testNode
-	// CLI flag / pre-existing taint
+	// for CLI tainting/untainting
+	taintAction := "taint"
+	untaintAction := "untaint"
+	// (pre-existing) taint reasons
 	fakeReason := "taintReason"
-	clearReason := "!" + fakeReason
+	// devices & reasons to clear
+	themAll := "all"
 
 	// resolve 1 fakeReason alert for 1st allDevices GPU...
 	fakeResolved := []notification{
@@ -247,7 +251,7 @@ func TestWholeWebhook(t *testing.T) {
 		{
 			testName:    "clear all device taints with cli flags",
 			namespace:   testSpace,
-			cliFlags:    cliFlags{node: &fakeNode, reason: &clearReason},
+			cliFlags:    cliFlags{action: &untaintAction, nodes: &fakeNode, devices: &themAll, reasons: &themAll},
 			filterFlags: defaultFlags,
 			devType:     intelcrd.GpuDeviceType,
 			devices:     allDevices,
@@ -258,7 +262,7 @@ func TestWholeWebhook(t *testing.T) {
 		{
 			testName:    "taint all devices with cli flags",
 			namespace:   testSpace,
-			cliFlags:    cliFlags{node: &fakeNode, reason: &fakeReason},
+			cliFlags:    cliFlags{action: &taintAction, nodes: &fakeNode, devices: &themAll, reasons: &fakeReason},
 			filterFlags: defaultFlags,
 			devType:     intelcrd.GpuDeviceType,
 			devices:     allDevices,
@@ -269,7 +273,7 @@ func TestWholeWebhook(t *testing.T) {
 		{
 			testName:    "cli flags taint PF, not VFs",
 			namespace:   testSpace,
-			cliFlags:    cliFlags{node: &fakeNode, reason: &fakeReason},
+			cliFlags:    cliFlags{action: &taintAction, nodes: &fakeNode, devices: &themAll, reasons: &fakeReason},
 			filterFlags: defaultFlags,
 			devType:     intelcrd.VfDeviceType,
 			devices:     allDevices,
@@ -402,7 +406,7 @@ func TestWholeWebhook(t *testing.T) {
 		{
 			testName:    "one taint reason from CLI, another from notifications",
 			namespace:   testSpace,
-			cliFlags:    cliFlags{node: &fakeNode, reason: &fakeReason},
+			cliFlags:    cliFlags{action: &taintAction, nodes: &fakeNode, devices: &themAll, reasons: &fakeReason},
 			filterFlags: defaultFlags,
 			devType:     intelcrd.GpuDeviceType,
 			devices:     allDevices,

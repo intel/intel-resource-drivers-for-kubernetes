@@ -27,6 +27,8 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
+
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 )
 
 const (
@@ -520,7 +522,7 @@ func deviceUID(labels map[string]string) (string, string) {
 		bdf = "0000:" + bdf
 	}
 
-	uid = strings.ToLower(bdf + "-" + dev)
+	uid = device.DeviceUIDFromPCIinfo(bdf, dev)
 	return uid, ""
 }
 

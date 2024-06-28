@@ -1,0 +1,11 @@
+namespace: monitoring
+resources:
+- https://github.com/intel/xpumanager/deployment/kubernetes/daemonset/base/?ref=V1.2.32
+- gpu-monitor-claim.yaml
+patches:
+- path: xpumd-delete-limits.yaml
+  target:
+    kind: DaemonSet
+- path: xpumd-add-dra-resource.yaml
+  target:
+    kind: DaemonSet
