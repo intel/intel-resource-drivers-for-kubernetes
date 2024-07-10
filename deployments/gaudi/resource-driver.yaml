@@ -19,7 +19,7 @@ spec:
       serviceAccountName: intel-gaudi-resource-driver-service-account
       initContainers:
       - name: init
-        image: intel/intel-gaudi-resource-driver:v0.1.0
+        image: intel/intel-gaudi-resource-driver:v0.1.1
         imagePullPolicy: IfNotPresent
         command: ["/kubelet-gaudi-plugin", "--status", "NotReady"]
         env:
@@ -43,7 +43,7 @@ spec:
             type: RuntimeDefault
       containers:
       - name: kubelet-plugin
-        image: intel/intel-gaudi-resource-driver:v0.1.0
+        image: intel/intel-gaudi-resource-driver:v0.1.1
         imagePullPolicy: IfNotPresent
         command: ["/kubelet-gaudi-plugin"]
         env:
@@ -71,9 +71,6 @@ spec:
           mountPath: /etc/cdi
         - name: varruncdi
           mountPath: /var/run/cdi
-        - name: defaults
-          mountPath: "/defaults"
-          readOnly: true
         - name: sysfs
           mountPath: "/sysfs"
         securityContext:
@@ -101,9 +98,6 @@ spec:
       - name: sysfs
         hostPath:
           path: /sys
-      - name: defaults
-        configMap:
-          name: defaults
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -126,7 +120,7 @@ spec:
       serviceAccountName: intel-gaudi-resource-driver-service-account
       containers:
       - name: controller
-        image: intel/intel-gaudi-resource-driver:v0.1.0
+        image: intel/intel-gaudi-resource-driver:v0.1.1
         imagePullPolicy: IfNotPresent
         command: ["/gaudi-controller"]
         env:
