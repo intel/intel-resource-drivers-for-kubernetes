@@ -1,28 +1,3 @@
-apiVersion: gaudi.resource.intel.com/v1alpha1
-kind: GaudiClassParameters
-metadata:
-  name: intel-gaudi-params-shared
-spec:
-  shared: true
----
-apiVersion: resource.k8s.io/v1alpha2
-kind: ResourceClass
-metadata:
-  name: intel-gaudi-shared
-driverName: gaudi.resource.intel.com
-parametersRef:
-  apiGroup: gaudi.resource.intel.com/v1alpha1
-  kind: GaudiClassParameters
-  name: intel-gaudi-params-shared
-
----
-apiVersion: gaudi.resource.intel.com/v1alpha1
-kind: GaudiClassParameters
-metadata:
-  name: intel-gaudi-params
-spec:
-  shared: false
----
 apiVersion: resource.k8s.io/v1alpha2
 kind: ResourceClass
 metadata:
@@ -32,7 +7,6 @@ parametersRef:
   apiGroup: gaudi.resource.intel.com/v1alpha1
   kind: GaudiClassParameters
   name: intel-gaudi-params
-
 ---
 apiVersion: gaudi.resource.intel.com/v1alpha1
 kind: GaudiClassParameters
@@ -40,7 +14,6 @@ metadata:
   name: intel-gaudi-monitor-params
 spec:
   monitor: true
-  shared: false
 ---
 apiVersion: resource.k8s.io/v1alpha2
 kind: ResourceClass

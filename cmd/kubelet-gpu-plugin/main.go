@@ -159,7 +159,7 @@ func newCommand() *cobra.Command {
 			driverPluginPath: driverPluginPath,
 		}
 
-		if flags.status != nil {
+		if *flags.status != "" {
 			gas := intelcrd.NewGpuAllocationState(config.crdconfig, intelclient)
 			return setStatus(cmd.Context(), *flags.status, gas)
 		}
@@ -171,12 +171,13 @@ func newCommand() *cobra.Command {
 }
 
 func validateFlags(f *flagsType) error {
-
 	switch strings.ToLower(*f.status) {
 	case strings.ToLower(intelcrd.GpuAllocationStateStatusReady):
 		*f.status = intelcrd.GpuAllocationStateStatusReady
 	case strings.ToLower(intelcrd.GpuAllocationStateStatusNotReady):
 		*f.status = intelcrd.GpuAllocationStateStatusNotReady
+	case "":
+		return nil
 	default:
 		return fmt.Errorf("unknown status: %v", *f.status)
 	}
