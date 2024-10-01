@@ -1,0 +1,44 @@
+apiVersion: resource.k8s.io/v1alpha3
+kind: ResourceClaimTemplate
+metadata:
+  name: gpu-4g
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        deviceClassName: gpu.intel.com
+        selectors:
+        - cel:
+            expression: device.capacity["gpu.intel.com"].memory.compareTo(quantity("4Gi")) >= 0
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpu-test
+  labels:
+    app: inline-gpu-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inline-gpu-deployment
+  template:
+    metadata:
+      labels:
+        app: inline-gpu-deployment
+    spec:
+      containers:
+      - name: with-resource
+        image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+        command: ["sh", "-c", "ls -la /dev/dri/ && sleep 300"]
+        resources:
+          claims:
+          - name: resource
+      - name: without-resource
+        image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+        command: ["sh", "-c", "ls -la /dev/ && sleep 300"]
+      resourceClaims:
+      - name: resource
+        resourceClaimTemplateName: gpu-4g

@@ -21,11 +21,16 @@ import (
 	"os"
 	"strings"
 
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/discovery"
 	"github.com/spf13/cobra"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
+
+	gpuCdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
+	gpuDevice "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
+	gpuDiscovery "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/discovery"
+
+	gaudiCdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/cdihelpers"
+	gaudiDevice "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
+	gaudiDiscovery "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/discovery"
 )
 
 var (
@@ -33,6 +38,7 @@ var (
 		"gpu":   true,
 		"gaudi": true,
 	}
+	version = "v0.2.0"
 )
 
 func main() {
@@ -46,7 +52,7 @@ func main() {
 
 func newCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "intel-cdi-specs-generator <gpu | gaudi>",
+		Use:   "intel-cdi-specs-generator [--cdi-dir=<cdi directory>] [--naming=<style>] <gpu | gaudi>",
 		Short: "Intel CDI Spec Generator",
 		Long:  "Intel CDI Specs Generator detects supported accelerators and creates CDI specs for them.",
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -64,48 +70,90 @@ func newCommand() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cdiDir := cmd.Flag("cdi-dir").Value.String()
+			namingStyle := cmd.Flag("naming").Value.String()
+
+			fmt.Println("Refreshing CDI registry")
+			if err := cdiapi.Configure(cdiapi.WithSpecDirs(cdiDir)); err != nil {
+				fmt.Printf("unable to refresh the CDI registry: %v", err)
+				return err
+			}
+
+			cdiCache, err := cdiapi.NewCache(cdiapi.WithAutoRefresh(false), cdiapi.WithSpecDirs(cdiDir))
+			if err != nil {
+				return err
+			}
+
 			for _, argx := range args {
 				switch strings.ToLower(argx) {
 				case "gpu":
-					if err := handleGPUDevices(); err != nil {
+					if err := handleGPUDevices(cdiCache, namingStyle); err != nil {
 						return err
 					}
 				case "gaudi":
-					if err := handleGaudiDevices(); err != nil {
+					if err := handleGaudiDevices(cdiCache, namingStyle); err != nil {
 						return err
 					}
 				}
 			}
+
+			if err := cdiCache.Refresh(); err != nil {
+				return err
+			}
+
+			// Fix CDI spec permissions as the default permission (600) prevents
+			// use without root or sudo:
+			// https://github.com/cncf-tags/container-device-interface/issues/224
+			specs := cdiCache.GetVendorSpecs(gpuDevice.CDIVendor) // Vendor is same for both gpu and gaudi
+			for _, spec := range specs {
+				if err := os.Chmod(spec.GetPath(), 0o644); err != nil {
+					return err
+				}
+			}
+
 			return nil
 		},
 	}
 
+	cmd.Version = version
+	cmd.Flags().BoolP("version", "v", false, "Show the version of the binary")
+	cmd.Flags().String("cdi-dir", "/etc/cdi", "CDI spec directory")
+	cmd.Flags().String("naming", "classic", "Naming of CDI devices. Options: classic, machine")
+	cmd.SetVersionTemplate("Intel CDI Specs Generator Version: {{.Version}}\n")
+
 	return cmd
 }
 
-func handleGPUDevices() error {
-	sysfsDir := device.GetSysfsDir()
+func handleGPUDevices(cdiCache *cdiapi.Cache, namingStyle string) error {
+	sysfsDir := gpuDevice.GetSysfsRoot()
 
-	detectedDevices := discovery.DiscoverDevices(sysfsDir)
+	detectedDevices := gpuDiscovery.DiscoverDevices(sysfsDir, namingStyle)
 	if len(detectedDevices) == 0 {
 		fmt.Println("No supported devices detected")
 	}
 
-	fmt.Println("Refreshing CDI registry")
-	if err := cdiapi.Configure(cdiapi.WithSpecDirs(device.CDIRoot)); err != nil {
-		fmt.Printf("unable to refresh the CDI registry: %v", err)
-		return err
-	}
-	cdiCache := cdiapi.GetDefaultCache()
-
 	// syncDetectedDevicesWithCdiRegistry overrides uid in detecteddevices from existing cdi spec
-	if err := cdihelpers.SyncDetectedDevicesWithRegistry(cdiCache, detectedDevices, true); err != nil {
+	if err := gpuCdihelpers.SyncDetectedDevicesWithRegistry(cdiCache, detectedDevices, true); err != nil {
 		fmt.Printf("unable to sync detected devices to CDI registry: %v", err)
+		return err
 	}
 
 	return nil
 }
 
-func handleGaudiDevices() error {
-	return fmt.Errorf("not implemented")
+func handleGaudiDevices(cdiCache *cdiapi.Cache, namingStyle string) error {
+	sysfsDir := gaudiDevice.GetSysfsRoot()
+
+	detectedDevices := gaudiDiscovery.DiscoverDevices(sysfsDir, namingStyle)
+	if len(detectedDevices) == 0 {
+		fmt.Println("No supported devices detected")
+	}
+
+	// syncDetectedDevicesWithCdiRegistry overrides uid in detecteddevices from existing cdi spec
+	if err := gaudiCdihelpers.SyncDetectedDevicesWithRegistry(cdiCache, detectedDevices, true); err != nil {
+		fmt.Printf("unable to sync detected devices to CDI registry: %v", err)
+		return err
+	}
+
+	return nil
 }

@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: intel-qat-resource-driver-kubelet-plugin
+  namespace: intel-qat-resource-driver
+  labels:
+    app: intel-qat-resource-driver-kubelet-plugin
+spec:
+  selector:
+    matchLabels:
+      app: intel-qat-resource-driver-kubelet-plugin
+  template:
+    metadata:
+      labels:
+        app: intel-qat-resource-driver-kubelet-plugin
+    spec:
+      serviceAccount: intel-qat-resource-driver-service-account
+      serviceAccountName: intel-qat-resource-driver-service-account
+      initContainers:
+      containers:
+      - name: kubelet-plugin
+        image: intel/intel-qat-resource-driver:v0.1.0
+        imagePullPolicy: IfNotPresent
+        command: ["/kubelet-qat-plugin"]
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: SYSFS_ROOT
+          value: "/sysfs"
+        volumeMounts:
+        - name: plugins-registry
+          mountPath: /var/lib/kubelet/plugins_registry
+        - name: plugins
+          mountPath: /var/lib/kubelet/plugins
+        - name: cdi
+          mountPath: /etc/cdi
+        - name: varruncdi
+          mountPath: /var/run/cdi
+        - name: sysfs
+          mountPath: /sysfs
+        - name: qatconfiguration
+          mountPath: /defaults
+        securityContext:
+          privileged: true
+          readOnlyRootFilesystem: true
+          seccompProfile:
+            type: RuntimeDefault
+      volumes:
+      - name: plugins-registry
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+      - name: plugins
+        hostPath:
+          path: /var/lib/kubelet/plugins
+      - name: cdi
+        hostPath:
+          path: /etc/cdi
+      - name: varruncdi
+        hostPath:
+          path: /var/run/cdi
+      - name: sysfs
+        hostPath:
+          path: /sys
+      - name: qatconfiguration
+        configMap:
+          name: intel-qat-resource-driver-configuration
+          optional: true
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: intel-qat-resource-driver-service-account
+  namespace: intel-qat-resource-driver
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: intel-qat-resource-driver-role
+  namespace: intel-qat-resource-driver
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get"]
+- apiGroups: ["resource.k8s.io"]
+  resources: ["resourceslices"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["resource.k8s.io"]
+  resources: ["resourceclaims"]
+  verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: intel-qat-resource-driver-role-binding
+  namespace: intel-qat-resource-driver
+subjects:
+- kind: ServiceAccount
+  name: intel-qat-resource-driver-service-account
+  namespace: intel-qat-resource-driver
+roleRef:
+  kind: ClusterRole
+  name: intel-qat-resource-driver-role
+  apiGroup: rbac.authorization.k8s.io

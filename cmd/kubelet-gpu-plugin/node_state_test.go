@@ -38,7 +38,6 @@ func TestDeviceInfoDeepCopy(t *testing.T) {
 		ParentUID:  "ffff",
 		VFProfile:  "fffff",
 		VFIndex:    7,
-		EccOn:      true,
 	}
 
 	dc := di.DeepCopy()
@@ -88,9 +87,9 @@ func TestPreparedClaimsFiles(t *testing.T) {
 	missingPath := "non/existing/file"
 
 	multiClaim := ClaimPreparations{
-		"uid1": {{UID: "0000-af-00-1-0xabcd", Model: "0xabcd", CardIdx: 1, DeviceType: "vf", MemoryMiB: 22528, Millicores: 500, VFIndex: 1, ParentUID: "0000-af-00-0-0xabcd"}},
-		"uid2": {{UID: "0000-af-00-2-0xabcd", Model: "0xabcd", CardIdx: 2, DeviceType: "vf", MemoryMiB: 22528, Millicores: 500, VFIndex: 2, ParentUID: "0000-af-00-0-0xabcd"}},
-		"uid3": {{UID: "0000-af-00-3-0xabcd", Model: "0xabcd", CardIdx: 3, DeviceType: "vf", MemoryMiB: 22528, Millicores: 500, VFIndex: 3, ParentUID: "0000-af-00-0-0xabcd"}},
+		"uid1": {{RequestNames: []string{"request1"}, DeviceName: "0000-af-00-1-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-1-0xabcd"}}},
+		"uid2": {{RequestNames: []string{"request1"}, DeviceName: "0000-af-00-2-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-2-0xabcd"}}},
+		"uid3": {{RequestNames: []string{"request1"}, DeviceName: "0000-af-00-3-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-3-0xabcd"}}},
 	}
 
 	testcases := []testCase{

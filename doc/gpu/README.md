@@ -2,33 +2,32 @@
 
 CAUTION: This is an beta / non-production software, do not use on production clusters.
 
-Supported GPU devices (with Linux kernel Intel `i915` GPU driver):
+## About resource driver
+
+With structured parameters (K8s v1.31+), the DRA driver publishes ResourceSlice, scheduler allocates
+the resoruces and resource driver's kubelet-plugin ensures that the allocated devices are prepared
+and available for Pods.
+
+## Supported GPU devices (with Linux kernel Intel `i915` GPU driver):
 - Intel® Data Center GPU Max Series
 - Intel® Data Center GPU Flex Series
 - Intel® Arc A-Series
 - Intel® Iris® Xe MAX
 - Intel® Integrated graphics
 
-## Resource driver components
-
-Intel GPU resource driver consists of the controller Pod, kubelet plugin DaemonSet and CustomResourceDefinitions.
-Controller makes allocation decisions and kubelet plugin ensures that the allocated GPUs and SR-IOV Virtual Functions
-are prepared and available for Pods.
-
 ## Supported Kubernetes Versions
 
 Supported Kubernetes versions are listed below:
 
-| Branch            | Kubernetes branch/version       | Status      |
-|:------------------|:--------------------------------|:------------|
-| v0.1.0-beta       | Kubernetes 1.26 branch v1.26.x  | unsupported |
-| v0.1.1-beta       | Kubernetes 1.27 branch v1.27.x  | unsupported |
-| v0.2.0            | Kubernetes 1.28 branch v1.28.x  | unsupported |
-| v0.3.0            | Kubernetes 1.28+                | unsupported |
-| v0.4.0            | Kubernetes 1.28+                | supported   |
-| v0.5.0            | Kubernetes 1.28+                | supported   |
-
-[Kubernetes cluster]: https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/
+| Branch            | Kubernetes branch/version        | Status      | DRA                            |
+|:------------------|:---------------------------------|:------------|:-------------------------------|
+| v0.1.0-beta       | Kubernetes v1.26 branch v1.26.x  | unsupported | Classic                        |
+| v0.1.1-beta       | Kubernetes v1.27 branch v1.27.x  | unsupported | Classic                        |
+| v0.2.0            | Kubernetes v1.28 branch v1.28.x  | unsupported | Classic                        |
+| v0.3.0            | Kubernetes v1.28+                | unsupported | Classic                        |
+| v0.4.0            | Kubernetes v1.28+                | unsupported | Classic                        |
+| v0.5.0            | Kubernetes v1.27 - v1.30         | supported   | Classic, Structured Parameters |
+| v0.6.0            | Kubernetes v1.31+                | supported   | Structured Parameters          |
 
 ## Documentation
 

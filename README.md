@@ -6,6 +6,7 @@ CAUTION: This is an beta / non-production software, do not use on production clu
 
 - [GPU](doc/gpu/README.md)
 - [Gaudi](doc/gaudi/README.md)
+- [QAT](doc/qat/README.md)
 
 ## Glossary
 

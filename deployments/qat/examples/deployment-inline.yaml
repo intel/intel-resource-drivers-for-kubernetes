@@ -1,0 +1,70 @@
+apiVersion: resource.k8s.io/v1alpha3
+kind: ResourceClaimTemplate
+metadata:
+  name: qat-template-sym
+spec:
+  spec:
+    devices:
+      requests:
+      - name: qat-request-sym-asym
+        deviceClassName: qat.intel.com
+        selectors:
+        - cel:
+           expression: |-
+              device.driver == "qat.intel.com" &&
+              device.attributes["qat.intel.com"].services.matches("[^a]?sym")
+
+---
+apiVersion: resource.k8s.io/v1alpha3
+kind: ResourceClaimTemplate
+metadata:
+  name: qat-template-dc
+spec:
+  spec:
+    devices:
+      requests:
+      - name: qat-request-dc
+        deviceClassName: qat.intel.com
+        selectors:
+        - cel:
+           expression: |-
+              device.driver == "qat.intel.com" &&
+              device.attributes["qat.intel.com"].services.matches("dc[^c]?")
+
+---
+apiVersion: v1
+kind: Deployment
+metadata:
+  name: qat-sample-sym
+  labels:
+    app: inline-qat-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inline-qat-deployment
+  template:
+    metadata:
+      labels:
+        app: inline-qat-deployment
+    spec:
+      containers:
+      - name: with-resource
+        image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+        command: ["sh", "-c", "ls -la /dev/vfio/ && sleep 300"]
+        securityContext:
+          capabilities:
+            add:
+              ["IPC_LOCK"]
+        resources:
+          claims:
+          - name: resource-sym-asym
+          - name: resource-dc
+      - name: without-resource
+        image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+        command: ["sh", "-c", "ls -la /dev/ && sleep 300"]
+      resourceClaims:
+      - name: resource-sym-asym
+        resourceClaimTemplateName: qat-template-sym
+      - name: resource-dc
+        resourceClaimTemplateName: qat-template-dc

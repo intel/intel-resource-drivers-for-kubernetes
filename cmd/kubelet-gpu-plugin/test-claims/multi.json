@@ -1,50 +1,38 @@
 {
   "uid1": [
     {
-      "uid": "0000-af-00-1-0xabcd",
-      "model": "0xabcd",
-      "cardidx": 1,
-      "renderdidx": 0,
-      "memorymib": 22528,
-      "millicores": 500,
-      "devicetype": "vf",
-      "maxvfs": 0,
-      "parentuid": "0000-af-00-0-0xabcd",
-      "vfprofile": "",
-      "vfindex": 1,
-      "eccon": false
+      "request_names": [
+        "request1"
+      ],
+      "pool_name": "node1",
+      "device_name": "0000-af-00-1-0xabcd",
+      "cdi_device_ids": [
+        "0000-af-00-1-0xabcd"
+      ]
     }
   ],
   "uid2": [
     {
-      "uid": "0000-af-00-2-0xabcd",
-      "model": "0xabcd",
-      "cardidx": 2,
-      "renderdidx": 0,
-      "memorymib": 22528,
-      "millicores": 500,
-      "devicetype": "vf",
-      "maxvfs": 0,
-      "parentuid": "0000-af-00-0-0xabcd",
-      "vfprofile": "",
-      "vfindex": 2,
-      "eccon": false
+      "request_names": [
+        "request1"
+      ],
+      "pool_name": "node1",
+      "device_name": "0000-af-00-2-0xabcd",
+      "cdi_device_ids": [
+        "0000-af-00-2-0xabcd"
+      ]
     }
   ],
   "uid3": [
     {
-      "uid": "0000-af-00-3-0xabcd",
-      "model": "0xabcd",
-      "cardidx": 3,
-      "renderdidx": 0,
-      "memorymib": 22528,
-      "millicores": 500,
-      "devicetype": "vf",
-      "maxvfs": 0,
-      "parentuid": "0000-af-00-0-0xabcd",
-      "vfprofile": "",
-      "vfindex": 3,
-      "eccon": false
+      "request_names": [
+        "request1"
+      ],
+      "pool_name": "node1",
+      "device_name": "0000-af-00-3-0xabcd",
+      "cdi_device_ids": [
+        "0000-af-00-3-0xabcd"
+      ]
     }
   ]
 }

@@ -31,25 +31,41 @@ var (
 	ModelNames         = map[string]string{
 		"0x1000": "Gaudi",
 		"0x1010": "Gaudi",
+		"0x1001": "Gaudi",
+		"0x1011": "Gaudi",
 		"0x1020": "Gaudi2",
 		"0x1030": "Gaudi3",
+		"0x1060": "Gaudi3",
+		"0x1061": "Gaudi3",
+		"0x1062": "Gaudi3",
 	}
 )
 
 const (
-	DevAccelEnvVarName   = "DEV_ACCEL_PATH"
-	devfsDefaultAccelDir = "/dev/accel"
-	SysfsEnvVarName      = "SYSFS_ROOT"
-	sysfsDefaultRoot     = "/sys"
+	DevfsEnvVarName  = "DEVFS_ROOT"
+	devfsDefaultRoot = "/dev"
+	DevfsAccelPath   = "accel"
+
+	SysfsEnvVarName  = "SYSFS_ROOT"
+	sysfsDefaultRoot = "/sys"
+
 	// driver.sysfsDriverDir and driver.sysfsAccelDir are sysfsDriverPath and sysfsAccelPath
 	// respectively prefixed with $SYSFS_ROOT.
-	SysfsDriverPath        = "bus/pci/drivers/habanalabs"
-	SysfsAccelPath         = "devices/virtual/accel/"
-	CDIRoot                = "/etc/cdi"
-	CDIVendor              = "intel.com"
-	CDIKind                = CDIVendor + "/gaudi"
-	PCIAddressLength       = len("0000:00:00.0")
-	PreparedClaimsFileName = "preparedClaims.json"
+	SysfsDriverPath = "bus/pci/drivers/habanalabs"
+	SysfsAccelPath  = "devices/virtual/accel/"
+
+	CDIVendor        = "intel.com"
+	CDIClass         = "gaudi"
+	CDIKind          = CDIVendor + "/" + CDIClass
+	DriverName       = CDIClass + "." + CDIVendor
+	PCIAddressLength = len("0000:00:00.0")
+
+	PreparedClaimsFileName  = "preparedClaims.json"
+	PluginRegistrarFileName = DriverName + ".sock"
+	PluginSocketFileName    = "plugin.sock"
+
+	DefaultNamingStyle       = "machine"
+	VisibleDevicesEnvVarName = "HABANA_VISIBLE_DEVICES"
 )
 
 // DeviceInfo is an internal structure type to store info about discovered device.
@@ -59,7 +75,9 @@ type DeviceInfo struct {
 	UID        string `json:"uid"`
 	PCIAddress string `json:"pciaddress"` // PCI address in Linux DBDF notation for use with sysfs, e.g. 0000:00:00.0
 	Model      string `json:"model"`      // PCI device ID
+	ModelName  string `json:"modelname"`  // SKU name of the device, e.g. Gaudi2
 	DeviceIdx  uint64 `json:"deviceidx"`  // accel device number (e.g. 0 for /dev/accel/accel0)
+	ModuleIdx  uint64 `json:"moduleidx"`  // OAM slot number, needed for Habana Runtime to set networking
 }
 
 func (g DeviceInfo) CDIName() string {
@@ -71,11 +89,12 @@ func (g *DeviceInfo) DeepCopy() *DeviceInfo {
 	return &di
 }
 
-func (g *DeviceInfo) ModelName() string {
-	if model, found := ModelNames[g.Model]; found {
-		return model
+func (g *DeviceInfo) SetModelName() {
+	if modelName, found := ModelNames[g.Model]; found {
+		g.ModelName = modelName
+		return
 	}
-	return "Unknown"
+	g.ModelName = "Unknown"
 }
 
 func DeviceUIDFromPCIinfo(pciAddress string, pciid string) string {
@@ -107,16 +126,20 @@ func (g *DevicesInfo) DeepCopy() DevicesInfo {
 	return devicesInfoCopy
 }
 
-func GetDevfsAccelDir() string {
-	devfsAccelDir, found := os.LookupEnv(DevAccelEnvVarName)
+func GetDevfsRoot() string {
+	devfsRoot, found := os.LookupEnv(DevfsEnvVarName)
 
 	if found {
-		fmt.Printf("using custom devfs accel location: %v\n", devfsAccelDir)
-		return devfsAccelDir
+		if _, err := os.Stat(path.Join(devfsRoot, DevfsAccelPath)); err == nil {
+			fmt.Printf("using custom devfs location: %v\n", devfsRoot)
+			return devfsRoot
+		} else {
+			fmt.Printf("could not find devfs at '%v' from %v env var: %v\n", devfsRoot, DevfsEnvVarName, err)
+		}
 	}
 
-	fmt.Printf("using default devfs accel location: %v\n", devfsDefaultAccelDir)
-	return devfsDefaultAccelDir
+	fmt.Printf("using default devfs accel location: %v\n", devfsDefaultRoot)
+	return devfsDefaultRoot
 }
 
 // GetSysfsRoot tries to get path where sysfs is mounted from
@@ -128,6 +151,8 @@ func GetSysfsRoot() string {
 		if _, err := os.Stat(path.Join(sysfsPath, SysfsAccelPath)); err == nil {
 			fmt.Printf("using custom sysfs location: %v\n", sysfsPath)
 			return sysfsPath
+		} else {
+			fmt.Printf("could not find sysfs at '%v' from %v env var: %v\n", sysfsPath, SysfsEnvVarName, err)
 		}
 	}
 

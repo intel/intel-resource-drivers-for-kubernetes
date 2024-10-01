@@ -1,0 +1,14 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: intel-qat-resource-driver-configuration
+  namespace: intel-qat-resource-driver
+data:
+# Map of <QAT device PF PCI>: <configured services> in map indexed by hostname
+  qatdefaults.config: |
+    { "host-name-here":
+        {
+          "0000:aa:00.0": "asym;sym",
+          "0000:bb:00.0": "dc;sym"
+        }
+    }

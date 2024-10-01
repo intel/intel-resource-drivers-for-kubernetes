@@ -18,23 +18,40 @@ package cdihelpers
 
 import (
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"k8s.io/klog/v2"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	specs "tags.cncf.io/container-device-interface/specs-go"
+
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 )
+
+const (
+	containerDevdriPath = "/dev/dri"
+)
+
+func getGPUSpecs(cdiCache *cdiapi.Cache) []*cdiapi.Spec {
+	gaudiSpecs := []*cdiapi.Spec{}
+	for _, cdiSpec := range cdiCache.GetVendorSpecs(device.CDIVendor) {
+		if cdiSpec.Kind == device.CDIKind {
+			gaudiSpecs = append(gaudiSpecs, cdiSpec)
+		}
+	}
+	return gaudiSpecs
+}
 
 // SyncDetectedDevicesWithRegistry adds detected devices into cdi registry if they are not yet there.
 // Update existing registry devices with detected.
 // Remove absent registry devices.
 func SyncDetectedDevicesWithRegistry(cdiCache *cdiapi.Cache, detectedDevices device.DevicesInfo, doCleanup bool) error {
 
-	vendorSpecs := cdiCache.GetVendorSpecs(device.CDIVendor)
+	vendorSpecs := getGPUSpecs(cdiCache)
 	devicesToAdd := detectedDevices.DeepCopy()
 
 	if len(vendorSpecs) == 0 {
@@ -53,10 +70,6 @@ func SyncDetectedDevicesWithRegistry(cdiCache *cdiapi.Cache, detectedDevices dev
 	// - write spec
 	// add rest of detected devices to first vendor spec
 	for specidx, vendorSpec := range vendorSpecs {
-		if vendorSpec.Kind != device.CDIKind {
-			continue
-		}
-
 		klog.V(5).Infof("checking vendorspec %v", specidx)
 
 		specChanged := false // if devices were updated or deleted
@@ -197,15 +210,19 @@ func addNewDevicesToNewRegistry(cdiCache *cdiapi.Cache, devices device.DevicesIn
 }
 
 func AddDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
-	dridevpath := device.GetDevfsDriDir()
+	devdriPath := device.GetDevfsDriDir()
 
-	for _, device := range devices {
+	for name, device := range devices {
 		// primary / control node (for modesetting)
 		newDevice := specs.Device{
-			Name: device.UID,
+			Name: name,
 			ContainerEdits: specs.ContainerEdits{
 				DeviceNodes: []*specs.DeviceNode{
-					{Path: path.Join(dridevpath, fmt.Sprintf("card%d", device.CardIdx)), Type: "c"},
+					{
+						Path:     path.Join(containerDevdriPath, fmt.Sprintf("card%d", device.CardIdx)),
+						HostPath: path.Join(devdriPath, fmt.Sprintf("card%d", device.CardIdx)),
+						Type:     "c",
+					},
 				},
 			},
 		}
@@ -214,12 +231,40 @@ func AddDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
 			newDevice.ContainerEdits.DeviceNodes = append(
 				newDevice.ContainerEdits.DeviceNodes,
 				&specs.DeviceNode{
-					Path: path.Join(dridevpath, fmt.Sprintf("renderD%d", device.RenderdIdx)),
-					Type: "c",
+					Path:     path.Join(containerDevdriPath, fmt.Sprintf("renderD%d", device.RenderdIdx)),
+					HostPath: path.Join(devdriPath, fmt.Sprintf("renderD%d", device.RenderdIdx)),
+					Type:     "c",
 				},
 			)
 		}
-		// TODO: add /dev/dri/by-path entries
+
+		addBypathMounts(device, &newDevice, devdriPath)
+
 		spec.Devices = append(spec.Devices, newDevice)
+	}
+}
+
+// Add GPU specific by-path mounts to the spec.
+func addBypathMounts(info *device.DeviceInfo, spec *specs.Device, dridevPath string) {
+	containerBypathPath := filepath.Join(containerDevdriPath, "by-path")
+	bypathPath := filepath.Join(dridevPath, "by-path")
+
+	basename := filepath.Join(bypathPath, fmt.Sprintf("pci-%s-", info.PCIAddress))
+	containerBasename := filepath.Join(containerBypathPath, fmt.Sprintf("pci-%s-", info.PCIAddress))
+
+	gpuFiles := map[string]string{
+		basename + "card":   containerBasename + "card",
+		basename + "render": containerBasename + "render",
+	}
+
+	for gpuFile, containerFile := range gpuFiles {
+		if _, err := os.Stat(gpuFile); err == nil {
+			spec.ContainerEdits.Mounts = append(spec.ContainerEdits.Mounts, &specs.Mount{
+				HostPath:      gpuFile,
+				ContainerPath: containerFile,
+				Type:          "none",
+				Options:       []string{"bind", "rw"},
+			})
+		}
 	}
 }
