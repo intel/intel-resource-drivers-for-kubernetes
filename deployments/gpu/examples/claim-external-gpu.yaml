@@ -1,0 +1,12 @@
+apiVersion: resource.k8s.io/v1alpha3
+kind: ResourceClaim
+metadata:
+  name: one-flex
+spec:
+  devices:
+    requests:
+    - name: gpu
+      deviceClassName: gpu.intel.com
+      selectors:
+      - cel:
+          expression: device.attributes["gpu.intel.com"].family == 'Flex'

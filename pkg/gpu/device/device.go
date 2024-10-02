@@ -33,46 +33,111 @@ var (
 const (
 	DevDriEnvVarName = "DEV_DRI_PATH"
 	SysfsEnvVarName  = "SYSFS_ROOT"
+
 	// driver.sysfsI915Dir and driver.sysfsDRMDir are sysfsI915path and sysfsDRMpath
 	// respectively prefixed with $SYSFS_ROOT.
-	SysfsI915path          = "bus/pci/drivers/i915"
-	SysfsDRMpath           = "class/drm/"
-	CDIRoot                = "/etc/cdi"
-	CDIVendor              = "intel.com"
-	CDIKind                = CDIVendor + "/gpu"
-	PCIAddressLength       = len("0000:00:00.0")
-	PreparedClaimsFileName = "preparedClaims.json"
+	SysfsI915path    = "bus/pci/drivers/i915"
+	SysfsDRMpath     = "class/drm/"
+	sysfsDefaultRoot = "/sys"
+
+	CDIVendor  = "intel.com"
+	CDIClass   = "gpu"
+	CDIKind    = CDIVendor + "/" + CDIClass
+	DriverName = CDIClass + "." + CDIVendor
+
+	PCIAddressLength = len("0000:00:00.0")
+	UIDLength        = len("0000-00-00-0-0x0000")
+
+	PreparedClaimsFileName  = "preparedClaims.json"
+	PluginRegistrarFileName = DriverName + ".sock"
+	PluginSocketFileName    = "plugin.sock"
+
+	DefaultNamingStyle = "machine"
+	GpuDeviceType      = "gpu"
+	VfDeviceType       = "vf"
 )
 
-var SRIOVDeviceToModelMap = map[string]string{
-	"0x56c0": "flex170",
-	"0x56c1": "flex140",
-	"0x0b69": "max1550",
-	"0x0bd0": "max1550",
-	"0x0bd5": "max1550",
-	"0x0bd6": "max1450",
-	"0x0bd9": "max1100",
-	"0x0bda": "max1100",
-	"0x0bdb": "max1100",
+// VfAttributeFiles is a list of filenames that needs to be configured for a VF
+// profile to be applied.
+var VfAttributeFiles = []string{
+	"contexts_quota",
+	"doorbells_quota",
+	"exec_quantum_ms",
+	"ggtt_quota",
+	"lmem_quota",
+	"preempt_timeout_us",
+}
+
+var ModelDetails = map[string]map[string]string{
+	"0x56a0": {
+		"model":  "A770",
+		"family": "Arc",
+	},
+	"0x56a1": {
+		"model":  "A750",
+		"family": "Arc",
+	},
+	"0x56a2": {
+		"model":  "A580",
+		"family": "Arc",
+	},
+	"0x56c0": {
+		"model":  "Flex 170",
+		"family": "Data Center Flex",
+	},
+	"0x56c1": {
+		"model":  "Flex 140",
+		"family": "Data Center Flex",
+	},
+	"0x0b69": {
+		"model":  "Max 1550",
+		"family": "Data Center Max",
+	},
+	"0x0bd0": {
+		"model":  "Max 1550",
+		"family": "Data Center Max",
+	},
+	"0x0bd5": {
+		"model":  "Max 1550",
+		"family": "Data Center Max",
+	},
+	"0x0bd6": {
+		"model":  "Max 1450",
+		"family": "Data Center Max",
+	},
+	"0x0bd9": {
+		"model":  "Max 1100",
+		"family": "Data Center Max",
+	},
+	"0x0bda": {
+		"model":  "Max 1100",
+		"family": "Data Center Max",
+	},
+	"0x0bdb": {
+		"model":  "Max 1100",
+		"family": "Data Center Max",
+	},
 }
 
 // DeviceInfo is an internal structure type to store info about discovered device.
 type DeviceInfo struct {
 	// UID is a unique identifier on node, used in ResourceSlice K8s API object as RFC1123-compliant identifier.
 	// Consists of PCIAddress and Model with colons and dots replaced with hyphens, e.g. 0000-01-02-0-0x12345.
-	UID        string `json:"uid"`
-	PCIAddress string `json:"pciaddress"` // PCI address in Linux DBDF notation for use with sysfs, e.g. 0000:00:00.0
-	Model      string `json:"model"`      // PCI device ID
-	CardIdx    uint64 `json:"cardidx"`    // card device number (e.g. 0 for /dev/dri/card0)
-	RenderdIdx uint64 `json:"renderdidx"` // renderD device number (e.g. 128 for /dev/dri/renderD128)
-	MemoryMiB  uint64 `json:"memorymib"`  // in MiB
-	Millicores uint64 `json:"millicores"` // [0-1000] where 1000 means whole GPU.
-	DeviceType string `json:"devicetype"` // gpu, vf, any
-	MaxVFs     uint64 `json:"maxvfs"`     // if enabled, non-zero maximum amount of VFs
-	ParentUID  string `json:"parentuid"`  // uid of gpu device where VF is
-	VFProfile  string `json:"vfprofile"`  // name of the SR-IOV profile
-	VFIndex    uint64 `json:"vfindex"`    // 0-based PCI index of the VF on the GPU, DRM indexing starts with 1
-	EccOn      bool   `json:"eccon"`      // true of ECC is enabled, false otherwise
+	UID         string `json:"uid"`
+	PCIAddress  string `json:"pciaddress"`  // PCI address in Linux DBDF notation for use with sysfs, e.g. 0000:00:00.0
+	Model       string `json:"model"`       // PCI device ID
+	ModelName   string `json:"modelname"`   // SKU name, usually Series + Model, e.g. Flex 140
+	FamilyName  string `json:"familyname"`  // SKU family name, usually Series, e.g. Flex or Max
+	CardIdx     uint64 `json:"cardidx"`     // card device number (e.g. 0 for /dev/dri/card0)
+	RenderdIdx  uint64 `json:"renderdidx"`  // renderD device number (e.g. 128 for /dev/dri/renderD128)
+	MemoryMiB   uint64 `json:"memorymib"`   // in MiB
+	Millicores  uint64 `json:"millicores"`  // [0-1000] where 1000 means whole GPU.
+	DeviceType  string `json:"devicetype"`  // gpu, vf, any
+	MaxVFs      uint64 `json:"maxvfs"`      // if enabled, non-zero maximum amount of VFs
+	ParentUID   string `json:"parentuid"`   // uid of gpu device where VF is
+	VFProfile   string `json:"vfprofile"`   // name of the SR-IOV profile
+	VFIndex     uint64 `json:"vfindex"`     // 0-based PCI index of the VF on the GPU, DRM indexing starts with 1
+	Provisioned bool   `json:"provisioned"` // true if the SR-IOV VF is configured and enabled
 }
 
 func (g DeviceInfo) CDIName() string {
@@ -97,11 +162,16 @@ func (g *DeviceInfo) ParentPCIAddress() string {
 	return pciAddress
 }
 
-func (g *DeviceInfo) ModelName() string {
-	if modelName, found := SRIOVDeviceToModelMap[g.Model]; found {
-		return modelName
+func (g *DeviceInfo) SetModelInfo() {
+	if deviceDetails, found := ModelDetails[g.Model]; found {
+		g.ModelName = deviceDetails["model"]
+		g.FamilyName = deviceDetails["family"]
+
+		return
 	}
-	return "Unknown"
+
+	g.ModelName = "Unknown"
+	g.FamilyName = "Unknown"
 }
 
 // DevicesInfo is a dictionary with DeviceInfo.uid being the key.
@@ -147,7 +217,7 @@ func GetDevfsDriDir() string {
 
 // GetSysfsDir tries to get path where sysfs is mounted from
 // env var, or fallback to hardcoded path.
-func GetSysfsDir() string {
+func GetSysfsRoot() string {
 	sysfsPath, found := os.LookupEnv(SysfsEnvVarName)
 
 	if found {
@@ -157,7 +227,7 @@ func GetSysfsDir() string {
 		}
 	}
 
-	fmt.Println("using default sysfs location: /sys")
+	fmt.Printf("using default sysfs location: %v\n", sysfsDefaultRoot)
 	// If /sys is not available, devices discovery will fail gracefully.
-	return "/sys"
+	return sysfsDefaultRoot
 }

@@ -2,24 +2,23 @@
 
 CAUTION: This is an beta / non-production software, do not use on production clusters.
 
-## Resource driver components
+## About resource driver
 
-Intel Gaudi resource driver consists of the controller Pod, kubelet plugin DaemonSet and CustomResourceDefinitions.
-Controller makes allocation decisions and kubelet plugin ensures that the allocated devices are prepared and available
-for Pods.
+With structured parameters (K8s v1.31+), the DRA driver publishes ResourceSlice, scheduler allocates
+the resources and resource driver's kubelet-plugin ensures that the allocated devices are prepared
+and available for Pods.
 
 ## Supported Kubernetes Versions
 
 Supported Kubernetes versions are listed below:
 
-| Branch            | Kubernetes branch/version       | Status      |
-|:------------------|:--------------------------------|:------------|
-| v0.1.0            | Kubernetes 1.28+                | supported   |
-
-[Kubernetes cluster]: https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/
+| Branch            | Kubernetes branch/version       | Status      | DRA                            |
+|:------------------|:--------------------------------|:------------|:-------------------------------|
+| v0.1.0            | Kubernetes v1.27 ~ v1.30        | supported   | Classic, Structured Parameters |
+| v0.2.0            | Kubernetes v1.31+               | supported   | Structured Parameters          |
 
 ## Documentation
 
-- [How to setup a Kubernetes cluster with DRA enabled](../CLUSTER_SETUP.md)
+- [How to setup a Kubernetes cluster with DRA enabled](../../CLUSTER_SETUP.md)
 - [How to deploy and use Intel Gaudi resource driver](USAGE.md)
 - Optional: [How to build Intel Gaudi resource driver container image](BUILD.md)

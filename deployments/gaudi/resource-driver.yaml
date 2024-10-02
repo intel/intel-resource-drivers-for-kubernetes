@@ -18,32 +18,9 @@ spec:
       serviceAccount: intel-gaudi-resource-driver-service-account
       serviceAccountName: intel-gaudi-resource-driver-service-account
       initContainers:
-      - name: init
-        image: intel/intel-gaudi-resource-driver:v0.1.1
-        imagePullPolicy: IfNotPresent
-        command: ["/kubelet-gaudi-plugin", "--status", "NotReady"]
-        env:
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        securityContext:
-          privileged: false
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: [ "ALL" ]
-          readOnlyRootFilesystem: true
-          runAsNonRoot: true
-          runAsUser: 10001
-          seccompProfile:
-            type: RuntimeDefault
       containers:
       - name: kubelet-plugin
-        image: intel/intel-gaudi-resource-driver:v0.1.1
+        image: intel/intel-gaudi-resource-driver:v0.2.0
         imagePullPolicy: IfNotPresent
         command: ["/kubelet-gaudi-plugin"]
         env:
@@ -57,11 +34,10 @@ spec:
               fieldPath: metadata.namespace
         - name: SYSFS_ROOT
           value: "/sysfs"
-        # Use this to tell kubelet-plugin where the DRI devices nodes should be.
-        # This will be prefix for CDI devices, runtime will try to mount devices
-        # with this prefix into workloads.
-        #- name: DEV_DRI_PATH
-        #  value: "/fake/dri"
+        # Only use DEVFS_ROOT when using fake devfs with device-faker
+        #- name: DEVFS_ROOT
+        #  value: "/devfs"
+
         volumeMounts:
         - name: plugins-registry
           mountPath: /var/lib/kubelet/plugins_registry
@@ -73,6 +49,9 @@ spec:
           mountPath: /var/run/cdi
         - name: sysfs
           mountPath: "/sysfs"
+        # Only use DEVFS_ROOT when using fake devfs with device-faker
+        #- name: devfs
+        #  mountPath: "/devfs"
         securityContext:
           privileged: false
           allowPrivilegeEscalation: false
@@ -98,53 +77,10 @@ spec:
       - name: sysfs
         hostPath:
           path: /sys
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: intel-gaudi-resource-driver-controller
-  namespace: intel-gaudi-resource-driver
-  labels:
-    app: intel-gaudi-resource-driver-controller
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: intel-gaudi-resource-driver-controller
-  template:
-    metadata:
-      labels:
-        app: intel-gaudi-resource-driver-controller
-    spec:
-      serviceAccount: intel-gaudi-resource-driver-service-account
-      serviceAccountName: intel-gaudi-resource-driver-service-account
-      containers:
-      - name: controller
-        image: intel/intel-gaudi-resource-driver:v0.1.1
-        imagePullPolicy: IfNotPresent
-        command: ["/gaudi-controller"]
-        env:
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        securityContext:
-          privileged: false
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop: [ "ALL" ]
-          readOnlyRootFilesystem: true
-          runAsNonRoot: true
-          runAsUser: 10001
-          seccompProfile:
-            type: RuntimeDefault
-      tolerations:
-      - key: node-role.kubernetes.io/master
-        operator: Exists
-        effect: NoSchedule
-      - key: node-role.kubernetes.io/control-plane
-        operator: Exists
-        effect: NoSchedule
+      # Only use DEVFS_ROOT when using fake devfs with device-faker
+      #- name: devfs
+      #  hostPath:
+      #    path: /dev
 
 ---
 apiVersion: v1
@@ -161,14 +97,14 @@ metadata:
   namespace: intel-gaudi-resource-driver
 rules:
 - apiGroups: [""]
-  resources: ["pods", "nodes", "events"]
-  verbs: ["get", "list", "create", "watch", "patch"]
+  resources: ["nodes"]
+  verbs: ["get"]
 - apiGroups: ["resource.k8s.io"]
-  resources: ["resourceclaims", "resourceclasses", "podschedulings","resourceclaims/status", "podschedulings/status", "podschedulingcontexts", "podschedulingcontexts/status"]
-  verbs: ["get", "update", "list", "watch", "patch"]
-- apiGroups: ["gaudi.resource.intel.com"]
-  resources: ["*"]
-  verbs: ["*"]
+  resources: ["resourceslices"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["resource.k8s.io"]
+  resources: ["resourceclaims"]
+  verbs: ["get"]
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -184,3 +120,44 @@ roleRef:
   kind: ClusterRole
   name: intel-gaudi-resource-driver-role
   apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: resourceslices-policy-dra-kubelet-plugin
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   ["resource.k8s.io"]
+      apiVersions: ["v1alpha3"]
+      operations:  ["CREATE", "UPDATE", "DELETE"]
+      resources:   ["resourceslices"]
+  matchConditions:
+  - name: isRestrictedUser
+    expression: >-
+      request.userInfo.username == "system:serviceaccount:intel-gaudi-resource-driver:intel-gaudi-resource-driver-service-account"
+  variables:
+  - name: userNodeName
+    expression: >-
+      request.userInfo.extra[?'authentication.kubernetes.io/node-name'][0].orValue('')
+  - name: objectNodeName
+    expression: >-
+      (request.operation == "DELETE" ? oldObject : object).spec.?nodeName.orValue("")
+  validations:
+  - expression: variables.userNodeName != ""
+    message: >-
+      no node association found for user, this user must run in a pod on a node and ServiceAccountTokenPodNodeInfo must be enabled
+  - expression: variables.userNodeName == variables.objectNodeName
+    messageExpression: >-
+      "this user running on node '"+variables.userNodeName+"' may not modify " +
+      (variables.objectNodeName == "" ?"cluster resourceslices" : "resourceslices on node '"+variables.objectNodeName+"'")
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: resourceslices-policy-dra-kubelet-plugin
+spec:
+  policyName: resourceslices-policy-dra-kubelet-plugin
+  validationActions: [Deny]

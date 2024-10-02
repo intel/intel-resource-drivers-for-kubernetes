@@ -22,6 +22,14 @@ import (
 	"path"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sys/unix"
+)
+
+const (
+	devNullMajor = 1
+	devNullMinor = 3
+	devNullType  = unix.S_IFCHR
 )
 
 // newPCIAddress finds next available free PCI address in given directory.
@@ -60,6 +68,18 @@ func sanitizeFakeSysFsDir(sysfsRootUntrusted string) error {
 	sysfsRoot := path.Join(sysfsRootUntrusted)
 	if !strings.HasPrefix(sysfsRoot, "/tmp") {
 		return fmt.Errorf("fake sysfsroot can only be in /tmp, got: %v", sysfsRoot)
+	}
+
+	return nil
+}
+
+func createDevice(filepath string) error {
+	mode := uint32(0644 | devNullType)
+	devid := int(unix.Mkdev(uint32(devNullMajor), uint32(devNullMinor)))
+
+	if err := unix.Mknod(filepath, mode, devid); err != nil {
+		return fmt.Errorf("NULL device (%d:%d) node creation failed for '%s': %w",
+			devNullMajor, devNullMinor, filepath, err)
 	}
 
 	return nil

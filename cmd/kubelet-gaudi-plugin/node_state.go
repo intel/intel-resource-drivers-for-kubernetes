@@ -17,24 +17,27 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
+	"path"
 	"sync"
 	"time"
 
-	resourcev1 "k8s.io/api/resource/v1alpha2"
+	resourcev1 "k8s.io/api/resource/v1alpha3"
+	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
+	drav1 "k8s.io/kubelet/pkg/apis/dra/v1alpha4"
+	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
+	cdiparser "tags.cncf.io/container-device-interface/pkg/parser"
+	cdiSpecs "tags.cncf.io/container-device-interface/specs-go"
 
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/cdihelpers"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
-	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gaudi/v1alpha1/api"
-	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 )
 
-type ClaimPreparations map[string][]*device.DeviceInfo
+type ClaimPreparations map[string][]*drav1.Device
 
 type nodeState struct {
 	sync.Mutex
@@ -42,9 +45,10 @@ type nodeState struct {
 	allocatable            device.DevicesInfo
 	prepared               ClaimPreparations
 	preparedClaimsFilePath string
+	nodeName               string
 }
 
-func newNodeState(gas *intelcrd.GaudiAllocationState, detectedDevices map[string]*device.DeviceInfo, cdiRoot string, preparedClaimsFilePath string) (*nodeState, error) {
+func newNodeState(ctx context.Context, detectedDevices map[string]*device.DeviceInfo, cdiRoot string, preparedClaimsFilePath string, nodeName string) (*nodeState, error) {
 	for ddev := range detectedDevices {
 		klog.V(3).Infof("new device: %+v", ddev)
 	}
@@ -68,26 +72,31 @@ func newNodeState(gas *intelcrd.GaudiAllocationState, detectedDevices map[string
 		klog.V(5).Infof("CDI device: %v : %+v", duid, ddev)
 	}
 
-	klog.V(5).Info("Creating NodeState")
-	// TODO: allocatable should include cdi-described
-	state := &nodeState{
-		cdiCache:               cdiCache,
-		allocatable:            detectedDevices,
-		prepared:               make(ClaimPreparations),
-		preparedClaimsFilePath: preparedClaimsFilePath,
-	}
-
+	// TODO: should be only create prepared claims, discard old preparations. Do we even need the snapshot?
 	preparedClaims, err := getOrCreatePreparedClaims(preparedClaimsFilePath)
 	if err != nil {
 		klog.Errorf("Error getting prepared claims: %v", err)
 		return nil, fmt.Errorf("failed to get prepared claims: %v", err)
 	}
 
-	klog.V(5).Info("Syncing allocatable devices")
-	err = state.syncPreparedDevicesFromFile(preparedClaims)
-	if err != nil {
-		return nil, fmt.Errorf("unable to sync allocated devices from GaudiAllocationState: %v", err)
+	klog.V(5).Info("Creating NodeState")
+	// TODO: allocatable should include cdi-described
+	state := &nodeState{
+		cdiCache:               cdiCache,
+		allocatable:            detectedDevices,
+		prepared:               preparedClaims,
+		preparedClaimsFilePath: preparedClaimsFilePath,
+		nodeName:               nodeName,
 	}
+
+	/*
+		klog.V(5).Info("Syncing allocatable devices")
+		err = state.syncPreparedDevicesFromFile(clientset, preparedClaims)
+		if err != nil {
+			return nil, fmt.Errorf("unable to sync allocated devices from GaudiAllocationState: %v", err)
+		}
+	*/
+
 	klog.V(5).Infof("Synced state with CDI and GaudiAllocationState: %+v", state)
 	for duid, ddev := range state.allocatable {
 		klog.V(5).Infof("Allocatable device: %v : %+v", duid, ddev)
@@ -113,71 +122,66 @@ func (s *nodeState) FreeClaimDevices(claimUID string) error {
 		return fmt.Errorf("failed to write prepared claims to file: %v", err)
 	}
 
+	return cdihelpers.DeleteDeviceAndWrite(s.cdiCache, claimUID)
+}
+
+func (s *nodeState) GetResources() kubeletplugin.Resources {
+	devices := []resourcev1.Device{}
+
+	for gaudiUID, gaudi := range s.allocatable {
+		newDevice := resourcev1.Device{
+			Name: gaudiUID,
+			Basic: &resourcev1.BasicDevice{
+				Attributes: map[resourcev1.QualifiedName]resourcev1.DeviceAttribute{
+					"model": {
+						StringValue: &gaudi.ModelName,
+					},
+				},
+			},
+		}
+
+		devices = append(devices, newDevice)
+	}
+
+	return kubeletplugin.Resources{Devices: devices}
+}
+
+// cdiHabanaEnvVar ensures there is a CDI device with name == claimUID, that has
+// only env vars for Habana Runtime, without device nodes.
+func (s *nodeState) cdiHabanaEnvVar(claimUID string, visibleDevices string) error {
+	cdidev := s.cdiCache.GetDevice(claimUID)
+	if cdidev != nil { // overwrite the contents
+		cdidev.Device.ContainerEdits = cdiSpecs.ContainerEdits{
+			Env: []string{visibleDevices},
+		}
+
+		// Save into the same spec where the device was found.
+		deviceSpec := cdidev.GetSpec()
+		specName := path.Base(deviceSpec.GetPath())
+		if err := s.cdiCache.WriteSpec(deviceSpec.Spec, specName); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	// Create new CDI device and save into first vendor spec.
+	newDevice := cdiSpecs.Device{
+		Name: claimUID,
+		ContainerEdits: cdiSpecs.ContainerEdits{
+			Env: []string{visibleDevices},
+		},
+	}
+
+	if err := cdihelpers.AddDeviceToAnySpec(s.cdiCache, device.CDIVendor, newDevice); err != nil {
+		return fmt.Errorf("could not add CDI device into CDI registry: %v", err)
+	}
+
 	return nil
 }
 
-func (s *nodeState) GetUpdatedSpec(inspec *intelcrd.GaudiAllocationStateSpec) *intelcrd.GaudiAllocationStateSpec {
-	s.Lock()
-	defer s.Unlock()
-
-	outspec := inspec.DeepCopy()
-	s.syncAllocatableDevicesToGASSpec(outspec)
-	return outspec
-}
-
-func (s *nodeState) GetAllocatedCDINames(claimUID string) []string {
-	devs := []string{}
-	klog.V(5).Info("getAllocatedCDINames is called")
-
-	for _, device := range s.prepared[claimUID] {
-		cdidev := s.cdiCache.GetDevice(device.CDIName())
-		if cdidev == nil {
-			klog.Errorf("CDI Device %v from claim %v not found in CDI DB", device.CDIName(), claimUID)
-			return []string{}
-		}
-		klog.V(5).Infof("Found CDI device %v", cdidev.GetQualifiedName())
-		devs = append(devs, cdidev.GetQualifiedName())
-	}
-	return devs
-}
-
-func (s *nodeState) getMonitorCDINames(claimUID string) []string {
-	klog.V(5).Info("getMonitorCDINames is called")
-
-	klog.V(5).Info("Refreshing CDI registry")
-	err := s.cdiCache.Refresh()
-	if err != nil {
-		klog.Errorf("Unable to refresh the CDI registry: %v", err)
-		return []string{}
-	}
-
-	devs := []string{}
-	for _, device := range s.allocatable {
-		cdidev := s.cdiCache.GetDevice(device.CDIName())
-		if cdidev == nil {
-			klog.Errorf("CDI Device %v for monitor claim %v not found in CDI DB", device.CDIName(), claimUID)
-			return []string{}
-		}
-		klog.V(5).Infof("Found CDI device %v", cdidev.GetQualifiedName())
-		devs = append(devs, cdidev.GetQualifiedName())
-	}
-	return devs
-}
-
-func (s *nodeState) syncAllocatableDevicesToGASSpec(spec *intelcrd.GaudiAllocationStateSpec) {
-	devices := make(map[string]intelcrd.AllocatableDevice)
-	for _, device := range s.allocatable {
-		devices[device.UID] = intelcrd.AllocatableDevice{
-			Model: device.Model,
-			UID:   device.UID,
-		}
-	}
-
-	spec.AllocatableDevices = devices
-}
-
-// On startup read what was previously prepared where we left off.
-func (s *nodeState) syncPreparedDevicesFromFile(preparedClaims map[string][]*device.DeviceInfo) error {
+/*
+func (s *nodeState) syncPreparedDevicesFromFile(preparedClaims ClaimPreparations) error {
 	klog.V(5).Infof("Syncing %d Prepared allocations from GaudiAllocationState to internal state", len(preparedClaims))
 
 	if s.prepared == nil {
@@ -207,16 +211,62 @@ func (s *nodeState) syncPreparedDevicesFromFile(preparedClaims map[string][]*dev
 
 	return nil
 }
+*/
 
-func (s *nodeState) makePreparedClaimAllocation(claimUID string, claimDevices []*device.DeviceInfo) error {
-	s.prepared[claimUID] = claimDevices
+func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim) error {
+	if claim.Status.Allocation == nil {
+		return fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
+	}
+
+	allocatedDevices := []*drav1.Device{}
+	visibleDevices := device.VisibleDevicesEnvVarName + "="
+	devs := 0
+
+	for _, allocatedDevice := range claim.Status.Allocation.Devices.Results {
+		// ATM the only pool is cluster node's pool: all devices on current node.
+		if allocatedDevice.Driver != device.DriverName || allocatedDevice.Pool != s.nodeName {
+			klog.FromContext(ctx).Info("ignoring claim allocation device", allocatedDevice)
+			continue
+		}
+
+		allocatableDevice, found := s.allocatable[allocatedDevice.Device]
+		if !found {
+			return fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
+		}
+
+		newDevice := drav1.Device{
+			RequestNames: []string{allocatedDevice.Request},
+			PoolName:     allocatedDevice.Pool,
+			DeviceName:   allocatedDevice.Device,
+			CDIDeviceIDs: []string{allocatableDevice.CDIName()},
+		}
+		allocatedDevices = append(allocatedDevices, &newDevice)
+
+		devs++
+		if devs > 1 {
+			visibleDevices += ","
+		}
+		visibleDevices += fmt.Sprintf("%v", allocatableDevice.DeviceIdx)
+	}
+
+	if devs > 0 {
+		if err := s.cdiHabanaEnvVar(string(claim.UID), visibleDevices); err != nil {
+			return fmt.Errorf("failed ensuring Habana Runtime specific CDI device: %v", err)
+		}
+
+		cdiName := cdiparser.QualifiedName(device.CDIVendor, device.CDIClass, string(claim.UID))
+		allocatedDevices[0].CDIDeviceIDs = append(allocatedDevices[0].CDIDeviceIDs, cdiName)
+	}
+
+	s.prepared[string(claim.UID)] = allocatedDevices
+
 	err := writePreparedClaimsToFile(s.preparedClaimsFilePath, s.prepared)
 	if err != nil {
 		klog.Errorf("Error writing prepared claims to file: %v", err)
 		return fmt.Errorf("failed to write prepared claims to file: %v", err)
 	}
 
-	klog.V(5).Infof("Created prepared claim %v allocation", claimUID)
+	klog.V(5).Infof("Created prepared claim %v allocation", claim.UID)
 	return nil
 }
 
@@ -271,35 +321,4 @@ func writePreparedClaimsToFile(preparedClaimsFilePath string, preparedClaims Cla
 		return fmt.Errorf("failed encoding json. Err: %v", err)
 	}
 	return os.WriteFile(preparedClaimsFilePath, encodedPreparedClaims, 0600)
-}
-
-func (s *nodeState) getResourceModel() resourcev1.ResourceModel {
-	var devices []resourcev1.NamedResourcesInstance
-
-	for _, device := range s.allocatable {
-		instance := resourcev1.NamedResourcesInstance{
-			Name: strings.ToLower(device.UID),
-			Attributes: []resourcev1.NamedResourcesAttribute{
-				{
-					Name: "uid",
-					NamedResourcesAttributeValue: resourcev1.NamedResourcesAttributeValue{
-						StringValue: &device.UID,
-					},
-				},
-				{
-					Name: "model",
-					NamedResourcesAttributeValue: resourcev1.NamedResourcesAttributeValue{
-						StringValue: ptr.To(device.ModelName()),
-					},
-				},
-			},
-		}
-		devices = append(devices, instance)
-	}
-
-	model := resourcev1.ResourceModel{
-		NamedResources: &resourcev1.NamedResourcesResources{Instances: devices},
-	}
-
-	return model
 }

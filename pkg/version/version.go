@@ -30,11 +30,10 @@ var (
 )
 
 // GetVersion returns the version information of the driver.
-func PrintDriverVersion(apiGroupName string, apiGroupVersion string) {
+func PrintDriverVersion(apiGroupName string) {
 	klog.Infof(`
 Driver Name:        %v,
 Driver Version:     %v,
-Driver API Version: %v,
 Git Commit:         %v,
 Build Date:         %v,
 Go Version:         %v,
@@ -42,7 +41,6 @@ Compiler:           %v,
 Platform:           %v/%v`,
 		apiGroupName,
 		driverVersion,
-		apiGroupVersion,
 		gitCommit,
 		buildDate,
 		runtime.Version(),

@@ -25,8 +25,6 @@ import (
 	"strings"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
-	sriovProfiles "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/sriov"
-	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
 
 	"k8s.io/klog/v2"
 )
@@ -36,7 +34,7 @@ const (
 )
 
 // Detect devices from sysfs. Only i915 KMD is supported at the moment.
-func DiscoverDevices(sysfsDir string) map[string]*device.DeviceInfo {
+func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo {
 
 	sysfsI915Dir := path.Join(sysfsDir, device.SysfsI915path)
 	sysfsDRMDir := path.Join(sysfsDir, device.SysfsDRMpath)
@@ -60,7 +58,7 @@ func DiscoverDevices(sysfsDir string) map[string]*device.DeviceInfo {
 		if !device.PciRegexp.MatchString(devicePCIAddress) {
 			continue
 		}
-		klog.V(5).Infof("Found GPU PCI device: " + devicePCIAddress)
+		klog.V(5).Infof("Found GPU PCI device: %s", devicePCIAddress)
 
 		deviceI915Dir := path.Join(sysfsI915Dir, devicePCIAddress)
 		deviceIdFile := path.Join(deviceI915Dir, "device")
@@ -78,10 +76,11 @@ func DiscoverDevices(sysfsDir string) map[string]*device.DeviceInfo {
 			Model:      deviceId,
 			MemoryMiB:  0,
 			Millicores: initialMillicores,
-			DeviceType: intelcrd.GpuDeviceType, // presume GPU, detect the physfn / parent lower
+			DeviceType: device.GpuDeviceType, // presume GPU, detect the physfn / parent lower
 			CardIdx:    0,
 			RenderdIdx: 0,
 		}
+		newDeviceInfo.SetModelInfo()
 
 		cardIdx, renderdIdx, err := DeduceCardAndRenderdIndexes(deviceI915Dir)
 		if err != nil {
@@ -95,42 +94,18 @@ func DiscoverDevices(sysfsDir string) map[string]*device.DeviceInfo {
 		newDeviceInfo.MemoryMiB = getLocalMemoryAmountMiB(drmGpuDir)
 
 		detectSRIOV(newDeviceInfo, sysfsI915Dir, devicePCIAddress, deviceId)
-		// only GPU needs ECC information to provision VFs
-		if newDeviceInfo.DeviceType == intelcrd.GpuDeviceType {
-			newDeviceInfo.EccOn = detectEcc(deviceId, newDeviceInfo.MemoryMiB)
-		}
-		devices[newDeviceInfo.UID] = newDeviceInfo
-
+		devices[determineDeviceName(newDeviceInfo, namingStyle)] = newDeviceInfo
 	}
+
 	return devices
 }
 
-func detectEcc(deviceId string, detectedMemoryInMiB uint64) bool {
-	vfMemMax, err := sriovProfiles.GetMaximumVFMemorySizeMiB(deviceId, false)
-	if err != nil {
-		klog.V(5).Infof("could not get maximum VF memory: %v", err)
-		return false
+func determineDeviceName(info *device.DeviceInfo, namingStyle string) string {
+	if namingStyle == "classic" {
+		return "card" + strconv.FormatUint(info.CardIdx, 10)
 	}
 
-	// First profile should always be 1 VF with almost all available memory.
-	// Usually VF lmem_quota is just a little less than the detected amount
-	// of device total local memory, the difference is due to PF memory
-	// reservation. In case if ECC is enabled, the detected memory will be
-	// lower than non-ecc 1-VF profile's memory quota.
-	if vfMemMax > detectedMemoryInMiB {
-		klog.V(5).Infof("ECC is enabled, based on the total available local memory (%v / %v)", detectedMemoryInMiB, vfMemMax)
-		return true
-	}
-
-	if model, found := device.SRIOVDeviceToModelMap[deviceId]; found {
-		if model[:3] == "max" {
-			klog.V(5).Info("ECC is enabled, based on this being GPU Max Series device")
-			return true
-		}
-	}
-
-	klog.V(5).Info("ECC is disabled")
-	return false
+	return info.UID
 }
 
 // Detects if the GPU is a VF or PF. For PF check if SR-IOV is enabled, and the maximum
@@ -160,26 +135,11 @@ func detectSRIOV(newDeviceInfo *device.DeviceInfo, sysfsI915Dir string, devicePC
 		}
 
 		parentUID := device.DeviceUIDFromPCIinfo(parentPCIAddress, deviceID)
-		parentI915Dir := path.Join(sysfsI915Dir, parentPCIAddress)
-		parentCardIdx, _, err := DeduceCardAndRenderdIndexes(parentI915Dir)
-		if err != nil {
-			klog.Errorf("Ignoring device %v. Error: %v", devicePCIAddress, err)
-
-			return
-		}
-
-		millicores, err := sriovProfiles.DeduceVFMillicores(parentI915Dir, parentCardIdx, newDeviceInfo.VFIndex, newDeviceInfo.MemoryMiB, deviceID)
-		if err != nil {
-			klog.Errorf("Ignoring device %v. Error: %v", devicePCIAddress, err)
-			return
-		}
-
-		klog.V(5).Infof("VF%v of device %v has %v millicores", newDeviceInfo.VFIndex, parentI915Dir, millicores)
 
 		newDeviceInfo.VFIndex = vfIdx
-		newDeviceInfo.Millicores = millicores
+		newDeviceInfo.Millicores = initialMillicores
 		newDeviceInfo.ParentUID = parentUID
-		newDeviceInfo.DeviceType = intelcrd.VfDeviceType
+		newDeviceInfo.DeviceType = device.VfDeviceType
 		klog.V(5).Infof("physfn OK, device %v is a VF from %v", newDeviceInfo.UID, newDeviceInfo.ParentUID)
 
 		return

@@ -23,7 +23,6 @@ if [ -z "$LOCAL_LICENSES" ]; then \
     make licenses; \
 fi && \
 cp -r licenses /install_root/ && \
-cp bin/gaudi-controller /install_root/ && \
 cp bin/kubelet-gaudi-plugin /install_root/
 
 

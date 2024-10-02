@@ -1,0 +1,42 @@
+apiVersion: resource.k8s.io/v1alpha3
+kind: ResourceClaimTemplate
+metadata:
+  name: claim1
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        deviceClassName: gpu.intel.com
+##
+## if one is not enough
+#      count: 2
+##
+## requesting particular series
+#      selectors:
+#      - cel:
+#          expression: device.attributes["gpu.intel.com"].family == 'Flex'
+##
+## for monitoring
+#      adminAccess: true
+#      allocationMode: "All"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-inline-claim
+spec:
+  restartPolicy: Never
+  containers:
+  - name: with-resource
+    image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+    command: ["sh", "-c", "ls -la /dev/dri/ && sleep 60"]
+    resources:
+      claims:
+      - name: resource
+  - name: without-resource
+    image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+    command: ["sh", "-c", "ls -la /dev/ && sleep 60"]
+  resourceClaims:
+  - name: resource
+    resourceClaimTemplateName: claim1

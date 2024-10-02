@@ -27,28 +27,13 @@ import (
 	"k8s.io/klog/v2"
 )
 
-/*
-docker run --rm --runtime=habana -e HABANA_VISIBLE_DEVICES=all {docker image} /bin/bash -c "ls /dev/ac*"
-accel0
-accel1
-accel2
-accel3
-accel4
-accel5
-accel6
-accel7
-accel_controlD0
-accel_controlD1
-accel_controlD2
-accel_controlD3
-accel_controlD4
-accel_controlD5
-accel_controlD6
-accel_controlD7
-*/
+type gaudiIndexesType struct {
+	accelIdx  uint64 // /dev/accel/accelX
+	moduleIdx uint64 // OAM slot number for networking logic
+}
 
 // Detect devices from sysfs.
-func DiscoverDevices(sysfsDir string) map[string]*device.DeviceInfo {
+func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo {
 
 	sysfsDriverDir := path.Join(sysfsDir, device.SysfsDriverPath)
 	sysfsAccelDir := path.Join(sysfsDir, device.SysfsAccelPath)
@@ -65,7 +50,7 @@ func DiscoverDevices(sysfsDir string) map[string]*device.DeviceInfo {
 		return devices
 	}
 
-	accelIndexes := getAccelIndexes(sysfsAccelDir)
+	deviceIndexes := getAccelIndexes(sysfsAccelDir)
 
 	for _, pciAddress := range driverDirFiles {
 		devicePCIAddress := pciAddress.Name()
@@ -73,7 +58,7 @@ func DiscoverDevices(sysfsDir string) map[string]*device.DeviceInfo {
 		if !device.PciRegexp.MatchString(devicePCIAddress) {
 			continue
 		}
-		klog.V(5).Infof("Found Gaudi PCI device: " + devicePCIAddress)
+		klog.V(5).Infof("Found Gaudi PCI device: %s", devicePCIAddress)
 
 		deviceIdFile := path.Join(sysfsDriverDir, devicePCIAddress, "device")
 		deviceIdBytes, err := os.ReadFile(deviceIdFile)
@@ -90,22 +75,32 @@ func DiscoverDevices(sysfsDir string) map[string]*device.DeviceInfo {
 			Model:      deviceId,
 			DeviceIdx:  0,
 		}
+		newDeviceInfo.SetModelName()
 
-		deviceIdx, found := accelIndexes[devicePCIAddress]
+		deviceIdx, found := deviceIndexes[devicePCIAddress]
 		if !found {
 			klog.V(5).Infof("Could not find device %v Accel index", devicePCIAddress)
 			continue
 		}
 
-		newDeviceInfo.DeviceIdx = deviceIdx
-		devices[newDeviceInfo.UID] = newDeviceInfo
-
+		newDeviceInfo.DeviceIdx = deviceIdx.accelIdx
+		newDeviceInfo.ModuleIdx = deviceIdx.moduleIdx
+		devices[determineDeviceName(newDeviceInfo, namingStyle)] = newDeviceInfo
 	}
+
 	return devices
 }
 
-func getAccelIndexes(sysfsAccelDir string) map[string]uint64 {
-	devices := map[string]uint64{}
+func determineDeviceName(info *device.DeviceInfo, namingStyle string) string {
+	if namingStyle == "classic" {
+		return "accel" + strconv.FormatUint(info.DeviceIdx, 10)
+	}
+
+	return info.UID
+}
+
+func getAccelIndexes(sysfsAccelDir string) map[string]gaudiIndexesType {
+	devices := map[string]gaudiIndexesType{}
 	accelDirFiles, err := os.ReadDir(sysfsAccelDir)
 	if err != nil {
 		if err == os.ErrNotExist {
@@ -119,23 +114,40 @@ func getAccelIndexes(sysfsAccelDir string) map[string]uint64 {
 	for _, accelFile := range accelDirFiles {
 		accelFileName := accelFile.Name()
 		if device.AccelRegexp.MatchString(accelFileName) {
+			indexes := gaudiIndexesType{}
+
 			// accelX
 			deviceIdx, err := strconv.ParseUint(accelFileName[5:], 10, 64)
 			if err != nil {
 				klog.V(5).Infof("failed to parse index of Accel device '%v', skipping", accelFileName)
 				continue
 			}
+			indexes.accelIdx = deviceIdx
+
+			// Module index is an OAM slot number.
+			moduleIdFile := path.Join(sysfsAccelDir, accelFileName, "device/module_id")
+			moduleIdBytes, err := os.ReadFile(moduleIdFile)
+			if err != nil {
+				klog.Errorf("failed reading device module_id file (%s): %+v", moduleIdFile, err)
+				continue
+			}
+
+			moduleIdx, err := strconv.ParseUint(strings.TrimSpace(string(moduleIdBytes)), 10, 64)
+			if err != nil {
+				klog.V(5).Infof("failed to parse module index of Accel device '%v', skipping", accelFileName)
+				continue
+			}
+			indexes.moduleIdx = moduleIdx
 
 			// read PCI address
 			pciAddrFilePath := path.Join(sysfsAccelDir, accelFileName, "device/pci_addr")
 			pciAddrBytes, err := os.ReadFile(pciAddrFilePath)
 			if err != nil {
-				klog.Errorf("Failed reading device PCI address file (%s): %+v", pciAddrFilePath, err)
+				klog.Errorf("failed reading device PCI address file (%s): %+v", pciAddrFilePath, err)
 				continue
 			}
 			pciAddr := strings.TrimSpace(string(pciAddrBytes))
-
-			devices[pciAddr] = deviceIdx
+			devices[pciAddr] = indexes
 		}
 	}
 

@@ -19,13 +19,17 @@ package cdihelpers
 import (
 	"fmt"
 	"path"
-	"strconv"
-	"strings"
 
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
 	"k8s.io/klog/v2"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
-	specs "tags.cncf.io/container-device-interface/specs-go"
+	cdiparser "tags.cncf.io/container-device-interface/pkg/parser"
+	cdiSpecs "tags.cncf.io/container-device-interface/specs-go"
+
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
+)
+
+const (
+	containerDevfsRoot = "/dev"
 )
 
 func getGaudiSpecs(cdiCache *cdiapi.Cache) []*cdiapi.Spec {
@@ -87,8 +91,7 @@ func updateDevicesInSpecsAndWrite(cdCache *cdiapi.Cache, devicesToAdd device.Dev
 
 		klog.V(5).Infof("checking vendorspec %v", specIdx)
 
-		specChanged := false // if devices were updated or deleted
-		filteredDevices := []specs.Device{}
+		filteredDevices := []cdiSpecs.Device{}
 
 		for specDeviceIdx, specDevice := range vendorSpec.Devices {
 			klog.V(5).Infof("checking device %v: %v", specDeviceIdx, specDevice)
@@ -96,10 +99,8 @@ func updateDevicesInSpecsAndWrite(cdCache *cdiapi.Cache, devicesToAdd device.Dev
 			// if matched detected - check and update device nodes, if needed - add to filtered Devices
 			if detectedDevice, found := devices[specDevice.Name]; found {
 
-				if updateDeviceNodes(specDevice, detectedDevice) {
-					specChanged = true
-				}
-
+				// always update the device nodes
+				specDevice.ContainerEdits.DeviceNodes = newContainerEditsDeviceNodes(detectedDevice.DeviceIdx)
 				filteredDevices = append(filteredDevices, specDevice)
 				// Regardless if we needed to update the existing device or not,
 				// it is in CDI registry so no need to add it again later.
@@ -107,26 +108,35 @@ func updateDevicesInSpecsAndWrite(cdCache *cdiapi.Cache, devicesToAdd device.Dev
 			} else {
 				// skip CDI devices that were not detected
 				klog.V(5).Infof("Removing device %v from CDI registry", specDevice.Name)
-				specChanged = true
 			}
 		}
 
-		// update spec if it was changed
-		if specChanged {
-			vendorSpec.Spec.Devices = filteredDevices
-			specName := path.Base(vendorSpec.GetPath())
-			klog.V(5).Infof("Updating spec %v", specName)
-			if err := writeSpec(cdCache, vendorSpec.Spec, specName); err != nil {
-				return nil, fmt.Errorf("failed to save CDI spec %v: %v", specName, err)
-			}
+		vendorSpec.Spec.Devices = filteredDevices
+		specName := path.Base(vendorSpec.GetPath())
+		klog.V(5).Infof("Updating spec %v", specName)
+		if err := writeSpec(cdCache, vendorSpec.Spec, specName); err != nil {
+			return nil, fmt.Errorf("failed to save CDI spec %v: %v", specName, err)
 		}
 	}
 
 	return devices, nil
 }
 
+func AddDeviceToAnySpec(cdiCache *cdiapi.Cache, vendor string, newDevice cdiSpecs.Device) error {
+	vendorSpecs := cdiCache.GetVendorSpecs(vendor)
+	if len(vendorSpecs) == 0 {
+		return fmt.Errorf("no %v specs found", vendor)
+	}
+
+	cdiSpec := vendorSpecs[0]
+	cdiSpec.Spec.Devices = append(cdiSpec.Spec.Devices, newDevice)
+	specName := path.Base(cdiSpec.GetPath())
+
+	return writeSpec(cdiCache, cdiSpec.Spec, specName)
+}
+
 // writeSpec sets latest cdiVersion for spec and writes it.
-func writeSpec(cdiCache *cdiapi.Cache, spec *specs.Spec, specName string) error {
+func writeSpec(cdiCache *cdiapi.Cache, spec *cdiSpecs.Spec, specName string) error {
 	cdiVersion, err := cdiapi.MinimumRequiredVersion(spec)
 	if err != nil {
 		return fmt.Errorf("failed to get minimum required CDI spec version: %v", err)
@@ -142,12 +152,12 @@ func writeSpec(cdiCache *cdiapi.Cache, spec *specs.Spec, specName string) error 
 	return nil
 }
 
-func addDevicesToSpecAndWrite(cdiCache *cdiapi.Cache, devices device.DevicesInfo, spec *specs.Spec, specName string) error {
-	for _, device := range devices {
+func addDevicesToSpecAndWrite(cdiCache *cdiapi.Cache, devices device.DevicesInfo, spec *cdiSpecs.Spec, specName string) error {
+	for name, device := range devices {
 		// primary / control node (for modesetting)
-		newDevice := specs.Device{
-			Name: device.UID,
-			ContainerEdits: specs.ContainerEdits{
+		newDevice := cdiSpecs.Device{
+			Name: name,
+			ContainerEdits: cdiSpecs.ContainerEdits{
 				DeviceNodes: newContainerEditsDeviceNodes(device.DeviceIdx),
 			},
 		}
@@ -162,43 +172,27 @@ func addDevicesToSpecAndWrite(cdiCache *cdiapi.Cache, devices device.DevicesInfo
 	return nil
 }
 
-func updateDeviceNodes(specDevice specs.Device, detectedDevice *device.DeviceInfo) bool {
-	replaceDeviceNodes := false
-
-	for deviceNodeIdx, deviceNode := range specDevice.ContainerEdits.DeviceNodes {
-		accelFileName := path.Base(deviceNode.Path) // e.g. accel1 or accel_controlD1
-		var separator string
-		switch {
-		case device.AccelRegexp.MatchString(accelFileName):
-			separator = "accel"
-		case device.AccelControlRegexp.MatchString(accelFileName):
-			separator = "accel_controlD"
-		default:
-			klog.Warningf("unexpected device node %v in CDI device %v", deviceNode.Path, specDevice.Name)
-
-			continue
-		}
-
-		klog.V(5).Infof("CDI device node %v is an accel device: %v", deviceNodeIdx, accelFileName)
-		deviceIdx, err := strconv.ParseUint(strings.Split(accelFileName, separator)[1], 10, 64)
-		if err != nil {
-			klog.Errorf("failed to parse index of Accel device '%v', skipping", accelFileName)
-
-			continue
-		}
-
-		if deviceIdx != detectedDevice.DeviceIdx {
-			replaceDeviceNodes = true
-
-			break
-		}
+func DeleteDeviceAndWrite(cdiCache *cdiapi.Cache, claimUID string) error {
+	qualifiedName := cdiparser.QualifiedName(device.CDIVendor, device.CDIClass, claimUID)
+	cdidev := cdiCache.GetDevice(qualifiedName)
+	if cdidev == nil {
+		return nil
 	}
 
-	if replaceDeviceNodes {
-		specDevice.ContainerEdits.DeviceNodes = newContainerEditsDeviceNodes(detectedDevice.DeviceIdx)
-	}
+	filteredDevices := make([]cdiSpecs.Device, len(cdidev.GetSpec().Devices)-1)
+	filterIdx := 0
+	cdiSpec := cdidev.GetSpec()
 
-	return replaceDeviceNodes
+	for _, device := range cdiSpec.Devices {
+		if device.Name != claimUID {
+			filteredDevices[filterIdx] = device
+			filterIdx++
+		}
+	}
+	cdiSpec.Devices = filteredDevices
+	specName := path.Base(cdiSpec.GetPath())
+
+	return writeSpec(cdiCache, cdiSpec.Spec, specName)
 }
 
 // addDevicesToNewSpec creates new CDI spec, adds devices to it and calls writeSpec.
@@ -206,7 +200,7 @@ func updateDeviceNodes(specDevice specs.Device, detectedDevice *device.DeviceInf
 func addDevicesToNewSpec(cdiCache *cdiapi.Cache, devices device.DevicesInfo) error {
 	klog.V(5).Infof("Adding %v devices to new spec", len(devices))
 
-	spec := &specs.Spec{
+	spec := &cdiSpecs.Spec{
 		Kind: device.CDIKind,
 	}
 
@@ -219,10 +213,17 @@ func addDevicesToNewSpec(cdiCache *cdiapi.Cache, devices device.DevicesInfo) err
 	return addDevicesToSpecAndWrite(cdiCache, devices, spec, specName)
 }
 
-func newContainerEditsDeviceNodes(deviceIdx uint64) []*specs.DeviceNode {
-	accelDevPath := device.GetDevfsAccelDir()
-	return []*specs.DeviceNode{
-		{Path: path.Join(accelDevPath, fmt.Sprintf("accel%d", deviceIdx)), Type: "c"},
-		{Path: path.Join(accelDevPath, fmt.Sprintf("accel_controlD%d", deviceIdx)), Type: "c"},
+func newContainerEditsDeviceNodes(deviceIdx uint64) []*cdiSpecs.DeviceNode {
+	devfsRoot := device.GetDevfsRoot()
+	return []*cdiSpecs.DeviceNode{
+		{
+			Path:     path.Join(containerDevfsRoot, device.DevfsAccelPath, fmt.Sprintf("accel%d", deviceIdx)),
+			HostPath: path.Join(devfsRoot, device.DevfsAccelPath, fmt.Sprintf("accel%d", deviceIdx)),
+			Type:     "c"},
+		{
+			Path:     path.Join(containerDevfsRoot, device.DevfsAccelPath, fmt.Sprintf("accel_controlD%d", deviceIdx)),
+			HostPath: path.Join(devfsRoot, device.DevfsAccelPath, fmt.Sprintf("accel_controlD%d", deviceIdx)),
+			Type:     "c",
+		},
 	}
 }

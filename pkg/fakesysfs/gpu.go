@@ -27,11 +27,10 @@ import (
 	"testing"
 
 	"github.com/fsnotify/fsnotify"
+
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/discovery"
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/sriov"
-	intelcrd "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/intel.com/resource/gpu/v1alpha2/api"
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/testhelpers"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
 
 var perDeviceIdTilesDirs = map[string][]string{
@@ -51,21 +50,20 @@ var perDeviceIdTilesDirs = map[string][]string{
 
 func countVFs(devices device.DevicesInfo) map[string]int {
 	perDeviceNumvfs := map[string]int{}
-	for deviceUID, device := range devices {
-		if device.DeviceType == intelcrd.VfDeviceType {
+	for deviceUID, gpu := range devices {
+		if gpu.DeviceType == device.VfDeviceType {
 			perDeviceNumvfs[deviceUID] += 1
 		}
 	}
 	return perDeviceNumvfs
 }
 
-func removeFakeVFDRM(t *testing.T, sysfsI915DeviceDir string) {
+func removeFakeVFDRM(devfsRoot string, sysfsI915DeviceDir string) error {
 	deviceDRMDir := filepath.Join(sysfsI915DeviceDir, "drm")
+	pciAddress := path.Base(sysfsI915DeviceDir)
 	drmFiles, err := os.ReadDir(deviceDRMDir)
-
 	if err != nil {
-		t.Errorf("cannot read device folder %v: %v", deviceDRMDir, err)
-		return
+		return fmt.Errorf("cannot read device DRM folder %v: %v", deviceDRMDir, err)
 	}
 
 	// sysfsI915DeviceDir in here is, for example, this:
@@ -77,14 +75,28 @@ func removeFakeVFDRM(t *testing.T, sysfsI915DeviceDir string) {
 		drmFileName := drmFile.Name()
 		if device.CardRegexp.MatchString(drmFileName) {
 			drmDir := path.Join(fakesysfsRoot, "class/drm/", drmFileName)
-			t.Logf("deleting DRM dir %v", drmDir)
 			if err := os.RemoveAll(drmDir); err != nil {
-				t.Fatalf("could not cleanup fake VF DRM dir %v: %v", drmDir, err)
+				return fmt.Errorf("could not cleanup VF DRM dir %v: %v", drmDir, err)
 			}
-
-			return
+			// delete devfs/dri/card and by-path/ card link
+			if err := os.Remove(path.Join(devfsRoot, "dri", drmFileName)); err != nil {
+				return fmt.Errorf("could not cleanup VF DRI file: %v", err)
+			}
+			if err := os.Remove(path.Join(devfsRoot, "dri/by-path", fmt.Sprintf("pci-%s-card", pciAddress))); err != nil {
+				return fmt.Errorf("could not cleanup VF DRI file: %v", err)
+			}
+		} else if device.RenderdRegexp.MatchString(drmFileName) {
+			// delete devfs/dri/render and by-path/ card link
+			if err := os.Remove(path.Join(devfsRoot, "dri", drmFileName)); err != nil {
+				return fmt.Errorf("could not cleanup VF DRI file: %v", err)
+			}
+			if err := os.Remove(path.Join(devfsRoot, "dri/by-path", fmt.Sprintf("pci-%s-render", pciAddress))); err != nil {
+				return fmt.Errorf("could not cleanup VF DRI file: %v", err)
+			}
 		}
 	}
+
+	return nil
 }
 
 // removeFakeVFsOnParent imitates i915's deletion of PCI and DRM devices for
@@ -98,7 +110,7 @@ func removeFakeVFDRM(t *testing.T, sysfsI915DeviceDir string) {
 // to be re-created or be different for every testcase when fake-sysfs watcher
 // is used, especially with loop-based test functions that have many scenarios
 // in them.
-func removeFakeVFsOnParent(t *testing.T, numvfsFilePath string) {
+func removeFakeVFsOnParent(devfsRoot string, numvfsFilePath string) error {
 	// Find VF symlinks in PF.
 	sysfsI915DeviceDir := path.Dir(numvfsFilePath)
 	sysfsI915Dir := path.Dir(sysfsI915DeviceDir)
@@ -106,34 +118,35 @@ func removeFakeVFsOnParent(t *testing.T, numvfsFilePath string) {
 	files, _ := filepath.Glob(virtfnsPattern)
 
 	for _, virtfn := range files {
-		t.Logf("checking %v", virtfn)
 		virtfnTarget, err := os.Readlink(virtfn)
 		if err != nil {
-			t.Errorf("failed reading virtfn symlink %v: %v. Skipping", virtfn, err)
-			continue
+			return fmt.Errorf("failed reading virtfn symlink %v: %v. Skipping", virtfn, err)
 		}
 
 		// ../0000:00:02.1  # 15 chars
 		if len(virtfnTarget) != 15 {
-			t.Errorf("symlink target does not match expected length: %v", virtfnTarget)
-			continue
+			return fmt.Errorf("symlink target does not match expected length: %v", virtfnTarget)
 		}
 
 		sysfsI915VFDir := filepath.Join(sysfsI915Dir, virtfnTarget[3:])
 
 		// Cleanup DRM files from separate directory hierarchy.
-		removeFakeVFDRM(t, sysfsI915VFDir)
+		if err := removeFakeVFDRM(devfsRoot, sysfsI915VFDir); err != nil {
+			return fmt.Errorf("could not cleanup fake DRM: %v", err)
+		}
 
 		// Cleanup PCI device.
 		if err := os.RemoveAll(sysfsI915VFDir); err != nil {
-			t.Fatalf("could not cleanup fake VF PCI dir %v: %v", sysfsI915VFDir, err)
+			return fmt.Errorf("could not cleanup fake VF PCI dir %v: %v", sysfsI915VFDir, err)
 		}
 
 		// Finally cleanup VF symlink.
 		if err := os.Remove(virtfn); err != nil {
-			t.Fatalf("could not cleanup fake VF symlink %v: %v", virtfn, err)
+			return fmt.Errorf("could not cleanup fake VF symlink %v: %v", virtfn, err)
 		}
 	}
+
+	return nil
 }
 
 // addFakeVFsOnParent imitates i915's creation of PCI and DRM devices for SR-IOV
@@ -147,53 +160,48 @@ func removeFakeVFsOnParent(t *testing.T, numvfsFilePath string) {
 // to be re-created or be different for every testcase when fake-sysfs watcher
 // is used, especially with loop-based test functions that have many scenarios
 // in them.
-func addFakeVFsOnParent(t *testing.T, numvfsFilePath string, numVFs uint64) {
+func addFakeVFsOnParent(numvfsFilePath string, devfsRoot string, numVFs uint64, realDevices bool) error {
 	sysfsI915DeviceDir := path.Dir(numvfsFilePath)
 	parentPCIAddress := path.Base(sysfsI915DeviceDir)
 	sysfsI915Dir := path.Dir(sysfsI915DeviceDir)
 	fakeSysfsRoot := path.Join(sysfsI915Dir, "../../../../")
-	t.Logf("fake sysfs root: %v", fakeSysfsRoot)
 
 	// get GPU model
 	modelFilePath := path.Join(sysfsI915DeviceDir, "device")
 	modelBytes, err := os.ReadFile(modelFilePath)
 	if err != nil {
-		t.Errorf("could not read fake sysfs model file %v: %v", modelFilePath, err)
-		return
+		return fmt.Errorf("could not read fake sysfs model file %v: %v", modelFilePath, err)
 	}
 	model := strings.TrimSpace(string(modelBytes))
 
 	// construct parent's DRM VFs dir path
 	parentCardIdx, _, err := discovery.DeduceCardAndRenderdIndexes(sysfsI915DeviceDir)
 	if err != nil {
-		t.Errorf("could not detect drm/cardX index in %v: %v", sysfsI915DeviceDir, err)
-		return
+		return fmt.Errorf("could not detect drm/cardX index in %v: %v", sysfsI915DeviceDir, err)
 	}
 	parentVFsDir := path.Join(sysfsI915DeviceDir, "drm", fmt.Sprintf("card%d", parentCardIdx), "prelim_iov")
 
 	// check if auto_provisioning is enabled
 	automatic, err := autoProvisioningEnabled(parentVFsDir)
 	if err != nil {
-		t.Errorf("could not detect auto_provisioning: %v", err)
-		return
+		return fmt.Errorf("could not detect auto_provisioning: %v", err)
 	}
 	if automatic {
 		// TODO: implement automatic provisioning, without VF profiles
-		t.Log("WARNING: auto_provisioning in fake sysfs is not implemented")
+		fmt.Println("WARNING: auto_provisioning in fake sysfs is not implemented")
 	}
 
 	// generate DeviceInfo for VFs.
-	devices := device.DevicesInfo{}
+	newDevices := device.DevicesInfo{}
 	currentPCIdev := parentPCIAddress[:len(parentPCIAddress)-1]
 	highestCardIdx, highestRenderDIdx, err := deduceHighestCardAndRenderDIndexes(fakeSysfsRoot)
 	if err != nil {
-		t.Errorf("could not get current DRM card and renderD devices indexes: %v", err)
-		return
+		return fmt.Errorf("could not get current DRM card and renderD devices indexes: %v", err)
 	}
 
 	// PCI VF index is 0-based.
 	for vfIdx := uint64(0); vfIdx < numVFs; vfIdx++ {
-		t.Logf("creating object for VF %v", vfIdx)
+		fmt.Printf("creating object for VF %v\n", vfIdx)
 		vfUID := ""
 
 		//                 VF indexes in PCI addresses
@@ -204,8 +212,7 @@ func addFakeVFsOnParent(t *testing.T, numvfsFilePath string, numVFs uint64) {
 		if pciFunctionIdx == 0 {
 			currentPCIdev, err = newPCIAddress(sysfsI915Dir, currentPCIdev)
 			if err != nil {
-				t.Errorf("could not create new PCI address for new VF: %v", err)
-				return
+				return fmt.Errorf("could not create new PCI address for new VF: %v", err)
 			}
 		}
 
@@ -214,11 +221,10 @@ func addFakeVFsOnParent(t *testing.T, numvfsFilePath string, numVFs uint64) {
 
 		vfMem, err := getVFMemoryAmountMiB(parentVFsDir, vfIdx)
 		if err != nil {
-			t.Errorf("could not get lmem_quota from VF%d on %v: %v", vfIdx, parentPCIAddress, err)
-			return
+			return fmt.Errorf("could not get lmem_quota from VF%d on %v: %v", vfIdx, parentPCIAddress, err)
 		}
 
-		devices[vfUID] = &device.DeviceInfo{
+		newDevices[vfUID] = &device.DeviceInfo{
 			PCIAddress: vfPCIAddress,
 			Model:      model,
 			MemoryMiB:  vfMem,
@@ -231,9 +237,11 @@ func addFakeVFsOnParent(t *testing.T, numvfsFilePath string, numVFs uint64) {
 		}
 	}
 
-	if err := fakeSysFsGpuDevices(t, fakeSysfsRoot, devices); err != nil {
-		t.Error("creating new VFs")
+	if err := fakeSysFsGpuDevices(fakeSysfsRoot, devfsRoot, newDevices, realDevices); err != nil {
+		return fmt.Errorf("creating new VFs: %v", err)
 	}
+
+	return nil
 }
 
 // getVFMEmoryAmountMiB returns the amount of local memory the VF should have.
@@ -333,28 +341,35 @@ func autoProvisioningEnabled(sysfsVFsDir string) (bool, error) {
 }
 
 // fakeSysfsSRIOVContents adds symlinks and IOV layout for PF and VFs.
-func fakeSysfsSRIOVContents(t *testing.T, sysfsRoot string, gpus device.DevicesInfo) error {
+func fakeSysfsSRIOVContents(sysfsRoot string, gpus device.DevicesInfo) error {
 	perDeviceNumvfs := countVFs(gpus)
 	for deviceUID, gpu := range gpus {
-		pciAddress, _ := device.PciInfoFromDeviceUID(deviceUID)
-		i915DevDir := path.Join(sysfsRoot, "bus/pci/drivers/i915/", pciAddress)
+		if gpu.PCIAddress == "" {
+			// attempt gettinging it from UID
+			if len(gpu.UID) != device.UIDLength {
+				return fmt.Errorf("cannot determine PCI address for device: %v. Neither PCIAddress nor UID contain valid PCI address", gpu)
+			}
+			gpu.PCIAddress, _ = device.PciInfoFromDeviceUID(deviceUID)
+		}
+		i915DevDir := path.Join(sysfsRoot, "bus/pci/drivers/i915/", gpu.PCIAddress)
+
 		switch gpu.DeviceType {
 		case "gpu":
 			if err := fakeSysfsPF(deviceUID, gpu, perDeviceNumvfs[deviceUID], i915DevDir); err != nil {
-				t.Errorf("creating fake sysfs, err: %v", err)
+				return fmt.Errorf("error creating fake sysfs, err: %v", err)
 			}
 		case "vf":
 			if _, found := gpus[gpu.ParentUID]; !found {
 				// check if PF already exists
 				if _, err := os.Stat(path.Join(i915DevDir, "../", gpu.ParentPCIAddress())); err != nil {
-					t.Errorf("parent device %v of VF %v is not found and will not be created", gpu.ParentUID, deviceUID)
+					return fmt.Errorf("parent device %v of VF %v is not found and will not be created", gpu.ParentUID, deviceUID)
 				}
 			}
 			if err := fakeSysfsVF(gpu, perDeviceNumvfs[deviceUID], sysfsRoot, i915DevDir); err != nil {
-				t.Errorf("creating fake sysfs, err: %v", err)
+				return fmt.Errorf("creating fake sysfs, err: %v", err)
 			}
 		default:
-			t.Errorf("unsupported device type: %v (device %v)", gpu.DeviceType, deviceUID)
+			return fmt.Errorf("unsupported device type: %v (device %v)", gpu.DeviceType, deviceUID)
 		}
 	}
 
@@ -366,9 +381,9 @@ func fakeSysfsPF(deviceUID string, gpu *device.DeviceInfo, numvfs int, i915DevDi
 		return nil
 	}
 
-	writeErr1 := testhelpers.WriteFile(path.Join(i915DevDir, "sriov_numvfs"), fmt.Sprint(numvfs))
-	writeErr2 := testhelpers.WriteFile(path.Join(i915DevDir, "sriov_totalvfs"), fmt.Sprint(gpu.MaxVFs))
-	writeErr3 := testhelpers.WriteFile(path.Join(i915DevDir, "sriov_drivers_autoprobe"), "1")
+	writeErr1 := helpers.WriteFile(path.Join(i915DevDir, "sriov_numvfs"), fmt.Sprint(numvfs))
+	writeErr2 := helpers.WriteFile(path.Join(i915DevDir, "sriov_totalvfs"), fmt.Sprint(gpu.MaxVFs))
+	writeErr3 := helpers.WriteFile(path.Join(i915DevDir, "sriov_drivers_autoprobe"), "1")
 
 	if writeErr1 != nil || writeErr2 != nil || writeErr3 != nil {
 		return fmt.Errorf("creating fake sysfs, err(s): '%v', '%v', '%v'", writeErr1, writeErr2, writeErr3)
@@ -381,7 +396,7 @@ func fakeSysfsPF(deviceUID string, gpu *device.DeviceInfo, numvfs int, i915DevDi
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
 	}
 
-	if writeErr := testhelpers.WriteFile(path.Join(pfDir, "auto_provisioning"), "1"); writeErr != nil {
+	if writeErr := helpers.WriteFile(path.Join(pfDir, "auto_provisioning"), "1"); writeErr != nil {
 		return fmt.Errorf("creating fake sysfs, err: %v", writeErr)
 	}
 
@@ -398,8 +413,8 @@ func fakeSysfsPF(deviceUID string, gpu *device.DeviceInfo, numvfs int, i915DevDi
 				return fmt.Errorf("creating fake sysfs, err: %v", err)
 			}
 
-			for _, vfAttr := range sriov.VfAttributeFiles {
-				if writeErr := testhelpers.WriteFile(path.Join(drmVFgtDir, vfAttr), "0"); writeErr != nil {
+			for _, vfAttr := range device.VfAttributeFiles {
+				if writeErr := helpers.WriteFile(path.Join(drmVFgtDir, vfAttr), "0"); writeErr != nil {
 					return fmt.Errorf("creating fake sysfs, err: %v", writeErr)
 				}
 			}
@@ -417,8 +432,13 @@ func fakeSysfsVF(vf *device.DeviceInfo, numvfs int, sysfsRoot string, i915DevDir
 	parentI915DevDir := path.Join(sysfsRoot, "bus/pci/drivers/i915/", vf.ParentPCIAddress())
 
 	parentLinkName := path.Join(parentI915DevDir, fmt.Sprintf("virtfn%d", vf.VFIndex))
-	vfPCIAddress, _ := device.PciInfoFromDeviceUID(vf.UID)
-	targetName := fmt.Sprintf("../%s", vfPCIAddress)
+	if vf.PCIAddress == "" {
+		if len(vf.UID) != device.UIDLength {
+			return fmt.Errorf("cannot determine PCI address for VF: %v. Neither PCIAddress nor UID contain valid PCI address", vf)
+		}
+		vf.PCIAddress, _ = device.PciInfoFromDeviceUID(vf.UID)
+	}
+	targetName := fmt.Sprintf("../%s", vf.PCIAddress)
 
 	if err := os.Symlink(targetName, parentLinkName); err != nil {
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
@@ -431,17 +451,17 @@ func fakeSysfsVF(vf *device.DeviceInfo, numvfs int, sysfsRoot string, i915DevDir
 // updates fakesysfs respectively to written values.
 // It is caller's responsibility to close the watcher when the
 // testcase comes to an end.
-func WatchNumvfs(t *testing.T, fakesysfs string) *fsnotify.Watcher {
+func WatchNumvfs(t *testing.T, sysfsRoot string, devfsRoot string, realDevices bool) *fsnotify.Watcher {
 	// Create new watcher.
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	go watchPFnumvfs(t, watcher)
+	go watchPFnumvfs(t, devfsRoot, watcher, realDevices)
 
 	// find all sriov_numvfs and watch them
-	sysfsI915Dir := filepath.Join(fakesysfs, "/bus/pci/drivers/i915/")
+	sysfsI915Dir := filepath.Join(sysfsRoot, "/bus/pci/drivers/i915/")
 	files, err := os.ReadDir(sysfsI915Dir)
 	if err != nil {
 		t.Fatalf("could not monitor sriov_numvfs files in %v: %v", sysfsI915Dir, err)
@@ -474,7 +494,7 @@ func WatchNumvfs(t *testing.T, fakesysfs string) *fsnotify.Watcher {
 // - calls removeFakeVFsOnParent if 0 VFs were requested
 // - calls addFakeVFsOnParent if > 0 VFs were requested
 // - does nothing if there was no value - its own truncation caused event.
-func updateVFsOnWrite(t *testing.T, numvfsFilePath string) {
+func updateVFsOnWrite(t *testing.T, devfsRoot string, numvfsFilePath string, realDevices bool) {
 	numvfsBytes, err := os.ReadFile(numvfsFilePath)
 	if err != nil {
 		t.Errorf("could not read numvfs file %v: %v", numvfsFilePath, err)
@@ -510,14 +530,18 @@ func updateVFsOnWrite(t *testing.T, numvfsFilePath string) {
 
 	t.Logf("updating SR-IOV setup of fake device %v\n", numvfsFilePath)
 	if numvfsInt == 0 {
-		removeFakeVFsOnParent(t, numvfsFilePath)
+		if err := removeFakeVFsOnParent(devfsRoot, numvfsFilePath); err != nil {
+			t.Errorf("could not remove fake VFs: %v", err)
+		}
 	} else {
-		addFakeVFsOnParent(t, numvfsFilePath, numvfsInt)
+		if err := addFakeVFsOnParent(numvfsFilePath, devfsRoot, numvfsInt, realDevices); err != nil {
+			t.Errorf("could not add fake VFs: %v", err)
+		}
 	}
 }
 
 // watchPFnumvfs starts listening for events by watching file changes.
-func watchPFnumvfs(t *testing.T, watcher *fsnotify.Watcher) {
+func watchPFnumvfs(t *testing.T, devfsRoot string, watcher *fsnotify.Watcher, realDevices bool) {
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -525,7 +549,7 @@ func watchPFnumvfs(t *testing.T, watcher *fsnotify.Watcher) {
 				return
 			}
 			if event.Has(fsnotify.Write) {
-				updateVFsOnWrite(t, event.Name)
+				updateVFsOnWrite(t, devfsRoot, event.Name, realDevices)
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok { // channel was closed
@@ -536,61 +560,129 @@ func watchPFnumvfs(t *testing.T, watcher *fsnotify.Watcher) {
 	}
 }
 
-func FakeSysFsGpuContents(t *testing.T, sysfsRoot string, gpus device.DevicesInfo) error {
+func FakeSysFsGpuContents(sysfsRoot string, devfsRoot string, gpus device.DevicesInfo, realDevices bool) error {
 	if err := sanitizeFakeSysFsDir(sysfsRoot); err != nil {
 		return err
 	}
 
-	return fakeSysFsGpuDevices(t, sysfsRoot, gpus)
+	return fakeSysFsGpuDevices(sysfsRoot, devfsRoot, gpus, realDevices)
 }
 
 // fakeSysFsGpuDevices creates PCI and DRM devices layout in existing fake sysfsRoot.
 // This will be called when fake sysfs is being created and when more devices added
 // to existing fake sysfs.
-func fakeSysFsGpuDevices(t *testing.T, sysfsRoot string, gpus device.DevicesInfo) error {
+func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.DevicesInfo, realDevices bool) error {
 	for _, gpu := range gpus {
-		pciAddress, _ := device.PciInfoFromDeviceUID(gpu.UID)
+		if gpu.PCIAddress == "" {
+			gpu.PCIAddress, _ = device.PciInfoFromDeviceUID(gpu.UID)
+		}
+
 		// driver setup
-		i915DevDir := path.Join(sysfsRoot, "bus/pci/drivers/i915/", pciAddress)
+		i915DevDir := path.Join(sysfsRoot, "bus/pci/drivers/i915/", gpu.PCIAddress)
 		if err := os.MkdirAll(i915DevDir, 0750); err != nil {
 			return fmt.Errorf("creating fake sysfs, err: %v", err)
 		}
 
-		if writeErr := testhelpers.WriteFile(path.Join(i915DevDir, "device"), gpu.Model); writeErr != nil {
+		if writeErr := helpers.WriteFile(path.Join(i915DevDir, "device"), gpu.Model); writeErr != nil {
 			return fmt.Errorf("creating fake sysfs, err: %v", writeErr)
 		}
 
-		cardName := fmt.Sprintf("card%v", gpu.CardIdx)
-
-		if err := os.MkdirAll(path.Join(i915DevDir, "drm", cardName), 0750); err != nil {
-			return fmt.Errorf("creating fake sysfs, err: %v", err)
+		if err := fakeGpuDRI(sysfsRoot, devfsRoot, gpu, i915DevDir, realDevices); err != nil {
+			return err
 		}
-
-		if gpu.RenderdIdx != 0 { // some GPUs do not have render device
-			renderdName := fmt.Sprintf("renderD%v", gpu.RenderdIdx)
-			if err := os.MkdirAll(path.Join(i915DevDir, "drm", renderdName), 0750); err != nil {
-				return fmt.Errorf("creating fake sysfs, err: %v", err)
-			}
-		}
-		// DRM setup
-		sysfsDRMClassDir := path.Join(sysfsRoot, "class/drm")
-		if err := os.MkdirAll(sysfsDRMClassDir, 0750); err != nil {
-			return fmt.Errorf("creating directory %v: %v", sysfsDRMClassDir, err)
-		}
-
-		drmDirLinkSource := path.Join(sysfsDRMClassDir, cardName)
-		drmDirLinkTarget := path.Join(i915DevDir, "drm", cardName)
-
-		if err := os.Symlink(drmDirLinkTarget, drmDirLinkSource); err != nil {
-			return fmt.Errorf("creating fake sysfs, err: %v", err)
-		}
-
-		localMemoryStr := fmt.Sprint(gpu.MemoryMiB * 1024 * 1024)
-		if writeErr := testhelpers.WriteFile(path.Join(drmDirLinkTarget, "lmem_total_bytes"), localMemoryStr); writeErr != nil {
-			return fmt.Errorf("creating fake sysfs, err: %v", writeErr)
-		}
-
 	}
 
-	return fakeSysfsSRIOVContents(t, sysfsRoot, gpus)
+	return fakeSysfsSRIOVContents(sysfsRoot, gpus)
+}
+
+func fakeGpuDRI(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, i915DevDir string, realDevices bool) error {
+
+	cardName := fmt.Sprintf("card%v", gpu.CardIdx)
+	renderdName := fmt.Sprintf("renderD%v", gpu.RenderdIdx)
+	if err := os.MkdirAll(path.Join(i915DevDir, "drm", cardName), 0750); err != nil {
+		return fmt.Errorf("creating fake sysfs, err: %v", err)
+	}
+	if gpu.RenderdIdx != 0 { // some GPUs do not have render device
+		if err := os.MkdirAll(path.Join(i915DevDir, "drm", renderdName), 0750); err != nil {
+			return fmt.Errorf("creating fake sysfs, err: %v", err)
+		}
+	}
+
+	// DRM setup
+	sysfsDRMClassDir := path.Join(sysfsRoot, "class/drm")
+	if err := os.MkdirAll(sysfsDRMClassDir, 0750); err != nil {
+		return fmt.Errorf("creating directory %v: %v", sysfsDRMClassDir, err)
+	}
+
+	drmDirLinkSource := path.Join(sysfsDRMClassDir, cardName)
+	drmDirLinkTarget := path.Join(i915DevDir, "drm", cardName)
+
+	if err := os.Symlink(drmDirLinkTarget, drmDirLinkSource); err != nil {
+		return fmt.Errorf("creating fake sysfs, err: %v", err)
+	}
+
+	localMemoryStr := fmt.Sprint(gpu.MemoryMiB * 1024 * 1024)
+	if writeErr := helpers.WriteFile(path.Join(drmDirLinkTarget, "lmem_total_bytes"), localMemoryStr); writeErr != nil {
+		return fmt.Errorf("creating fake sysfs, err: %v", writeErr)
+	}
+
+	if err := os.MkdirAll(path.Join(devfsRoot, "dri/by-path"), 0750); err != nil {
+		return fmt.Errorf("creating card symlink, err: %v", err)
+	}
+
+	// devfs setup
+	if realDevices {
+		if err := fakeGpuDRIDeviceFiles(devfsRoot, cardName, renderdName); err != nil {
+			return fmt.Errorf("creating fake devfs: %v", err)
+		}
+	} else {
+		if err := fakeGpuDRIPlainFiles(devfsRoot, cardName, renderdName); err != nil {
+			return fmt.Errorf("creating fake devfs: %v", err)
+		}
+	}
+
+	return createDevfsSymlinks(devfsRoot, cardName, renderdName, gpu.PCIAddress)
+}
+
+func createDevfsSymlinks(devfsRoot, cardName, renderdName, pciAddress string) error {
+	if err := os.Symlink(fmt.Sprintf("../%v", cardName), path.Join(devfsRoot, "dri/by-path/", fmt.Sprintf("pci-%v-card", pciAddress))); err != nil {
+		return fmt.Errorf("creating fake sysfs, err: %v", err)
+	}
+
+	if renderdName != "renderD0" { // some GPUs do not have render device
+		if err := os.Symlink(fmt.Sprintf("../%v", renderdName), path.Join(devfsRoot, "dri/by-path/", fmt.Sprintf("pci-%v-render", pciAddress))); err != nil {
+			return fmt.Errorf("creating renderD symlink, err: %v", err)
+		}
+	}
+
+	return nil
+
+}
+
+func fakeGpuDRIDeviceFiles(devfsRoot, cardName, renderdName string) error {
+	if err := createDevice(path.Join(devfsRoot, "dri", cardName)); err != nil {
+		return fmt.Errorf("creating card device, err: %v", err)
+	}
+
+	if renderdName != "renderD0" { // some GPUs do not have render device
+		if err := createDevice(path.Join(devfsRoot, "dri", renderdName)); err != nil {
+			return fmt.Errorf("creating renderD device, err: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func fakeGpuDRIPlainFiles(devfsRoot, cardName, renderdName string) error {
+	if err := helpers.WriteFile(path.Join(devfsRoot, "dri", cardName), ""); err != nil {
+		return fmt.Errorf("creating card text file, err: %v", err)
+	}
+
+	if renderdName != "renderD0" { // some GPUs do not have render device
+		if err := helpers.WriteFile(path.Join(devfsRoot, "dri", renderdName), ""); err != nil {
+			return fmt.Errorf("creating renderD text file, err: %v", err)
+		}
+	}
+
+	return nil
 }

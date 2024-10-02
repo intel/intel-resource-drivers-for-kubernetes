@@ -56,22 +56,26 @@ endif
 
 
 COMMON_SRC = \
-pkg/version/*.go \
-pkg/controllerhelpers/*.go
+pkg/version/*.go
 
 include $(CURDIR)/gpu.mk
 include $(CURDIR)/gaudi.mk
+include $(CURDIR)/qat.mk
 
 .EXPORT_ALL_VARIABLES:
 
 
 .PHONY: build
-build: gpu gaudi bin/intel-cdi-specs-generator
+build: gpu gaudi qat bin/intel-cdi-specs-generator
 
 
 bin/intel-cdi-specs-generator: cmd/cdi-specs-generator/*.go $(GPU_COMMON_SRC)
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
 	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/cdi-specs-generator
+
+bin/device-faker: cmd/device-faker/*.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
+	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/device-faker
 
 
 .PHONY: branch-build
@@ -131,27 +135,19 @@ clean-licenses:
 licenses: clean-licenses
 	GO111MODULE=on go run github.com/google/go-licenses@$(GOLICENSES_VERSION) \
 	save \
-	"./cmd/alert-webhook" \
-	"./cmd/gaudi-controller" \
 	"./cmd/cdi-specs-generator" \
-	"./cmd/gpu-controller" \
 	"./cmd/kubelet-gaudi-plugin" \
 	"./cmd/kubelet-gpu-plugin" \
-	"./pkg/controllerhelpers" \
+	"./cmd/qat-showdevice" \
+	"./cmd/kubelet-qat-plugin" \
 	"./pkg/version" \
 	"./pkg/gpu/cdihelpers" \
 	"./pkg/gpu/device" \
 	"./pkg/gpu/discovery" \
-	"./pkg/gpu/sriov" \
 	"./pkg/gaudi/cdihelpers" \
 	"./pkg/gaudi/device" \
 	"./pkg/gaudi/discovery" \
-	"./pkg/intel.com/resource/gpu/v1alpha2" \
-	"./pkg/intel.com/resource/gpu/v1alpha2/api" \
-	"./pkg/intel.com/resource/gpu/clientset/versioned/" --save_path licenses \
-	"./pkg/intel.com/resource/gaudi/v1alpha1" \
-	"./pkg/intel.com/resource/gaudi/v1alpha1/api" \
-	"./pkg/intel.com/resource/gaudi/clientset/versioned/" --save_path licenses
+	 --save_path licenses
 
 
 # linting targets for Go and other code

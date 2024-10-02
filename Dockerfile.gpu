@@ -23,9 +23,7 @@ if [ -z "$LOCAL_LICENSES" ]; then \
     make licenses; \
 fi && \
 cp -r licenses /install_root/ && \
-cp bin/gpu-controller /install_root/ && \
-cp bin/kubelet-gpu-plugin /install_root/ && \
-cp bin/alert-webhook /install_root/
+cp bin/kubelet-gpu-plugin /install_root/
 
 FROM scratch
 WORKDIR /
