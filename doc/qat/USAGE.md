@@ -10,7 +10,7 @@
 
 Deploy DeviceClass, Namespace and ResourceDriver
 ```bash
-kubectl apply -f deployments/qat/device-class.yaml
+kubectl apply -f deployments/qat/resource-class.yaml
 kubectl apply -f deployments/qat/resource-driver-namespace.yaml
 kubectl apply -f deployments/qat/resource-driver.yaml
 ```
@@ -22,7 +22,7 @@ When deploying custom-built resource driver image, change `image:` lines in
 
 ## `deployment/` directory contains all required YAMLs:
 
-* `deployments/qat/device-class.yaml` - pre-defined DeviceClass that ResourceClaims can refer to.
+* `deployments/qat/resource-class.yaml` - pre-defined DeviceClass that ResourceClaims can refer to.
 * `deployments/qat/resource-driver-namespace.yaml` - Kubernetes namespace for QAT resource driver.
 * `deployments/qat/resource-driver.yaml` - actual resource driver with service account and RBAC policy
   - kubelet-plugin DaemonSet - node-agent which performs three functions:
