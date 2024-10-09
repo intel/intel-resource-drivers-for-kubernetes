@@ -1,0 +1,2 @@
+resources:
+  - openssl-qat-engine.yaml
