@@ -15,6 +15,11 @@ apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 featureGates:
   DynamicResourceAllocation: true
+#cpuManagerPolicy: static
+#kubeReserved:
+#  cpu: "1"
+#  memory: "2Gi"
+#  ephemeral-storage: "1Gi"
 ---
 apiVersion: kubeadm.k8s.io/v1beta3
 kind: InitConfiguration

@@ -1,37 +1,3 @@
-apiVersion: resource.k8s.io/v1alpha3
-kind: ResourceClaimTemplate
-metadata:
-  name: qat-template-sym
-spec:
-  spec:
-    devices:
-      requests:
-      - name: qat-request-sym-asym
-        deviceClassName: qat.intel.com
-        selectors:
-        - cel:
-           expression: |-
-              device.driver == "qat.intel.com" &&
-              device.attributes["qat.intel.com"].services.matches("[^a]?sym")
-
----
-apiVersion: resource.k8s.io/v1alpha3
-kind: ResourceClaimTemplate
-metadata:
-  name: qat-template-dc
-spec:
-  spec:
-    devices:
-      requests:
-      - name: qat-request-dc
-        deviceClassName: qat.intel.com
-        selectors:
-        - cel:
-           expression: |-
-              device.driver == "qat.intel.com" &&
-              device.attributes["qat.intel.com"].services.matches("dc[^c]?")
-
----
 apiVersion: v1
 kind: Deployment
 metadata:

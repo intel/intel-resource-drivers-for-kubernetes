@@ -1,0 +1,8 @@
+configMapGenerator:
+- files:
+  - file.txt
+  name: test-data
+
+resources:
+ - crypto-perf.yaml
+ - compress-perf.yaml

@@ -8,7 +8,7 @@
   and alpha API for the Kubernetes api-server during your cluster initialization.
   - Example cluster initialization is in [cluster-config](../hack/clusterconfig.yaml) file
 ```bash
-sudo -E kubeadm init --config clusterconfig.yaml
+sudo -E kubeadm init --config hack/clusterconfig.yaml
 ```
 - Deploy cni .
 - Verify that `coredns` pod(s) are up: `kubectl get pods -A | grep dns`.
