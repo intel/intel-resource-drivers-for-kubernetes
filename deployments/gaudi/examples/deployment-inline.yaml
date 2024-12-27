@@ -1,4 +1,4 @@
-apiVersion: resource.k8s.io/v1alpha3
+apiVersion: resource.k8s.io/v1beta1
 kind: ResourceClaimTemplate
 metadata:
   name: two-gaudi3
@@ -7,7 +7,7 @@ spec:
     devices:
       requests:
       - name: gaudi
-        deviceClassName: gpu.intel.com
+        deviceClassName: gaudi.intel.com
         count: 2
         selectors:
         - cel:

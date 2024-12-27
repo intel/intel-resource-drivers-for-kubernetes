@@ -25,7 +25,6 @@ version = 2
 - v0.6.0 only supports K8s v1.31 which does not have partitionable devices support,
   therefore this release does not support dynamic GPU SR-IOV configuration.
 - v0.6.0 does not support classic DRA and only relies on Structured Parameters DRA
-- v0.6.0 drops Alertmanager web-hook used for (experimental) GPU health management support
 
 ## Deploy resource-driver
 
@@ -37,8 +36,6 @@ kubectl apply -f deployments/gpu/resource-driver.yaml
 
 By default the kubelet-plugin will be deployed on _all_ nodes in the cluster, there is no nodeSelector.
 
-One could be added, for example, based on [NFD provided device labels](https://kubernetes-sigs.github.io/node-feature-discovery/stable/usage/features.html) indicating PCI devices presence
-
 When deploying custom resource driver image, change `image:` lines in
 [resource-driver](../../deployments/gpu/resource-driver.yaml) to match its location.
 
@@ -48,7 +45,7 @@ When deploying custom resource driver image, change `image:` lines in
 * `deployments/gpu/resource-driver-namespace.yaml` - Kubernetes namespace for GPU Resource Driver.
 * `deployments/gpu/resource-driver.yaml` - actual resource driver with service account and RBAC policy
   - kubelet-plugin DaemonSet - node-agent, it performs three functions:
-    1) supported hardware discovery on Kubernetes cluster node and its announcement as a ResourceSlice
+    1) supported hardware discovery on Kubernetes cluster node and it's announcement as a ResourceSlice
     2) preparation of the hardware allocated to the ResourceClaims for the Pod that is being started on the node.
     3) unpreparation of the hardware allocated to the ResourceClaims for the Pod that is being started on the node
 
@@ -64,7 +61,7 @@ rpl-s-gpu.intel.com-mbr6p     rpl-s   gpu.intel.com     rpl-s   30s
 Example contents of the ResourceSlice object:
 ```bash
 $ kubectl get resourceslice/rpl-s-gpu.intel.com-mbr6p -o yaml
-apiVersion: resource.k8s.io/v1alpha3
+apiVersion: resource.k8s.io/v1beta1
 kind: ResourceSlice
 metadata:
   creationTimestamp: "2024-09-27T09:11:24Z"
@@ -133,7 +130,7 @@ to Pod spec to be used in container. The scheduler will allocate suitable GPU re
 ResourceSlice that was published by the Intel GPU resource driver.
 
 ```yaml
-apiVersion: resource.k8s.io/v1alpha3
+apiVersion: resource.k8s.io/v1beta1
 kind: ResourceClaim
 metadata:
   name: claim1
@@ -199,7 +196,7 @@ and needs explicit deletion.
 
 Example of Pod with generated Resource Claim:
 ```YAML
-apiVersion: resource.k8s.io/v1alpha3
+apiVersion: resource.k8s.io/v1beta1
 kind: ResourceClaimTemplate
 metadata:
   name: claim1
@@ -231,12 +228,12 @@ spec:
 #### Customizing resources request
 
 ResourceClaim device request can be customized. `count` field specifies how many devices are needed.
-'selectors' is a [CEL](https://github.com/google/cel-spec) filter to narrow down allocation to desired GPUs.
-The attributes and capacity properties of the GPU can be used in CEL.
+'selectors' is a [CEL](https://github.com/google/cel-spec) filter to narrow down allocation to desired GPUs. For instance, amount of
+memory should be at least 16Gi. The attributes and capacity properties of the GPU can be used in CEL.
 
 Example of Resource Claim requesting 2 GPUs with at least 16 Gi of local memory each:
 ```yaml
-apiVersion: resource.k8s.io/v1alpha3
+apiVersion: resource.k8s.io/v1beta1
 kind: ResourceClaimTemplate
 metadata:
   name: claim1

@@ -1,0 +1,15 @@
+configMapGenerator:
+- files:
+  - file.txt
+  name: test-data
+
+resources:
+- crypto-perf.yaml
+- compress-perf.yaml
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- name: crypto-perf:devel
+  newName: intel/crypto-perf
+  newTag: devel

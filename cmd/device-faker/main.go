@@ -35,14 +35,13 @@ var (
 		"gpu":   true,
 		"gaudi": true,
 	}
-	version = "v0.2.0"
+	version = "v0.3.0"
 )
 
 func main() {
 	command := newCommand()
 	err := command.Execute()
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -67,30 +66,59 @@ func newCommand() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			for _, argx := range args {
-				switch strings.ToLower(argx) {
-				case "gpu":
-					if cmd.Flag("new-template").Value.String() == "true" {
-						return newTemplate("gpu")
-					}
-					if cmd.Flag("template").Value.String() == "" {
-						return fmt.Errorf("template parameter is missing")
-					}
-					if err := handleGPUDevices(cmd.Flag("template").Value.String()); err != nil {
-						return err
-					}
-				case "gaudi":
-					if cmd.Flag("new-template").Value.String() == "true" {
-						return newTemplate("gaudi")
-					}
-					if cmd.Flag("template").Value.String() == "" {
-						return fmt.Errorf("template parameter is missing")
-					}
-					if err := handleGaudiDevices(cmd.Flag("template").Value.String()); err != nil {
-						return err
-					}
-				}
+			if len(args) != 1 {
+				return fmt.Errorf("too many arguments: only one device at a time supported")
 			}
+
+			deviceType := strings.ToLower(args[0])
+
+			targetDir := cmd.Flag("target-dir").Value.String()
+
+			realDevices := false
+			if cmd.Flag("real-devices").Value.String() == "true" {
+				realDevices = true
+			}
+
+			newTemplate := false
+			if cmd.Flag("new-template").Value.String() == "true" {
+				newTemplate = true
+			}
+			if newTemplate {
+				return createNewTemplate(deviceType)
+			}
+
+			template := cmd.Flag("template").Value.String()
+			if template == "" {
+				return fmt.Errorf("template parameter is missing")
+			}
+
+			var testDirs helpers.TestDirsType
+			var err error
+			var driverName string
+
+			switch deviceType {
+			case "gpu":
+				driverName = "gpu.intel.com"
+			case "gaudi":
+				driverName = "gaudi.intel.com"
+			}
+
+			if targetDir == "" {
+				testDirs, err = helpers.NewTestDirs(driverName)
+			} else {
+				testDirs, err = helpers.NewTestDirsAt(targetDir, driverName)
+			}
+			if err != nil {
+				return fmt.Errorf("error creating temp dirs: %v", err)
+			}
+
+			switch deviceType {
+			case "gpu":
+				return handleGPUDevices(template, testDirs, realDevices)
+			case "gaudi":
+				return handleGaudiDevices(template, testDirs, realDevices)
+			}
+
 			return nil
 		},
 	}
@@ -99,12 +127,14 @@ func newCommand() *cobra.Command {
 	cmd.Flags().BoolP("version", "v", false, "Show the version of the binary")
 	cmd.Flags().BoolP("new-template", "n", false, "Create new template file for given accelerator")
 	cmd.Flags().StringP("template", "t", "", "Template file to populate devices from")
+	cmd.Flags().StringP("target-dir", "d", "", "Target directory, default is random /tmp/test-*")
+	cmd.Flags().BoolP("real-devices", "r", false, "Create real device files (requires root)")
 	cmd.SetVersionTemplate("device-faker version: {{.Version}}\n")
 
 	return cmd
 }
 
-func handleGPUDevices(templateFilePath string) error {
+func handleGPUDevices(templateFilePath string, testDirs helpers.TestDirsType, realDevices bool) error {
 	devices := make(gpuDevice.DevicesInfo)
 	devicesBytes, err := os.ReadFile(templateFilePath)
 	if err != nil {
@@ -115,13 +145,7 @@ func handleGPUDevices(templateFilePath string) error {
 		return fmt.Errorf("failed parsing file %v. Err: %v", templateFilePath, err)
 	}
 
-	testDirs, err := helpers.NewTestDirs("gpu.intel.com")
-	if err != nil {
-		fmt.Printf("error creating temp dirs: %v\n", err)
-		return err
-	}
-
-	err = fakesysfs.FakeSysFsGpuContents(testDirs.SysfsRoot, testDirs.DevfsRoot, devices, true)
+	err = fakesysfs.FakeSysFsGpuContents(testDirs.SysfsRoot, testDirs.DevfsRoot, devices, realDevices)
 	if err != nil {
 		fmt.Printf("could not setup fake filesystem in %v: %v\n", testDirs.TestRoot, err)
 		if err := os.RemoveAll(testDirs.TestRoot); err != nil {
@@ -137,7 +161,7 @@ func handleGPUDevices(templateFilePath string) error {
 	return nil
 }
 
-func handleGaudiDevices(templateFilePath string) error {
+func handleGaudiDevices(templateFilePath string, testDirs helpers.TestDirsType, realDevices bool) error {
 	devices := make(gaudiDevice.DevicesInfo)
 	devicesBytes, err := os.ReadFile(templateFilePath)
 	if err != nil {
@@ -148,13 +172,7 @@ func handleGaudiDevices(templateFilePath string) error {
 		return fmt.Errorf("failed parsing file %v. Err: %v", templateFilePath, err)
 	}
 
-	testDirs, err := helpers.NewTestDirs("gaudi.intel.com")
-	if err != nil {
-		fmt.Printf("error creating temp dirs: %v\n", err)
-		return err
-	}
-
-	err = fakesysfs.FakeSysFsGaudiContents(testDirs.SysfsRoot, testDirs.DevfsRoot, devices, true)
+	err = fakesysfs.FakeSysFsGaudiContents(testDirs.SysfsRoot, testDirs.DevfsRoot, devices, realDevices)
 	if err != nil {
 		fmt.Printf("could not setup fake filesystem in %v: %v\n", testDirs.TestRoot, err)
 		if err := os.RemoveAll(testDirs.TestRoot); err != nil {
@@ -170,7 +188,7 @@ func handleGaudiDevices(templateFilePath string) error {
 	return nil
 }
 
-func newTemplate(deviceType string) error {
+func createNewTemplate(deviceType string) error {
 	var templateText []byte
 	templateFilePath, err := os.CreateTemp("/tmp/", fmt.Sprintf("%s-template-*.json", deviceType))
 	if err != nil {

@@ -25,11 +25,10 @@ import (
 	"reflect"
 	"testing"
 
-	resourcev1 "k8s.io/api/resource/v1alpha3"
+	resourcev1 "k8s.io/api/resource/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubefake "k8s.io/client-go/kubernetes/fake"
-
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1alpha4"
+	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/fakesysfs"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
@@ -280,7 +279,7 @@ func TestNodePrepareResources(t *testing.T) {
 		}
 
 		for _, testClaim := range testcase.claims {
-			createdClaim, err := driver.client.ResourceV1alpha3().ResourceClaims(testClaim.Namespace).Create(context.TODO(), testClaim, metav1.CreateOptions{})
+			createdClaim, err := driver.client.ResourceV1beta1().ResourceClaims(testClaim.Namespace).Create(context.TODO(), testClaim, metav1.CreateOptions{})
 			if err != nil {
 				t.Errorf("could not create test claim: %v", err)
 			}

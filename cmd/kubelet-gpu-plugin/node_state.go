@@ -25,11 +25,11 @@ import (
 	"time"
 
 	inf "gopkg.in/inf.v0"
-	resourcev1 "k8s.io/api/resource/v1alpha3"
+	resourcev1 "k8s.io/api/resource/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1alpha4"
+	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
@@ -111,9 +111,9 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 						StringValue: &gpu.FamilyName,
 					},
 				},
-				Capacity: map[resourcev1.QualifiedName]resource.Quantity{
-					"memory":     resource.MustParse(fmt.Sprintf("%vMi", gpu.MemoryMiB)),
-					"millicores": *resource.NewDecimalQuantity(*inf.NewDec(int64(1000), inf.Scale(0)), resource.DecimalSI),
+				Capacity: map[resourcev1.QualifiedName]resourcev1.DeviceCapacity{
+					"memory":     {Value: resource.MustParse(fmt.Sprintf("%vMi", gpu.MemoryMiB))},
+					"millicores": {Value: *resource.NewDecimalQuantity(*inf.NewDec(int64(1000), inf.Scale(0)), resource.DecimalSI)},
 				},
 			},
 		}

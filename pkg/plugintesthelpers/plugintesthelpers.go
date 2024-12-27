@@ -22,7 +22,7 @@ import (
 	"path"
 	"testing"
 
-	resourcev1 "k8s.io/api/resource/v1alpha3"
+	resourcev1 "k8s.io/api/resource/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -51,7 +51,9 @@ func NewTestDirs(driverName string) (TestDirsType, error) {
 	if err := os.Chmod(testRoot, 0755); err != nil {
 		return TestDirsType{}, fmt.Errorf("failed changing permissions to test root dir: %v", err)
 	}
-
+	return NewTestDirsAt(testRoot, driverName)
+}
+func NewTestDirsAt(testRoot string, driverName string) (TestDirsType, error) {
 	cdiRoot := path.Join(testRoot, "cdi")
 	if err := os.MkdirAll(cdiRoot, 0755); err != nil {
 		return TestDirsType{}, fmt.Errorf("failed creating fake CDI root dir: %v", err)
@@ -95,7 +97,7 @@ func CleanupTest(t *testing.T, testname string, testRoot string) {
 
 func NewMonitoringClaim(claimNs, claimName, claimUID, requestName, driverName, pool string, allocatedDevices []string) *resourcev1.ResourceClaim {
 	claim := NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, allocatedDevices)
-	claim.Spec.Devices.Requests[0].AdminAccess = true
+	claim.Spec.Devices.Requests[0].AdminAccess = &[]bool{true}[0]
 	claim.Spec.Devices.Requests[0].AllocationMode = "All"
 
 	return claim
@@ -122,7 +124,7 @@ func NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool string
 	allocationResults = append(allocationResults, alienDevice)
 
 	claim := &resourcev1.ResourceClaim{
-		TypeMeta:   metav1.TypeMeta{APIVersion: "resource.k8s.io/v1alpha3", Kind: "ResourceClaim"},
+		TypeMeta:   metav1.TypeMeta{APIVersion: "resource.k8s.io/v1beta1", Kind: "ResourceClaim"},
 		ObjectMeta: metav1.ObjectMeta{Namespace: claimNs, Name: claimName, UID: types.UID(claimUID)},
 		Spec: resourcev1.ResourceClaimSpec{
 			Devices: resourcev1.DeviceClaim{

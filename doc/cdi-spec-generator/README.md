@@ -9,18 +9,12 @@ The Intel CDI Specs Generator is a command line tool to generate Container Devic
 ## Usage
 Execute the built executable with the type of device you wish to generate CDI specs for:
 ```bash
-intel-cdi-specs-generator [--cdi-dir=<cdi directory>] [--naming=<style>] <gpu | gaudi>
+intel-cdi-specs-generator <gpu | gaudi>
 ```
 
 Supported device types:
-- `gpu`: Use this option to generate CDI specs for Intel GPUs.
-- `gaudi`: Use this option to generate CDI specs for Intel Gaudi accelerators.
-
-CDI specs dir can be customized with `--cdi-dir` parameter, default is `/etc/cdi/`
-
-Naming of CDI devices can be either `classic` or `machine`, default `classic`:
-- `classic` will name the devices in CDI by the actual Linux device name, e.g. `card0`
-- `machine` naming style will use PCI address and PCI Device ID, e.g. `0000-a0-00-0-0x56c0`
+- gpu: Use this option to generate CDI specs for Intel GPUs.
+- gaudi: Use this option to generate CDI specs for Intel Gaudi accelerators.
 
 ## Display Version
 To display the version of the binary, use the following command:

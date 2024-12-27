@@ -25,10 +25,10 @@ import (
 	"sync"
 	"time"
 
-	resourcev1 "k8s.io/api/resource/v1alpha3"
+	resourcev1 "k8s.io/api/resource/v1beta1"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1alpha4"
+	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdiparser "tags.cncf.io/container-device-interface/pkg/parser"
 	cdiSpecs "tags.cncf.io/container-device-interface/specs-go"
@@ -135,6 +135,9 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 				Attributes: map[resourcev1.QualifiedName]resourcev1.DeviceAttribute{
 					"model": {
 						StringValue: &gaudi.ModelName,
+					},
+					"pciRoot": {
+						StringValue: &gaudi.PCIRoot,
 					},
 				},
 			},

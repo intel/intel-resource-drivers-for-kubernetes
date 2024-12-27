@@ -8,7 +8,7 @@
   and alpha API for the Kubernetes api-server during your cluster initialization.
   - Example cluster initialization is in [cluster-config](../hack/clusterconfig.yaml) file
 ```bash
-sudo -E kubeadm init --config clusterconfig.yaml
+sudo -E kubeadm init --config hack/clusterconfig.yaml
 ```
 - Deploy cni .
 - Verify that `coredns` pod(s) are up: `kubectl get pods -A | grep dns`.
@@ -23,3 +23,39 @@ version = 2
     enable_cdi = true
     cdi_specs_dir = ["/etc/cdi", "/var/run/cdi"]
 ```
+
+## Using minikube
+
+To create a minikube cluster with DRA, use the command (change the K8s version in the last parameter if needed):
+```shell
+minikube start \
+--feature-gates=DynamicResourceAllocation=true \
+--extra-config=apiserver.feature-gates=DynamicResourceAllocation=true \
+--extra-config=apiserver.runtime-config=resource.k8s.io/v1beta1=true \
+--extra-config=scheduler.feature-gates=DynamicResourceAllocation=true \
+--extra-config=controller-manager.feature-gates=DynamicResourceAllocation=true \
+--extra-config=kubelet.feature-gates=DynamicResourceAllocation=true \
+--container-runtime=containerd \
+--kubernetes-version=1.32.0
+```
+
+Minikube will start its own Containerd inside the minikube docker container, where CDI needs to be
+enabled. Connect to the minikube container and edit containerd config:
+```shell
+docker exec -it minikube /bin/bash
+vi /etc/containerd/config.toml
+```
+
+Add two lines into the `[plugins."io.containerd.grpc.v1.cri"]` section:
+```
+  [plugins."io.containerd.grpc.v1.cri"]
+    enable_cdi = true
+    cdi_specs_dir = ["/etc/cdi", "/var/run/cdi"]
+```
+
+Then save it, exit editor, and restart the containerd that runs inside the minikube
+```
+systemctl restart containerd
+```
+
+At last, exit from the minikube container.

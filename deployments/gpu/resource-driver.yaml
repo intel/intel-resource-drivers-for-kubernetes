@@ -19,7 +19,7 @@ spec:
       serviceAccountName: intel-gpu-resource-driver-service-account
       containers:
       - name: kubelet-plugin
-        image: intel/intel-gpu-resource-driver:v0.6.0
+        image: intel/intel-gpu-resource-driver:v0.7.0
         imagePullPolicy: IfNotPresent
         command: ["/kubelet-gpu-plugin"]
         env:
@@ -127,13 +127,13 @@ roleRef:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: resourceslices-policy-dra-kubelet-plugin
+  name: resourceslices-policy-dra-kubelet-plugin-gpu
 spec:
   failurePolicy: Fail
   matchConstraints:
     resourceRules:
     - apiGroups:   ["resource.k8s.io"]
-      apiVersions: ["v1alpha3"]
+      apiVersions: ["v1beta1"]
       operations:  ["CREATE", "UPDATE", "DELETE"]
       resources:   ["resourceslices"]
   matchConditions:
@@ -159,7 +159,7 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: resourceslices-policy-dra-kubelet-plugin
+  name: resourceslices-policy-dra-kubelet-plugin-gpu
 spec:
-  policyName: resourceslices-policy-dra-kubelet-plugin
+  policyName: resourceslices-policy-dra-kubelet-plugin-gpu
   validationActions: [Deny]

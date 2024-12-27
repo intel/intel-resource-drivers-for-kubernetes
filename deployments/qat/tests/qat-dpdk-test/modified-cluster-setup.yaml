@@ -1,0 +1,35 @@
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: ClusterConfiguration
+apiServer:
+  extraArgs:
+    feature-gates: "DynamicResourceAllocation=true"
+    runtime-config: "api/alpha=true"
+controllerManager:
+  extraArgs:
+    feature-gates: "DynamicResourceAllocation=true"
+scheduler:
+  extraArgs:
+    "feature-gates": "DynamicResourceAllocation=true"
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+featureGates:
+  DynamicResourceAllocation: true
+# DPDK applications that use QAT devices requires cpu manager policy as static.
+# In addition, resources should be reserved to enable it.
+cpuManagerPolicy: static
+kubeReserved:
+  cpu: "1"
+  memory: "2Gi"
+  ephemeral-storage: "1Gi"
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: InitConfiguration
+nodeRegistration:
+  criSocket: "unix:///var/run/crio/crio.sock"
+  #criSocket: "unix:///var/run/containerd/containerd.sock"
+---
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+featureGates:
+  DynamicResourceAllocation: true

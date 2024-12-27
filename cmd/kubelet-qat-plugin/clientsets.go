@@ -11,6 +11,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 )
 
 type ClientSet struct {
@@ -30,14 +31,14 @@ func (c *ClientSet) newClientSetConfig() error {
 
 	kubeconfenv := os.Getenv("KUBECONFIG")
 	if kubeconfenv == "" {
-		fmt.Printf("In-cluster config\n")
+		klog.V(5).Info("In-cluster config")
 
 		c.csconfig, err = rest.InClusterConfig()
 		if err != nil {
 			return fmt.Errorf("creating in-cluster client configuration: %v", err)
 		}
 	} else {
-		fmt.Printf("Using env variable KUBECONFIG=%s\n", kubeconfenv)
+		klog.V(5).Infof("Using env variable KUBECONFIG=%s", kubeconfenv)
 
 		c.csconfig, err = clientcmd.BuildConfigFromFlags("", kubeconfenv)
 		if err != nil {
