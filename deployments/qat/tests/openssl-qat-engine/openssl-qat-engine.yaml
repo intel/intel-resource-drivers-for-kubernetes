@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: openssl-qat-engine-sym
+spec:
+  restartPolicy: Never
+  containers:
+  - name: openssl-qat-engine-sym
+    image: openssl-qat-engine:devel
+    imagePullPolicy: IfNotPresent
+    command: ["testapp","-engine","qathwtest","-async_jobs","1","-c","1","-n","1","-nc","1","-v","-hw_algo","0x0029"]
+    securityContext:
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        add:
+          ["IPC_LOCK"]
+    resources:
+      claims:
+      - name: qat-resource-sym-asym
+  resourceClaims:
+  - name: qat-resource-sym-asym
+    resourceClaimTemplateName: qat-template-sym-asym

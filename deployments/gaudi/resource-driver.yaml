@@ -20,7 +20,7 @@ spec:
       initContainers:
       containers:
       - name: kubelet-plugin
-        image: intel/intel-gaudi-resource-driver:v0.2.0
+        image: intel/intel-gaudi-resource-driver:v0.3.0
         imagePullPolicy: IfNotPresent
         command: ["/kubelet-gaudi-plugin"]
         env:
@@ -125,13 +125,13 @@ roleRef:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: resourceslices-policy-dra-kubelet-plugin
+  name: resourceslices-policy-dra-kubelet-plugin-gaudi
 spec:
   failurePolicy: Fail
   matchConstraints:
     resourceRules:
     - apiGroups:   ["resource.k8s.io"]
-      apiVersions: ["v1alpha3"]
+      apiVersions: ["v1beta1"]
       operations:  ["CREATE", "UPDATE", "DELETE"]
       resources:   ["resourceslices"]
   matchConditions:
@@ -157,7 +157,7 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: resourceslices-policy-dra-kubelet-plugin
+  name: resourceslices-policy-dra-kubelet-plugin-gaudi
 spec:
-  policyName: resourceslices-policy-dra-kubelet-plugin
+  policyName: resourceslices-policy-dra-kubelet-plugin-gaudi
   validationActions: [Deny]

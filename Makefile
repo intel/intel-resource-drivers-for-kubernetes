@@ -66,7 +66,7 @@ include $(CURDIR)/qat.mk
 
 
 .PHONY: build
-build: gpu gaudi qat bin/intel-cdi-specs-generator
+build: gpu gaudi qat bin/intel-cdi-specs-generator bin/device-faker
 
 
 bin/intel-cdi-specs-generator: cmd/cdi-specs-generator/*.go $(GPU_COMMON_SRC)
@@ -135,18 +135,24 @@ clean-licenses:
 licenses: clean-licenses
 	GO111MODULE=on go run github.com/google/go-licenses@$(GOLICENSES_VERSION) \
 	save \
-	"./cmd/cdi-specs-generator" \
 	"./cmd/kubelet-gaudi-plugin" \
 	"./cmd/kubelet-gpu-plugin" \
-	"./cmd/qat-showdevice" \
 	"./cmd/kubelet-qat-plugin" \
-	"./pkg/version" \
-	"./pkg/gpu/cdihelpers" \
-	"./pkg/gpu/device" \
-	"./pkg/gpu/discovery" \
+	"./cmd/cdi-specs-generator" \
+	"./cmd/device-faker" \
+	"./cmd/qat-showdevice" \
 	"./pkg/gaudi/cdihelpers" \
 	"./pkg/gaudi/device" \
 	"./pkg/gaudi/discovery" \
+	"./pkg/gpu/cdihelpers" \
+	"./pkg/gpu/device" \
+	"./pkg/gpu/discovery" \
+	"./pkg/qat/cdi" \
+	"./pkg/qat/device" \
+	"./pkg/helpers" \
+	"./pkg/fakesysfs" \
+	"./pkg/plugintesthelpers" \
+	"./pkg/version" \
 	 --save_path licenses
 
 
@@ -159,7 +165,7 @@ format:
 	gofmt -w -s -l ./
 
 cilint:
-	golangci-lint --max-same-issues 0 --max-issues-per-linter 0 run ./...
+	golangci-lint --max-same-issues 0 --max-issues-per-linter 0 run --timeout 2m0s ./...
 
 vet:
 	go vet $(PKG)/...
@@ -185,7 +191,14 @@ yamllint:
 .PHONY: test coverage
 COVERAGE_FILE := coverage.out
 test:
-	go test -v -coverprofile=$(COVERAGE_FILE) $(MODULE)/...
+	go test -v -coverprofile=$(COVERAGE_FILE) $(shell go list ./... | grep -v "test/e2e")
 
 coverage: test
 	go tool cover -html=$(COVERAGE_FILE) -o coverage.html
+	@echo coverage file: coverage.html
+	@echo "average coverage (except main.go files)"
+	grep '<option value=' coverage.html | grep -v 'main.go' | grep -o '(.*)' | tr -d '()%' | awk 'BEGIN{s=0;}{s+=$$1;}END{print s/NR;}'
+
+.PHONY: e2e-qat
+e2e-qat:
+	go test -v ./test/e2e/... --clean-start=true -ginkgo.v -ginkgo.trace -ginkgo.show-node-events

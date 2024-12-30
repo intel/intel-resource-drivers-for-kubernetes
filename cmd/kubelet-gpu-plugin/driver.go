@@ -26,7 +26,7 @@ import (
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1alpha4"
+	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/discovery"
@@ -34,7 +34,7 @@ import (
 )
 
 // compile-time test for implementation conformance with the interface.
-var _ drav1.NodeServer = (*driver)(nil)
+var _ drav1.DRAPluginServer = (*driver)(nil)
 
 type driver struct {
 	client coreclientset.Interface
@@ -76,7 +76,7 @@ KubeletPluginSocketPath: %v`,
 
 	plugin, err := kubeletplugin.Start(
 		ctx,
-		d,
+		[]any{d},
 		kubeletplugin.KubeClient(config.clientset),
 		kubeletplugin.NodeName(config.nodeName),
 		kubeletplugin.DriverName(device.DriverName),
@@ -92,7 +92,9 @@ KubeletPluginSocketPath: %v`,
 	resources := d.state.GetResources()
 	klog.FromContext(ctx).Info("Publishing resources", "len", len(resources.Devices))
 	klog.V(5).Infof("devices: %+v", resources.Devices)
-	plugin.PublishResources(ctx, resources)
+	if err := plugin.PublishResources(ctx, resources); err != nil {
+		return nil, fmt.Errorf("error publishing resources: %v", err)
+	}
 
 	klog.V(3).Info("Finished creating new driver")
 	return d, nil
@@ -120,7 +122,7 @@ func (d *driver) nodePrepareResources(ctx context.Context, claimMetadata *drav1.
 		}
 	}
 
-	claim, err := d.client.ResourceV1alpha3().ResourceClaims(claimMetadata.Namespace).Get(ctx, claimMetadata.Name, metav1.GetOptions{})
+	claim, err := d.client.ResourceV1beta1().ResourceClaims(claimMetadata.Namespace).Get(ctx, claimMetadata.Name, metav1.GetOptions{})
 	if err != nil {
 		return &drav1.NodePrepareResourceResponse{
 			Error: fmt.Sprintf("could not find ResourceClaim %s in namespace %s: %v", claimMetadata.Name, claimMetadata.Namespace, err),

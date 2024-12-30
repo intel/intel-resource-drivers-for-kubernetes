@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"path"
 
+	"k8s.io/klog/v2"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdispecs "tags.cncf.io/container-device-interface/specs-go"
 
@@ -38,7 +39,6 @@ type CDI struct {
 }
 
 func New(cdidir string) (*CDI, error) {
-	fmt.Printf("Setting up CDI\n")
 
 	if err := cdiapi.Configure(cdiapi.WithSpecDirs(cdidir)); err != nil {
 		return nil, fmt.Errorf("unable to refresh the CDI registry: %v", err)
@@ -64,7 +64,7 @@ func (c *CDI) getQatSpecs() []*cdiapi.Spec {
 }
 
 func (c *CDI) SyncDevices(vfdevices device.VFDevices) error {
-	fmt.Printf("Sync CDI devices\n")
+	klog.V(5).Info("Syncing CDI devices")
 
 	vfspec := &cdispecs.Spec{
 		Kind: CDIKind,
@@ -75,15 +75,13 @@ func (c *CDI) SyncDevices(vfdevices device.VFDevices) error {
 		vendorspecname := path.Base(vendorspec.GetPath())
 
 		if vendorspec.Kind != CDIKind {
-			fmt.Printf("Spec file %s is for other kind %s, skippng...\n", vendorspecname, vendorspec.Kind)
+			klog.V(5).Infof("Spec file %s is for other kind %s, skipping...", vendorspecname, vendorspec.Kind)
 			continue
 		}
 
-		fmt.Printf("spec file %s of kind %s\n", vendorspecname, vendorspec.Kind)
-
 		name := vfspecname + path.Ext(vendorspecname)
 		if name == vendorspecname {
-			fmt.Printf("file %s where to add the rest of the devices\n", name)
+			klog.V(5).Infof("Adding rest of the devices to '%s'", name)
 			vfspec = vendorspec.Spec
 		}
 
@@ -92,21 +90,23 @@ func (c *CDI) SyncDevices(vfdevices device.VFDevices) error {
 
 		for _, vendordevice := range vendorspec.Devices {
 			if _, exists := vfdevices[vendordevice.Name]; exists {
-				fmt.Printf("vendor spec %s contains device name %s\n", vendorspecname, vendordevice.Name)
+				klog.V(5).Infof("Vendor spec %s contains device name %s", vendorspecname, vendordevice.Name)
 
 				delete(vfdevices, vendordevice.Name)
 				vendorspecdevices = append(vendorspecdevices, vendordevice)
 			} else {
-				fmt.Printf("CDI device %s not found on host\n", vendordevice.Name)
+				klog.Warningf("CDI device '%s' in spec file '%s' does not exist", vendordevice.Name, vendorspecname)
 				vendorspecupdate = true
 			}
 		}
 		if vendorspecupdate {
-			fmt.Printf("Updating spec file %s with existing devices\n", path.Base(vendorspec.GetPath()))
+			// Update spec file that has a nonexistent device.
+			klog.Infof("Updating spec file %s with existing devices", path.Base(vendorspec.GetPath()))
+
 			vendorspec.Devices = vendorspecdevices
 			err := c.cache.WriteSpec(vendorspec.Spec, vendorspecname)
 			if err != nil {
-				fmt.Printf("failed to overwrite CDI spec %s: %v", vendorspecname, err)
+				klog.Warningf("Failed to update existing CDI spec file %s: %v", vendorspecname, err)
 			}
 		}
 	}
@@ -119,7 +119,7 @@ func (c *CDI) SyncDevices(vfdevices device.VFDevices) error {
 }
 
 func (c *CDI) adddevicespec(spec *cdispecs.Spec, vfdevices device.VFDevices) error {
-	fmt.Printf("Add detected devices\n")
+
 	for _, vf := range vfdevices {
 		cdidevice := cdispecs.Device{
 			Name: vf.UID(),
@@ -131,14 +131,14 @@ func (c *CDI) adddevicespec(spec *cdispecs.Spec, vfdevices device.VFDevices) err
 		}
 		spec.Devices = append(spec.Devices, cdidevice)
 
-		fmt.Printf("added device %s name %s\n", cdidevice.ContainerEdits.DeviceNodes[0].Path, cdidevice.Name)
+		klog.V(5).Infof("Added device %s name %s", cdidevice.ContainerEdits.DeviceNodes[0].Path, cdidevice.Name)
 	}
 	return nil
 }
 
 func (c *CDI) appendDevices(spec *cdispecs.Spec, vfdevices device.VFDevices, name string) error {
 
-	fmt.Printf("Append CDI devices\n")
+	klog.V(5).Info("Append CDI devices")
 
 	if err := c.adddevicespec(spec, vfdevices); err != nil {
 		return err
@@ -155,14 +155,14 @@ func (c *CDI) appendDevices(spec *cdispecs.Spec, vfdevices device.VFDevices, nam
 		return fmt.Errorf("failed to write CDI spec %s: %v", name, err)
 	}
 
-	fmt.Printf("CDI %s: Kind %s, Version %v\n", name, spec.Kind, spec.Version)
+	klog.Infof("CDI %s: Kind %s, Version %v", name, spec.Kind, spec.Version)
 	return nil
 }
 
 func (c *CDI) OverwriteDevices(vfdevices device.VFDevices) error {
 	var err error
 
-	fmt.Printf("Add/overwrite CDI devices\n")
+	klog.V(5).Info("Add/overwrite CDI devices")
 
 	spec := &cdispecs.Spec{
 		Kind: CDIKind,

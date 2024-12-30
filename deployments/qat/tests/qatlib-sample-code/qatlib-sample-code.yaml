@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qatlib-sample-code-sym
+spec:
+  restartPolicy: Never
+  containers:
+  - name: qatlib-sample-code-sym
+    image: openssl-qat-engine:devel
+    imagePullPolicy: IfNotPresent
+    command: ["cpa_sample_code", "runTests=1"]
+    securityContext:
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        add:
+          ["IPC_LOCK"]
+    resources:
+      claims:
+      - name: qat-resource-sym-asym
+  resourceClaims:
+  - name: qat-resource-sym-asym
+    resourceClaimTemplateName: qat-template-sym-asym
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qatlib-sample-code-dc
+spec:
+  restartPolicy: Never
+  containers:
+  - name: qatlib-sample-code-dc
+    image: openssl-qat-engine:devel
+    imagePullPolicy: IfNotPresent
+    command: ["cpa_sample_code", "runTests=32"]
+    securityContext:
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        add:
+          ["IPC_LOCK"]
+    resources:
+      claims:
+      - name: qat-resource-dc
+  resourceClaims:
+  - name: qat-resource-dc
+    resourceClaimTemplateName: qat-template-dc

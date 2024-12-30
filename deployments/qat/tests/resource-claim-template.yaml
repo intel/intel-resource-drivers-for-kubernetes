@@ -1,0 +1,29 @@
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaimTemplate
+metadata:
+  name: qat-template-sym-asym
+spec:
+  spec:
+    devices:
+      requests:
+      - name: qat-request-sym-asym
+        deviceClassName: qat.intel.com
+        selectors:
+        - cel:
+           expression: |-
+              device.attributes["qat.intel.com"].services.matches("[^a]?sym")
+---
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaimTemplate
+metadata:
+  name: qat-template-dc
+spec:
+  spec:
+    devices:
+      requests:
+      - name: qat-request-dc
+        deviceClassName: qat.intel.com
+        selectors:
+        - cel:
+           expression: |-
+              device.attributes["qat.intel.com"].services.matches("dc[^c]?")

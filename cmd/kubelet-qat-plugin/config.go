@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 
+	"k8s.io/klog/v2"
+
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/qat/device"
 )
 
@@ -36,26 +38,27 @@ func readConfigFile(hostname string) (map[string]string, error) {
 func getDefaultConfiguration(hostname string, q device.QATDevices) error {
 	serviceconfig, err := readConfigFile(hostname)
 	if err != nil {
-		fmt.Printf("Could not read default config file - leaving unconfigured: %v\n", err)
+		klog.Infof("Could not read default config file - leaving unconfigured: %v", err)
 		return nil
 	}
 
-	fmt.Printf("Default config for host '%s':\n", hostname)
-
+	klog.V(5).Infof("Default config for host '%s':", hostname)
 	for _, pf := range q {
 		if servicestr, exists := serviceconfig[pf.Device]; exists {
 			var services device.Services
 			var err error
 
 			if services, err = device.StringToServices(servicestr); err != nil {
-				fmt.Printf("Error parsing services for PF device '%s': %v\n", pf.Device, err)
+				klog.Warningf("Error parsing default config services for PF device '%s': %v", pf.Device, err)
+				continue
 			}
 
 			if err := pf.SetServices([]device.Services{services}); err != nil {
-				fmt.Printf("Error configuring services '%s' for PF device '%s': %v\n", services.String(), pf.Device, err)
+				klog.Warningf("Error configuring services '%s' for PF device '%s': %v", services.String(), pf.Device, err)
+				continue
 			}
 
-			fmt.Printf("  PF device '%s' configured with services %s'\n", pf.Device, services.String())
+			klog.V(5).Infof("PF device '%s' configured with services %s'", pf.Device, services.String())
 		}
 	}
 

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -190,7 +192,7 @@ func New() (QATDevices, error) {
 	for _, p := range paths {
 		symlinktarget, err := filepath.EvalSymlinks(p)
 		if err != nil {
-			fmt.Printf("Warning symlink for %s: %v\n", p, err)
+			klog.Warningf("Expected '%s' to be a symlink: %v", p, err)
 			continue
 		}
 
@@ -202,11 +204,11 @@ func New() (QATDevices, error) {
 		}
 
 		if err = newdevice.syncConfig(); err != nil {
-			fmt.Printf("Warning: sync config for %s: %v\n", symlinktarget, err)
+			klog.Warningf("Could not sync config for '%s': %v", newdevice.Device, err)
 			continue
 		}
 		if err := newdevice.getVFs(); err != nil {
-			fmt.Printf("Could not find VFs for %s: %v\n", symlinktarget, err)
+			klog.Warningf("Could not find VFs for '%s': %v", newdevice.Device, err)
 			continue
 		}
 		pcidevices = append(pcidevices, newdevice)
@@ -371,7 +373,7 @@ func (p *PFDevice) getVFs() error {
 
 		vfpath, err := filepath.EvalSymlinks(path)
 		if err != nil {
-			fmt.Printf("Warning symlink for %s: %v\n", path, err)
+			klog.Warningf("Expected symlink for '%s': %v", path, err)
 			continue
 		}
 
@@ -461,7 +463,10 @@ func (p *PFDevice) EnableVFs() error {
 
 	_ = p.getVFs()
 	for _, vf := range p.AvailableDevices {
-		_ = vf.enableVFIO()
+		if err := vf.enableVFIO(); err != nil {
+			klog.Errorf("Enabling VF '%s': %v", vf.UID(), err)
+			return err
+		}
 	}
 
 	if err := p.up(); err != nil {
@@ -513,7 +518,7 @@ func (q QATDevices) Allocate(requestedDeviceUID string, requestedService Service
 	for _, pf := range q {
 		// check for already allocated service mapped by request ID
 		if !pf.Services.Supports(requestedService) {
-			fmt.Printf("pfdev '%s' service '%s' does not support service '%s'\n", pf.Device, pf.Services.String(), requestedService.String())
+			klog.V(5).Infof("PFdev '%s' service '%s' does not support service '%s'", pf.Device, pf.Services.String(), requestedService.String())
 			continue
 		}
 		if allocatedDevices, exists := pf.AllocatedDevices[requestedBy]; exists {
@@ -546,7 +551,7 @@ func (q QATDevices) Allocate(requestedDeviceUID string, requestedService Service
 		if vf, err := pf.Allocate(requestedDeviceUID, requestedBy); err == nil {
 			// attempt configuration of requested service
 			if err := pf.SetServices([]Services{requestedService}); err != nil {
-				_, _ = pf.Free(requestedDeviceUID, requestedBy)
+				_, _ = pf.free(requestedDeviceUID, requestedBy)
 				continue
 			}
 			return vf, true, nil
@@ -561,59 +566,55 @@ func (q *QATDevices) Free(requestedDeviceUID string, requestedBy string) (bool, 
 	updated := false
 
 	for _, pfdevice := range *q {
-		if updated, err = pfdevice.Free(requestedDeviceUID, requestedBy); err == nil {
+		if updated, err = pfdevice.free(requestedDeviceUID, requestedBy); err == nil {
 			return updated, nil
 		}
 	}
 	return false, err
 }
 
-func (p *PFDevice) free(requestedDeviceUID string, vfdevices VFDevices) (bool, error) {
-	if vf, exists := vfdevices[requestedDeviceUID]; exists {
-		p.AvailableDevices[vf.UID()] = vf
-		delete(vfdevices, vf.UID())
-
-		for _, vfdevices := range p.AllocatedDevices {
-			if len(vfdevices) > 0 {
-				return false, nil
+func (p *PFDevice) freePF(requestedDeviceUID string, requestedBy string) (bool, error) {
+	if vfdevices, exists := p.AllocatedDevices[requestedBy]; exists {
+		if vf, exists := vfdevices[requestedDeviceUID]; exists {
+			p.AvailableDevices[vf.UID()] = vf
+			delete(vfdevices, vf.UID())
+			if len(vfdevices) == 0 {
+				delete(p.AllocatedDevices, requestedBy)
 			}
-		}
 
-		// set PF device configuration back to an unconfigured state
-		if p.AllowReconfiguration {
-			if err := p.SetServices([]Services{None}); err != nil {
-				return false, err
+			if len(p.AllocatedDevices) == 0 && p.AllowReconfiguration {
+				// set PF device configuration back to an unconfigured state
+				if err := p.SetServices([]Services{None}); err != nil {
+					return false, err
+				}
+				return true, nil
 			}
-			return true, nil
+
+			return false, nil
 		}
-		return false, nil
 	}
 
 	return false, fmt.Errorf("device '%s' could not be found", requestedDeviceUID)
 }
 
-func (p *PFDevice) Free(requestedDeviceUID string, requestedBy string) (bool, error) {
+func (p *PFDevice) free(requestedDeviceUID string, requestedBy string) (bool, error) {
 	if requestedDeviceUID == "" {
 		return false, fmt.Errorf("no device UID for request '%s'", requestedBy)
 	}
 
 	if requestedBy != "" {
-		if vfdevices, exists := p.AllocatedDevices[requestedBy]; exists {
-			return p.free(requestedDeviceUID, vfdevices)
-		}
+		update, err := p.freePF(requestedDeviceUID, requestedBy)
+		return update, err
 	} else {
-		for _, vfdevices := range p.AllocatedDevices {
-			if update, err := p.free(requestedDeviceUID, vfdevices); err == nil {
+		for requestedBy := range p.AllocatedDevices {
+			update, err := p.freePF(requestedDeviceUID, requestedBy)
+			if err == nil {
 				return update, err
 			}
 		}
 	}
 
 	return false, fmt.Errorf("device '%s' requested by '%s' does not exist", requestedDeviceUID, requestedBy)
-}
-
-func (v *VFDevice) Free(requestedBy string) (bool, error) {
-	return v.pfdevice.Free(v.UID(), requestedBy)
 }
 
 func (v *VFDevice) update() {
@@ -642,10 +643,12 @@ func (v *VFDevice) bindVFIODriver() error {
 
 func (v *VFDevice) unbindVFIODriver() error {
 	err := v.writeFile(filepath.Join(sysfsDriverPath(), vfioUnbind), v.VFDevice)
-	if err != nil {
-		// fs.PathError is returned if the device was not bound
-		err, _ = err.(*os.PathError)
+
+	// fs.PathError is returned if the device was not bound
+	if _, ispatherror := err.(*os.PathError); ispatherror {
+		return nil
 	}
+
 	return err
 }
 

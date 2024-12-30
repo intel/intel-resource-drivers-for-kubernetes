@@ -5,9 +5,8 @@
 package main
 
 import (
-	"fmt"
-
-	resourceapi "k8s.io/api/resource/v1alpha3"
+	resourceapi "k8s.io/api/resource/v1beta1"
+	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/qat/device"
@@ -29,7 +28,7 @@ func deviceResources(qatvfdevices device.VFDevices) *[]resourceapi.Device {
 		}
 		resourcedevices = append(resourcedevices, device)
 
-		fmt.Printf("Adding Device resource: name '%s', service '%s'\n", device.Name, *device.Basic.Attributes["services"].StringValue)
+		klog.V(5).Infof("Adding Device resource: name '%s', service '%s'", device.Name, *device.Basic.Attributes["services"].StringValue)
 	}
 
 	return &resourcedevices

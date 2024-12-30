@@ -8,12 +8,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"k8s.io/klog/v2"
 )
 
 // Map allocation id to VF device.
 type savedAllocations map[string][]string
 
-func (q *QATDevices) SetupSaveStateFile(statefile string) error {
+func (q *QATDevices) ReadStateOrCreateEmpty(statefile string) error {
 	if statefile == "" {
 		return nil
 	}
@@ -52,15 +54,14 @@ func (q *QATDevices) readState(statefile string) error {
 
 	for allocatedby, vfdevices := range saveddevices {
 		for _, vf := range vfdevices {
-			result := "success"
-
 			_, _, err := q.Allocate(vf, Unset, allocatedby)
 
 			if err != nil {
-				result = err.Error()
+				klog.Errorf("Failed to restore VF device '%s' for '%s': %v", vf, allocatedby, err)
+				continue
 			}
 
-			fmt.Printf("restoring VF device '%s' for '%s': %s\n", vf, allocatedby, result)
+			klog.V(5).Infof("Successfully restored VF device '%s' for '%s'", vf, allocatedby)
 		}
 	}
 

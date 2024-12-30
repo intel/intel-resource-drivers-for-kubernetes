@@ -78,6 +78,7 @@ type DeviceInfo struct {
 	ModelName  string `json:"modelname"`  // SKU name of the device, e.g. Gaudi2
 	DeviceIdx  uint64 `json:"deviceidx"`  // accel device number (e.g. 0 for /dev/accel/accel0)
 	ModuleIdx  uint64 `json:"moduleidx"`  // OAM slot number, needed for Habana Runtime to set networking
+	PCIRoot    string `json:"pciroot"`    // PCI Root complex ID
 }
 
 func (g DeviceInfo) CDIName() string {

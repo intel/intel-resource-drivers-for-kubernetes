@@ -8,6 +8,8 @@ With structured parameters (K8s v1.31+), the DRA driver publishes ResourceSlice,
 the resoruces and resource driver's kubelet-plugin ensures that the allocated devices are prepared
 and available for Pods.
 
+DRA API graduated to v1beta1 in K8s v1.32. Latest DRA drivers support only K8s v1.32+.
+
 ## Supported GPU devices (with Linux kernel Intel `i915` GPU driver):
 - Intel® Data Center GPU Max Series
 - Intel® Data Center GPU Flex Series
@@ -27,7 +29,8 @@ Supported Kubernetes versions are listed below:
 | v0.3.0            | Kubernetes v1.28+                | unsupported | Classic                        |
 | v0.4.0            | Kubernetes v1.28+                | unsupported | Classic                        |
 | v0.5.0            | Kubernetes v1.27 - v1.30         | supported   | Classic, Structured Parameters |
-| v0.6.0            | Kubernetes v1.31+                | supported   | Structured Parameters          |
+| v0.6.0            | Kubernetes v1.31                 | unsupported | Structured Parameters          |
+| v0.7.0            | Kubernetes v1.32+                | supported   | Structured Parameters          |
 
 ## Documentation
 

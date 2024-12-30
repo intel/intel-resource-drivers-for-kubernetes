@@ -1,6 +1,6 @@
 ## Requirements
 
-- Kubernetes 1.31+, with `DynamicResourceAllocation` feature-flag enabled, and
+- Kubernetes 1.32+, with `DynamicResourceAllocation` feature-flag enabled, and
 [other cluster parameters](../../hack/clusterconfig.yaml)
 - Container runtime needs to support CDI:
   - CRI-O v1.23.0 or newer
@@ -30,7 +30,7 @@ When deploying custom-built resource driver image, change `image:` lines in
     2) preparation of the hardware allocated to the ResourceClaims for the Pod that is being started on the node.
     3) unpreparation of the hardware allocated to the ResourceClaims for the Pod that has stopped and reached final state on the node.
 
-### Basic use case: Pod with QAT accelerator
+### Example use case: Pod with QAT accelerator
 
 The simplest way to use the Intel® QAT resource driver is to create a ResourceClaim
 and add it to the Pod spec. The Intel® QAT resource driver will take care of allocating
@@ -38,7 +38,7 @@ a suitable device to the Resource Claim when Kubernetes schedules the Pod on the
 
 Example:
 ```
-apiVersion: resource.k8s.io/v1alpha3
+apiVersion: resource.k8s.io/v1beta1
 kind: ResourceClaimTemplate
 metadata:
   name: qat-template-sym-asym
@@ -51,7 +51,6 @@ spec:
         selectors:
         - cel:
            expression: |-
-              device.driver == "qat.intel.com" &&
               device.attributes["qat.intel.com"].services.matches("sym;asym")
 
 ---
@@ -90,4 +89,4 @@ QAT services are matched by CEL expression; in the example above, `sym` and `asy
 services are considered in the regular expression. Examples of other common service
 matches include `sym;asym`, `[^a]?sym` and `dc`, see [README](README.md#qat-service-configuration).
 
-`IPC_LOCK`capability is [strongly recommended](README.md#qat-service-configuration).
+`IPC_LOCK` capability is required sinces VFIO based device access expects IPC_LOCK with the QAT sw stack.

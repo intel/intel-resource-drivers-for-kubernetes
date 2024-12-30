@@ -17,8 +17,6 @@ kubectl apply -f deployments/gaudi/resource-driver.yaml
 
 By default the kubelet-plugin will be deployed on _all_ nodes in the cluster, there is no nodeSelector.
 
-One could be added, for example, based on [NFD provided device labels](https://kubernetes-sigs.github.io/node-feature-discovery/stable/usage/features.html) indicating PCI devices presence.
-
 When deploying custom-built resource driver image, change `image:` lines in
 [resource-driver](../../deployments/gaudi/resource-driver.yaml) to match its location.
 
@@ -28,7 +26,7 @@ When deploying custom-built resource driver image, change `image:` lines in
 * `deployments/gaudi/resource-driver-namespace.yaml` - Kubernetes namespace for Gaudi resource driver.
 * `deployments/gaudi/resource-driver.yaml` - actual resource driver with service account and RBAC policy
   - kubelet-plugin DaemonSet - node-agent, it performs three functions:
-    1) supported hardware discovery on Kubernetes cluster node and its announcement as a ResourceSlice.
+    1) supported hardware discovery on Kubernetes cluster node and it's announcement as a ResourceSlice.
     2) preparation of the hardware allocated to the ResourceClaims for the Pod that is being started on the node.
     3) unpreparation of the hardware allocated to the ResourceClaims for the Pod that is being started on the node
 
@@ -44,7 +42,7 @@ rpl-s-gaudi.intel.com-x8m4h   rpl-s   gaudi.intel.com   rpl-s   4d1h
 Example contents of the ResourceSlice object:
 ```bash
 $ kubectl get resourceSlices/rpl-s-gaudi.intel.com-x8m4h -o yaml
-apiVersion: resource.k8s.io/v1alpha3
+apiVersion: resource.k8s.io/v1beta1
 kind: ResourceSlice
 metadata:
   creationTimestamp: "2024-09-23T13:03:21Z"
@@ -118,7 +116,7 @@ to Pod spec to be used in container. The Intel Gaudi resource driver will take c
 suitable device to the Resource Claim when Kubernetes is scheduling the Pod.
 
 ```yaml
-apiVersion: resource.k8s.io/v1alpha3
+apiVersion: resource.k8s.io/v1beta1
 kind: ResourceClaim
 metadata:
   name: claim1
@@ -185,7 +183,7 @@ and needs explicit deletion.
 
 Example of Pod with generated Resource Claim:
 ```YAML
-apiVersion: resource.k8s.io/v1alpha3
+apiVersion: resource.k8s.io/v1beta1
 kind: ResourceClaimTemplate
 metadata:
   name: claim1
@@ -218,11 +216,12 @@ spec:
 
 ResourceClaim device request can be customized. `count` field specifies how many devices are needed.
 'selectors' is a [CEL](https://github.com/google/cel-spec) filter to narrow down allocation to
-desired devices. The attributes of the device can be used in CEL.
+desired devices. For instance, device model should be Gaudi2. The attributes of the device can be
+used in CEL.
 
 Example of Resource Claim requesting 2 Gaudi2 accelerators:
 ```yaml
-apiVersion: resource.k8s.io/v1alpha3
+apiVersion: resource.k8s.io/v1beta1
 kind: ResourceClaim
 metadata:
   name: claim1

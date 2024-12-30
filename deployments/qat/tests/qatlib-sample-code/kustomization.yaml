@@ -1,0 +1,9 @@
+resources:
+- qatlib-sample-code.yaml
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- name: openssl-qat-engine:devel
+  newName: intel/openssl-qat-engine
+  newTag: devel

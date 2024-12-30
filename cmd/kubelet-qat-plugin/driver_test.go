@@ -10,10 +10,10 @@ import (
 	"reflect"
 	"testing"
 
-	resourcev1 "k8s.io/api/resource/v1alpha3"
+	resourcev1 "k8s.io/api/resource/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubefake "k8s.io/client-go/kubernetes/fake"
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1alpha4"
+	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/fakesysfs"
 	helpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
@@ -91,6 +91,21 @@ func TestDriver(t *testing.T) {
 			},
 		},
 		{
+			name: "QAT reallocate same device and same claim UID",
+			claims: []*resourcev1.ResourceClaim{
+				helpers.NewClaim(testNameSpace, "claim-a", "uid1", "request1", "qat.intel.com", testNodeName, []string{"qatvf-0000-aa-00-1"}),
+			},
+			request: &drav1.NodePrepareResourcesRequest{
+				Claims: []*drav1.Claim{{UID: "uid1", Name: "claim1", Namespace: testNameSpace}},
+			},
+			expectedResponse: &drav1.NodePrepareResourcesResponse{
+				Claims: map[string]*drav1.NodePrepareResourceResponse{
+					"uid1": {Devices: []*drav1.Device{
+						{RequestNames: []string{"request1"}, PoolName: testNodeName, DeviceName: "qatvf-0000-aa-00-1", CDIDeviceIDs: []string{"intel.com/qat=qatvf-0000-aa-00-1", "intel.com/qat=qatvf-vfio"}}}},
+				},
+			},
+		},
+		{
 			name: "QAT device already allocated",
 			claims: []*resourcev1.ResourceClaim{
 				helpers.NewClaim(testNameSpace, "claim2", "uid2", "request1", "qat.intel.com", testNodeName, []string{"qatvf-0000-aa-00-1"}),
@@ -126,7 +141,7 @@ func TestDriver(t *testing.T) {
 		t.Log(testcase.name)
 
 		for _, testClaim := range testcase.claims {
-			createdClaim, err := driver.kubeclient.ResourceV1alpha3().ResourceClaims(testClaim.Namespace).Create(context.TODO(), testClaim, metav1.CreateOptions{})
+			createdClaim, err := driver.kubeclient.ResourceV1beta1().ResourceClaims(testClaim.Namespace).Create(context.TODO(), testClaim, metav1.CreateOptions{})
 			if err != nil {
 				t.Errorf("could not create test claim: %v", err)
 				continue
