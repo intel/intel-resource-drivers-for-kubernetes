@@ -13,15 +13,26 @@ sudo -E kubeadm init --config hack/clusterconfig.yaml
 - Deploy cni .
 - Verify that `coredns` pod(s) are up: `kubectl get pods -A | grep dns`.
 
-## Enable CDI in Containerd
+## Configure CDI in Containerd 1.0
 
-Containerd config file should have `enable_cdi` and `cdi_specs_dir`. Example `/etc/containerd/config.toml`:
+Containerd config file should have `enable_cdi` and `cdi_spec_dirs`. Example `/etc/containerd/config.toml`:
 ```
 version = 2
 [plugins]
   [plugins."io.containerd.grpc.v1.cri"]
     enable_cdi = true
-    cdi_specs_dir = ["/etc/cdi", "/var/run/cdi"]
+    cdi_spec_dirs = ["/etc/cdi", "/var/run/cdi"]
+```
+
+## Configure CDI in Containerd 2.0
+
+Containerd 2.0 has CDI enabled by default. Pay attention that the plugin name has changed. Example `/etc/containerd/config.toml`:
+```
+version = 3
+[plugins]
+  [plugins."io.containerd.cri.v1.runtime"]
+    enable_cdi = true
+    cdi_spec_dirs = ["/etc/cdi", "/var/run/cdi"]
 ```
 
 ## Using minikube
@@ -50,7 +61,7 @@ Add two lines into the `[plugins."io.containerd.grpc.v1.cri"]` section:
 ```
   [plugins."io.containerd.grpc.v1.cri"]
     enable_cdi = true
-    cdi_specs_dir = ["/etc/cdi", "/var/run/cdi"]
+    cdi_spec_dirs = ["/etc/cdi", "/var/run/cdi"]
 ```
 
 Then save it, exit editor, and restart the containerd that runs inside the minikube
