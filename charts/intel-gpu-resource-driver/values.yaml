@@ -1,6 +1,6 @@
 # Default values for intel-gpu-resource-driver.
 nameOverride: ""
-namespaceOverride: "intel-gpu-resource-driver"
+namespaceOverride: ""
 fullnameOverride: ""
 selectorLabelsOverride: {}
 
@@ -14,7 +14,7 @@ image:
 serviceAccount:
   create: true
   annotations: {}
-  name: intel-gpu-resource-driver-service-account
+  name: ""
   automount: true
 
 kubeletPlugin:
