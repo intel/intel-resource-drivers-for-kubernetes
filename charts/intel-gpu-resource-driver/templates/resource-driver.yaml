@@ -73,7 +73,7 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.nfd.enabled }}
+      {{- if or .Values.nodeFeatureRules.enabled .Values.nfd.enabled }}
       nodeSelector:
         intel.feature.node.kubernetes.io/gpu: "true"
       {{- else }}

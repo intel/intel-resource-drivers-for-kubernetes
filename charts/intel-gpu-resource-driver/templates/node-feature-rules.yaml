@@ -1,4 +1,4 @@
-{{- if .Values.nfd.enabled }}
+{{- if or .Values.nodeFeatureRules.enabled .Values.nfd.enabled }}
 apiVersion: nfd.k8s-sigs.io/v1alpha1
 kind: NodeFeatureRule
 metadata:

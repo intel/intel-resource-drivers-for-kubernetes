@@ -19,9 +19,7 @@ serviceAccount:
 
 kubeletPlugin:
   podAnnotations: {}
-  nodeSelector: {}
-  # label used when nfd.enabled is true
-    #intel.feature.node.kubernetes.io/gpu: "true"
+  nodeSelector: {} # ignored when .Values.nodeFeatureRules.enabled or .Values.nfd.enabled
   tolerations:
     - key: node-role.kubernetes.io/master
       operator: Exists
@@ -36,6 +34,9 @@ kubeletPlugin:
       operator: "Exists"
       effect: "NoSchedule"
   affinity: {}
+
+nodeFeatureRules:
+  enabled: false
 
 nfd:
   enabled: false # change to true to install NFD to the cluster
