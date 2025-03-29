@@ -14,7 +14,6 @@ spec:
       labels:
         app: intel-gpu-resource-driver
     spec:
-      serviceAccount: intel-gpu-resource-driver-service-account
       serviceAccountName: {{ include "intel-gpu-resource-driver.serviceAccountName" . }}
       containers:
       - name: kubelet-plugin
