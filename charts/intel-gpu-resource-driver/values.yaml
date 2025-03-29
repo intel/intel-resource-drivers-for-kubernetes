@@ -35,6 +35,10 @@ kubeletPlugin:
       effect: "NoSchedule"
   affinity: {}
 
+cdi:
+  staticPath: /etc/cdi
+  dynamicPath: /var/run/cdi
+
 nodeFeatureRules:
   enabled: false
 
