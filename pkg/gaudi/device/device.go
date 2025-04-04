@@ -18,10 +18,10 @@ package device
 
 import (
 	"fmt"
-	"os"
-	"path"
+	"path/filepath"
 	"regexp"
-	"strings"
+
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
 
 var (
@@ -42,12 +42,7 @@ var (
 )
 
 const (
-	DevfsEnvVarName  = "DEVFS_ROOT"
-	devfsDefaultRoot = "/dev"
-	DevfsAccelPath   = "accel"
-
-	SysfsEnvVarName  = "SYSFS_ROOT"
-	sysfsDefaultRoot = "/sys"
+	DevfsAccelPath = "accel"
 
 	// driver.sysfsDriverDir and driver.sysfsAccelDir are sysfsDriverPath and sysfsAccelPath
 	// respectively prefixed with $SYSFS_ROOT.
@@ -79,6 +74,8 @@ type DeviceInfo struct {
 	DeviceIdx  uint64 `json:"deviceidx"`  // accel device number (e.g. 0 for /dev/accel/accel0)
 	ModuleIdx  uint64 `json:"moduleidx"`  // OAM slot number, needed for Habana Runtime to set networking
 	PCIRoot    string `json:"pciroot"`    // PCI Root complex ID
+	Serial     string `json:"serial"`     // Serial number obtained through HLML library
+	Healthy    bool   `json:"healthy"`    // True if device is usable, false otherwise
 }
 
 func (g DeviceInfo) CDIName() string {
@@ -98,24 +95,6 @@ func (g *DeviceInfo) SetModelName() {
 	g.ModelName = "Unknown"
 }
 
-func DeviceUIDFromPCIinfo(pciAddress string, pciid string) string {
-	// 0000:00:01.0, 0x0000 -> 0000-00-01-0-0x0000
-	// Replace colons and the dot in PCI address with hyphens.
-	rfc1123PCIaddress := strings.ReplaceAll(strings.ReplaceAll(pciAddress, ":", "-"), ".", "-")
-	newUID := fmt.Sprintf("%v-%v", rfc1123PCIaddress, pciid)
-
-	return newUID
-}
-
-func PciInfoFromDeviceUID(deviceUID string) (string, string) {
-	// 0000-00-01-0-0x0000 -> 0000:00:01.0, 0x0000
-	rfc1123PCIaddress := deviceUID[:PCIAddressLength]
-	pciAddress := strings.Replace(strings.Replace(rfc1123PCIaddress, "-", ":", 2), "-", ".", 1)
-	deviceId := deviceUID[PCIAddressLength:]
-
-	return pciAddress, deviceId
-}
-
 // DevicesInfo is a dictionary with DeviceInfo.uid being the key.
 type DevicesInfo map[string]*DeviceInfo
 
@@ -126,38 +105,6 @@ func (g *DevicesInfo) DeepCopy() DevicesInfo {
 	}
 	return devicesInfoCopy
 }
-
-func GetDevfsRoot() string {
-	devfsRoot, found := os.LookupEnv(DevfsEnvVarName)
-
-	if found {
-		if _, err := os.Stat(path.Join(devfsRoot, DevfsAccelPath)); err == nil {
-			fmt.Printf("using custom devfs location: %v\n", devfsRoot)
-			return devfsRoot
-		} else {
-			fmt.Printf("could not find devfs at '%v' from %v env var: %v\n", devfsRoot, DevfsEnvVarName, err)
-		}
-	}
-
-	fmt.Printf("using default devfs accel location: %v\n", devfsDefaultRoot)
-	return devfsDefaultRoot
-}
-
-// GetSysfsRoot tries to get path where sysfs is mounted from
-// env var, or fallback to hardcoded path.
-func GetSysfsRoot() string {
-	sysfsPath, found := os.LookupEnv(SysfsEnvVarName)
-
-	if found {
-		if _, err := os.Stat(path.Join(sysfsPath, SysfsAccelPath)); err == nil {
-			fmt.Printf("using custom sysfs location: %v\n", sysfsPath)
-			return sysfsPath
-		} else {
-			fmt.Printf("could not find sysfs at '%v' from %v env var: %v\n", sysfsPath, SysfsEnvVarName, err)
-		}
-	}
-
-	fmt.Printf("using default sysfs location: %v\n", sysfsDefaultRoot)
-	// If /sys is not available, devices discovery will fail gracefully.
-	return sysfsDefaultRoot
+func GetAccelDevfsPath() string {
+	return filepath.Join(helpers.GetDevRoot(helpers.DevfsEnvVarName, DevfsAccelPath), DevfsAccelPath)
 }

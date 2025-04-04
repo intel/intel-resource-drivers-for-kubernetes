@@ -1,0 +1,43 @@
+# Default values for intel-gpu-resource-driver.
+nameOverride: ""
+namespaceOverride: "intel-gpu-resource-driver"
+fullnameOverride: ""
+selectorLabelsOverride: {}
+
+imagePullSecrets: []
+image:
+  repository: intel
+  name: intel-gpu-resource-driver
+  pullPolicy: IfNotPresent
+  tag: "v0.7.0"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: intel-gpu-resource-driver-service-account
+  automount: true
+
+kubeletPlugin:
+  podAnnotations: {}
+  nodeSelector: {}
+  # label used when nfd.enabled is true
+    #intel.feature.node.kubernetes.io/gpu: "true"
+  tolerations:
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+      # Refer to the official documentation for Node Feature Discovery (NFD)
+      # regarding node tainting:
+      # https://nfd.sigs.k8s.io/usage/customization-guide#node-tainting
+    - key: "node.kubernetes.io/gpu"
+      operator: "Exists"
+      effect: "NoSchedule"
+  affinity: {}
+
+nfd:
+  enabled: false # change to true to install NFD to the cluster
+  nameOverride: intel-gpu-nfd
+  enableNodeFeatureApi: true

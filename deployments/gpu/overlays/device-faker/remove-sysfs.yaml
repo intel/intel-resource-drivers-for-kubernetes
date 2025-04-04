@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: intel-gpu-resource-driver-kubelet-plugin
+  namespace: intel-gpu-resource-driver
+spec:
+  template:
+    spec:
+      containers:
+      - name: kubelet-plugin
+        volumeMounts:
+        - name: sysfs
+          mountPath: /sysfs
+          $patch: delete
+      volumes:
+      - name: sysfs
+        $patch: delete

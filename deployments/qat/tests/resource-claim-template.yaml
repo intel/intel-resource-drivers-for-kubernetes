@@ -1,17 +1,40 @@
 apiVersion: resource.k8s.io/v1beta1
 kind: ResourceClaimTemplate
 metadata:
-  name: qat-template-sym-asym
+  name: qat-template-sym
 spec:
   spec:
     devices:
       requests:
-      - name: qat-request-sym-asym
+      - name: qat-request-sym
         deviceClassName: qat.intel.com
         selectors:
         - cel:
            expression: |-
-              device.attributes["qat.intel.com"].services.matches("[^a]?sym")
+              device.attributes["qat.intel.com"].services == "sym" ||
+              device.attributes["qat.intel.com"].services == "sym;asym" ||
+              device.attributes["qat.intel.com"].services == "sym;dc" ||
+              device.attributes["qat.intel.com"].services == "asym;sym" ||
+              device.attributes["qat.intel.com"].services == "dc;sym"
+---
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaimTemplate
+metadata:
+  name: qat-template-asym
+spec:
+  spec:
+    devices:
+      requests:
+      - name: qat-request-asym
+        deviceClassName: qat.intel.com
+        selectors:
+        - cel:
+           expression: |-
+              device.attributes["qat.intel.com"].services == "asym" ||
+              device.attributes["qat.intel.com"].services == "asym;sym" ||
+              device.attributes["qat.intel.com"].services == "asym;dc" ||
+              device.attributes["qat.intel.com"].services == "sym;asym" ||
+              device.attributes["qat.intel.com"].services == "dc;asym"
 ---
 apiVersion: resource.k8s.io/v1beta1
 kind: ResourceClaimTemplate
@@ -26,4 +49,9 @@ spec:
         selectors:
         - cel:
            expression: |-
-              device.attributes["qat.intel.com"].services.matches("dc[^c]?")
+              device.attributes["qat.intel.com"].services == "dc" ||
+              device.attributes["qat.intel.com"].services == "dc;sym" ||
+              device.attributes["qat.intel.com"].services == "dc;asym" ||
+              device.attributes["qat.intel.com"].services == "sym;dc" ||
+              device.attributes["qat.intel.com"].services == "asym;dc" ||
+              device.attributes["qat.intel.com"].services == "dcc"

@@ -17,11 +17,10 @@ spec:
           ["IPC_LOCK"]
     resources:
       claims:
-      - name: qat-resource-sym-asym
+      - name: qat-resource-sym
   resourceClaims:
-  - name: qat-resource-sym-asym
-    resourceClaimTemplateName: qat-template-sym-asym
-
+  - name: qat-resource-sym
+    resourceClaimTemplateName: qat-template-sym
 ---
 apiVersion: v1
 kind: Pod

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
 
 func TestDeviceInfoDeepCopy(t *testing.T) {
@@ -66,7 +67,7 @@ func errorCheck(t *testing.T, name, substr string, err error) {
 func TestPreparedClaimsFiles(t *testing.T) {
 	type testOp struct {
 		// if non-empty, op1 writes to given file, op2 reads file & compares against
-		claims *ClaimPreparations
+		claims *helpers.ClaimPreparations
 		file   string // otherwise, if non-empty, op1 reads, op2 writes to given file
 		err    string // part of error message, if any
 	}
@@ -86,7 +87,7 @@ func TestPreparedClaimsFiles(t *testing.T) {
 	claimDir := "test-claims/"
 	missingPath := "non/existing/file"
 
-	multiClaim := ClaimPreparations{
+	multiClaim := helpers.ClaimPreparations{
 		"uid1": {{RequestNames: []string{"request1"}, DeviceName: "0000-af-00-1-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-1-0xabcd"}}},
 		"uid2": {{RequestNames: []string{"request1"}, DeviceName: "0000-af-00-2-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-2-0xabcd"}}},
 		"uid3": {{RequestNames: []string{"request1"}, DeviceName: "0000-af-00-3-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-3-0xabcd"}}},
@@ -108,7 +109,7 @@ func TestPreparedClaimsFiles(t *testing.T) {
 				nil, "", "",
 			},
 			testOp{
-				&ClaimPreparations{}, missingPath, "no such file",
+				&helpers.ClaimPreparations{}, missingPath, "no such file",
 			},
 		},
 		{
@@ -126,16 +127,16 @@ func TestPreparedClaimsFiles(t *testing.T) {
 				nil, claimDir + "empty.json", "",
 			},
 			testOp{
-				&ClaimPreparations{}, "", "",
+				&helpers.ClaimPreparations{}, "", "",
 			},
 		},
 		{
 			"empty write & read OK",
 			testOp{
-				&ClaimPreparations{}, tmpClaim, "",
+				&helpers.ClaimPreparations{}, tmpClaim, "",
 			},
 			testOp{
-				&ClaimPreparations{}, tmpClaim, "",
+				&helpers.ClaimPreparations{}, tmpClaim, "",
 			},
 		},
 		{
@@ -158,7 +159,7 @@ func TestPreparedClaimsFiles(t *testing.T) {
 		},
 	}
 
-	var claims ClaimPreparations
+	var claims helpers.ClaimPreparations
 	for _, test := range testcases {
 		t.Log(test.name)
 
@@ -169,13 +170,13 @@ func TestPreparedClaimsFiles(t *testing.T) {
 			if test.op1.file != test.op2.file {
 				t.Errorf("=> different files for round-trip check: '%s' vs. '%s'", test.op1.file, test.op2.file)
 			}
-			err = writePreparedClaimsToFile(test.op1.file, *test.op1.claims)
+			err = helpers.WritePreparedClaimsToFile(test.op1.file, *test.op1.claims)
 			errorCheck(t, "writing claims", test.op1.err, err)
-			claims, err = readPreparedClaimsFromFile(test.op2.file)
+			claims, err = helpers.ReadPreparedClaimsFromFile(test.op2.file)
 			errorCheck(t, "reading claims", test.op2.err, err)
 		case test.op1.file != "":
 			// read pre-existing JSON
-			claims, err = readPreparedClaimsFromFile(test.op1.file)
+			claims, err = helpers.ReadPreparedClaimsFromFile(test.op1.file)
 			errorCheck(t, "reading claims", test.op1.err, err)
 		default:
 			content = false
@@ -205,7 +206,7 @@ func TestPreparedClaimsFiles(t *testing.T) {
 			continue
 		}
 
-		err = writePreparedClaimsToFile(test.op2.file, claims)
+		err = helpers.WritePreparedClaimsToFile(test.op2.file, claims)
 		errorCheck(t, "writing claims", test.op2.err, err)
 
 		// TODO: validate saved JSON against something?

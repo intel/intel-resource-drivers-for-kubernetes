@@ -27,9 +27,11 @@ GIT_COMMIT = $(shell git rev-parse HEAD)
 BUILD_DATE = $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_BRANCH ?= $(shell git branch --show-current)
 
+TEST_IMAGE ?= gaudi-dra-driver-test-image:latest
+
 EXT_LDFLAGS = -static
 LDFLAGS = \
- -s -w -extldflags $(EXT_LDFLAGS) \
+ -s -w \
  -X ${PKG}/pkg/version.gitCommit=${GIT_COMMIT} \
  -X ${PKG}/pkg/version.buildDate=${BUILD_DATE}
 
@@ -69,13 +71,16 @@ include $(CURDIR)/qat.mk
 build: gpu gaudi qat bin/intel-cdi-specs-generator bin/device-faker
 
 
+
 bin/intel-cdi-specs-generator: cmd/cdi-specs-generator/*.go $(GPU_COMMON_SRC)
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
-	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/cdi-specs-generator
+	  go build -a -ldflags "${LDFLAGS} -extldflags $(EXT_LDFLAGS)" \
+	  -mod vendor -o $@ ./cmd/cdi-specs-generator
 
 bin/device-faker: cmd/device-faker/*.go
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
-	  go build -a -ldflags "${LDFLAGS}" -mod vendor -o $@ ./cmd/device-faker
+	  go build -a -ldflags "${LDFLAGS} -extldflags ${EXT_LDFLAGS}" \
+	  -mod vendor -o $@ ./cmd/device-faker
 
 
 .PHONY: branch-build
@@ -108,9 +113,6 @@ cleanall: clean
 
 .PHONY: rm-clientsets
 rm-clientsets: rm-gpu-clientset rm-gaudi-clientset
-
-.PHONY: generate
-generate: generate-gpu-crd generate-gaudi-crd
 
 .PHONY: generate-deepcopy
 generate-deepcopy: generate-gpu-deepcopy generate-gaudi-deepcopy
@@ -159,7 +161,7 @@ licenses: clean-licenses
 # linting targets for Go and other code
 .PHONY: lint format cilint vet shellcheck yamllint
 
-lint: format cilint vet klogformat shellcheck yamllint
+lint: vendor format cilint vet klogformat shellcheck yamllint
 
 format:
 	gofmt -w -s -l ./
@@ -187,18 +189,62 @@ yamllint:
 	@echo -e "\nyamllint: lint non-templated YAML files:"
 	git ls-files '*.yaml' | xargs grep -L '^ *{{-' | xargs yamllint -d relaxed --no-warnings
 
+.PHONE: test-image test-image-push
+test-image: vendor
+	@echo "Building container image with fake HLML for Gaudi tests with user $(shell id -u):$(shell id -g)"
+	$(DOCKER) build \
+	--build-arg UID=$(shell id -u) --build-arg GID=$(shell id -g) \
+	--platform="linux/$(ARCH)" \
+	-t "$(TEST_IMAGE)" 	-f Dockerfile.gaudi-test .
 
-.PHONY: test coverage
+test-image-push: test-image
+	$(DOCKER) push "$(TEST_IMAGE)"
+
+.PHONY: test html-coverage test-containerized
 COVERAGE_FILE := coverage.out
+# Gaudi tests expect fake HLML library to be present at /usr/lib/habanalabs/libhlml.so
+# Dependency comes from gohlml package hardcoded LD_LIBRARY_PATH pointing to it.
 test:
-	go test -v -coverprofile=$(COVERAGE_FILE) $(shell go list ./... | grep -v "test/e2e")
+ifeq ("$(container)","yes")
+		@echo setting safe directory
+		go test -buildvcs=false -v -coverprofile=$(COVERAGE_FILE) $(shell go list ./... | grep -v "test/e2e")
+else
+		@echo running tests
+		go test -v -coverprofile=$(COVERAGE_FILE) $(shell go list ./... | grep -v "test/e2e")
+endif
 
-coverage: test
+test-containerized:
+	$(DOCKER) run \
+	-it -e container=yes \
+	--user 1000:1000 \
+	-v "$(shell pwd)":/home/ubuntu/src:rw \
+	"$(TEST_IMAGE)" \
+	bash -c "cd src && make test"
+
+html-coverage: $(COVERAGE_FILE)
 	go tool cover -html=$(COVERAGE_FILE) -o coverage.html
 	@echo coverage file: coverage.html
-	@echo "average coverage (except main.go files)"
-	grep '<option value=' coverage.html | grep -v 'main.go' | grep -o '(.*)' | tr -d '()%' | awk 'BEGIN{s=0;}{s+=$$1;}END{print s/NR;}'
 
-.PHONY: e2e-qat
-e2e-qat:
-	go test -v ./test/e2e/... --clean-start=true -ginkgo.v -ginkgo.trace -ginkgo.show-node-events
+$(COVERAGE_FILE): $(shell find cmd pkg -name '*.go')
+	go test -v -coverprofile=$(COVERAGE_FILE) $(shell go list ./... | grep -v "test/e2e")
+
+.PHONY: gpu-coverage gaudi-coverage qat-coverage cdispecsgen-coverage excluded-coverage
+
+gpu-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gaudi-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gaudi|pkg/fakesysfs|plugintesthelpers"
+gpu-coverage: excluded-coverage
+# See: https://www.gnu.org/software/make/manual/html_node/Target_002dspecific.html
+
+gaudi-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gpu-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gpu|pkg/fakesysfs|plugintesthelpers"
+gaudi-coverage: excluded-coverage
+
+qat-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gpu-plugin|kubelet-gaudi-plugin|pkg/gpu|pkg/gaudi|pkg/fakesysfs|plugintesthelpers"
+qat-coverage: excluded-coverage
+
+cdispecsgen-coverage: COVERAGE_EXCLUDE="device-faker|kubelet-gpu-plugin|kubelet-gaudi-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gpu|pkg/gaudi|pkg/fakesysfs|plugintesthelpers"
+cdispecsgen-coverage: excluded-coverage
+
+COVERAGE_EXCLUDE ?= "$^"
+excluded-coverage: $(COVERAGE_FILE)
+	@grep -v -E $(COVERAGE_EXCLUDE) $(COVERAGE_FILE) > $(COVERAGE_FILE).tmp && \
+	go tool cover -func=$(COVERAGE_FILE).tmp && \
+	rm $(COVERAGE_FILE).tmp

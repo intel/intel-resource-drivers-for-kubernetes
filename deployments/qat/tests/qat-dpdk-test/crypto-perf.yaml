@@ -20,7 +20,7 @@ spec:
       name: dpdk-runtime
     resources:
       claims:
-      - name: qat-resource-sym-asym
+      - name: qat-resource-sym
       requests:
         cpu: "3"
         memory: "128Mi"
@@ -44,5 +44,5 @@ spec:
     emptyDir:
       medium: HugePages
   resourceClaims:
-  - name: qat-resource-sym-asym
-    resourceClaimTemplateName: qat-template-sym-asym
+  - name: qat-resource-sym
+    resourceClaimTemplateName: qat-template-sym

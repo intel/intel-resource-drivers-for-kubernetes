@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: intel-gaudi-resource-driver-kubelet-plugin
+  namespace: intel-gaudi-resource-driver
+spec:
+  template:
+    spec:
+      initContainers:
+      - name: device-faker
+        image: ger-is-registry.caas.intel.com/dgpu-orchestration/intel-device-faker:v0.1.0
+        imagePullPolicy: Always
+        command: ["/device-faker", "gaudi", "-t", "/opt/templates/gaudi-template.json", "-d", "/tmp/fake-root"]
+        volumeMounts:
+        - name: fake-root
+          mountPath: /tmp/fake-root
+      containers:
+      - name: kubelet-plugin
+        env:
+        - name: SYSFS_ROOT
+          value: "/fake-sysfs"
+        volumeMounts:
+        - name: fake-root
+          mountPath: /fake-sysfs
+          subPath: sysfs
+        - name: fake-root
+          mountPath: /fake-dev/dri
+          subPath: dev/dri
+        - name: fake-root
+          mountPath: /fake-cdi
+          subPath: cdi
+      volumes:
+      - name: fake-root
+        emptyDir: {}

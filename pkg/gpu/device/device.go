@@ -18,10 +18,10 @@ package device
 
 import (
 	"fmt"
-	"os"
-	"path"
+	"path/filepath"
 	"regexp"
-	"strings"
+
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
 
 var (
@@ -31,22 +31,19 @@ var (
 )
 
 const (
-	DevDriEnvVarName = "DEV_DRI_PATH"
-	SysfsEnvVarName  = "SYSFS_ROOT"
+	DevfsDriPath = "dri"
 
 	// driver.sysfsI915Dir and driver.sysfsDRMDir are sysfsI915path and sysfsDRMpath
 	// respectively prefixed with $SYSFS_ROOT.
-	SysfsI915path    = "bus/pci/drivers/i915"
-	SysfsDRMpath     = "class/drm/"
-	sysfsDefaultRoot = "/sys"
+	SysfsI915path = "bus/pci/drivers/i915"
+	SysfsDRMpath  = "class/drm/"
 
 	CDIVendor  = "intel.com"
 	CDIClass   = "gpu"
 	CDIKind    = CDIVendor + "/" + CDIClass
 	DriverName = CDIClass + "." + CDIVendor
 
-	PCIAddressLength = len("0000:00:00.0")
-	UIDLength        = len("0000-00-00-0-0x0000")
+	UIDLength = len("0000-00-00-0-0x0000")
 
 	PreparedClaimsFileName  = "preparedClaims.json"
 	PluginRegistrarFileName = DriverName + ".sock"
@@ -158,7 +155,7 @@ func (g *DeviceInfo) SriovEnabled() bool {
 }
 
 func (g *DeviceInfo) ParentPCIAddress() string {
-	pciAddress, _ := PciInfoFromDeviceUID(g.ParentUID)
+	pciAddress, _ := helpers.PciInfoFromDeviceUID(g.ParentUID)
 	return pciAddress
 }
 
@@ -177,24 +174,6 @@ func (g *DeviceInfo) SetModelInfo() {
 // DevicesInfo is a dictionary with DeviceInfo.uid being the key.
 type DevicesInfo map[string]*DeviceInfo
 
-func DeviceUIDFromPCIinfo(pciAddress string, pciid string) string {
-	// 0000:00:01.0, 0x0000 -> 0000-00-01-0-0x0000
-	// Replace colons and the dot in PCI address with hyphens.
-	rfc1123PCIaddress := strings.ReplaceAll(strings.ReplaceAll(pciAddress, ":", "-"), ".", "-")
-	newUID := fmt.Sprintf("%v-%v", rfc1123PCIaddress, pciid)
-
-	return newUID
-}
-
-func PciInfoFromDeviceUID(deviceUID string) (string, string) {
-	// 0000-00-01-0-0x0000 -> 0000:00:01.0, 0x0000
-	rfc1123PCIaddress := deviceUID[:PCIAddressLength]
-	pciAddress := strings.Replace(strings.Replace(rfc1123PCIaddress, "-", ":", 2), "-", ".", 1)
-	deviceId := deviceUID[PCIAddressLength:]
-
-	return pciAddress, deviceId
-}
-
 func (g *DevicesInfo) DeepCopy() DevicesInfo {
 	devicesInfoCopy := DevicesInfo{}
 	for duid, device := range *g {
@@ -203,31 +182,6 @@ func (g *DevicesInfo) DeepCopy() DevicesInfo {
 	return devicesInfoCopy
 }
 
-func GetDevfsDriDir() string {
-	devfsDriDir, found := os.LookupEnv(DevDriEnvVarName)
-
-	if found {
-		fmt.Printf("using custom devfs dri location: %v\n", devfsDriDir)
-		return devfsDriDir
-	}
-
-	fmt.Println("using default devfs dri location: /dev/dri")
-	return "/dev/dri"
-}
-
-// GetSysfsDir tries to get path where sysfs is mounted from
-// env var, or fallback to hardcoded path.
-func GetSysfsRoot() string {
-	sysfsPath, found := os.LookupEnv(SysfsEnvVarName)
-
-	if found {
-		if _, err := os.Stat(path.Join(sysfsPath, SysfsDRMpath)); err == nil {
-			fmt.Printf("using custom sysfs location: %v\n", sysfsPath)
-			return sysfsPath
-		}
-	}
-
-	fmt.Printf("using default sysfs location: %v\n", sysfsDefaultRoot)
-	// If /sys is not available, devices discovery will fail gracefully.
-	return sysfsDefaultRoot
+func GetDriDevPath() string {
+	return filepath.Join(helpers.GetDevRoot(helpers.DevfsEnvVarName, DevfsDriPath), DevfsDriPath)
 }

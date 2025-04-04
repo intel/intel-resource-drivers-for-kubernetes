@@ -141,7 +141,7 @@ func SyncDeviceNodes(
 	specDevice specs.Device, detectedDevice *device.DeviceInfo,
 	cardregexp *regexp.Regexp, renderdregexp *regexp.Regexp) bool {
 	specChanged := false
-	dridevpath := device.GetDevfsDriDir()
+	dridevpath := device.GetDriDevPath()
 
 	for deviceNodeIdx, deviceNode := range specDevice.ContainerEdits.DeviceNodes {
 		driFileName := path.Base(deviceNode.Path) // e.g. card1 or renderD129
@@ -210,7 +210,7 @@ func addNewDevicesToNewRegistry(cdiCache *cdiapi.Cache, devices device.DevicesIn
 }
 
 func AddDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
-	devdriPath := device.GetDevfsDriDir()
+	devdriPath := device.GetDriDevPath()
 
 	for name, device := range devices {
 		// primary / control node (for modesetting)

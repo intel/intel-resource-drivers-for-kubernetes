@@ -29,21 +29,37 @@ version = 2
 ## Deploy resource-driver
 
 ```bash
-kubectl apply -f deployments/gpu/device-class.yaml
-kubectl apply -f deployments/gpu/resource-driver-namespace.yaml
-kubectl apply -f deployments/gpu/resource-driver.yaml
+kubectl apply -k deployments/gpu/
 ```
 
-By default the kubelet-plugin will be deployed on _all_ nodes in the cluster, there is no nodeSelector.
+By default, the kubelet-plugin is deployed on _all_ nodes in the cluster, as no nodeSelector is defined.
+To restrict the deployment to GPU-enabled nodes, follow these steps:
+1. Install Node Feature Discovery (NFD):
+
+Follow [Node Feature Discovery](https://github.com/kubernetes-sigs/node-feature-discovery) documentation to install and configure NFD in your cluster.
+
+```bash
+kubectl apply -k "https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.17.1"
+```
+
+2. Apply NFD Rules:
+
+```bash
+kubectl apply -k deployments/gpu/overlays/nfd_labeled_nodes/
+```
+After NFD is installed and running, make sure the target node is labeled with:
+```bash
+intel.feature.node.kubernetes.io/gpu: "true"
+```
 
 When deploying custom resource driver image, change `image:` lines in
-[resource-driver](../../deployments/gpu/resource-driver.yaml) to match its location.
+[resource-driver](../../deployments/gpu/base/resource-driver.yaml) to match its location.
 
 ## deployment/ directory contains all required YAMLs:
 
-* `deployments/gpu/device-class.yaml` - pre-defined ResourceClasses that ResourceClaims can refer to.
-* `deployments/gpu/resource-driver-namespace.yaml` - Kubernetes namespace for GPU Resource Driver.
-* `deployments/gpu/resource-driver.yaml` - actual resource driver with service account and RBAC policy
+* `deployments/gpu/base/device-class.yaml` - pre-defined ResourceClasses that ResourceClaims can refer to.
+* `deployments/gpu/base/namespace.yaml` - Kubernetes namespace for GPU Resource Driver.
+* `deployments/gpu/base/resource-driver.yaml` - actual resource driver with service account and RBAC policy
   - kubelet-plugin DaemonSet - node-agent, it performs three functions:
     1) supported hardware discovery on Kubernetes cluster node and it's announcement as a ResourceSlice
     2) preparation of the hardware allocated to the ResourceClaims for the Pod that is being started on the node.
@@ -271,11 +287,3 @@ To install Helm Chart:
 helm install intel-gpu-resource-driver intel/intel-gpu-resource-driver \
 --create-namespace --namespace intel-gpu-resource-driver
 ```
-CRDs of the GPU driver are installed as part of the chart first.
-
-If you change the image tag to be used in Helm chart deployment, ensure that the version of the container image is consistent with CRDs and deployment YAMLs - they might change between releases.
-
-Note that Helm does not support _upgrading_ (or deleting) CRDs, only installing them.  Rationale: https://github.com/helm/community/blob/main/hips/hip-0011.md
-
-
-I.e. making sure that CRDs are upgraded correctly is user responsibility when using Helm.

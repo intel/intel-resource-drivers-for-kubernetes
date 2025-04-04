@@ -22,6 +22,6 @@ Supported Kubernetes versions are listed below:
 
 ## Documentation
 
-- [How to setup a Kubernetes cluster with DRA enabled](../../CLUSTER_SETUP.md)
+- [How to setup a Kubernetes cluster with DRA enabled](../CLUSTER_SETUP.md)
 - [How to deploy and use Intel Gaudi resource driver](USAGE.md)
 - Optional: [How to build Intel Gaudi resource driver container image](BUILD.md)

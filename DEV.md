@@ -23,20 +23,6 @@ version = 2
     cdi_specs_dir = ["/etc/cdi", "/var/run/cdi"]
 ```
 
-# Generated source code
-
-Custom resource definitions are in `pkg/intel.com/resource/<accelerator>/<apiversion>/*.go`
-(except generated `zz_deepcopy`) and in `pkg/intel.com/resource/<accelerator/<apiversion>/api/`.
-
-When changing those CRDs, remember to re-generate the YAMLs and clientset by running:
-```bash
-make generate
-```
-
-## Required tools
-
-Above step needs `controller-gen` and `client-gen` tools to generate CRD YAMLs (in `deployments/gpu/static/crd/...`).
-
 ### Determine your go binaries location from `go install --help`, quote:
 > Executables are installed in the directory named by the GOBIN environment
 > variable, which defaults to $GOPATH/bin or $HOME/go/bin if the GOPATH
@@ -74,4 +60,50 @@ Make them available in PATH, for instance $HOME/go/bin:
 cp controller-tools/controller-gen code-generator/client-gen $HOME/go/bin
 # ensure it's in the path. You may want to add export to $HOME/.bashrc
 echo $PATH | grep -q $HOME/go/bin || export PATH=$HOME/go/bin:$PATH
+```
+# Running tests
+
+Since Q2 '25 Gaudi DRA driver uses `gohlml` to retrieve health-related information.
+There is a hardcoded path to the HLML shared library, and `hack/fake_libhlml` was created based
+on the `hlml.h` from `gohlml` project - it is effectively a stub / mock with flow control support.
+
+When health-related tests call `gohlml` - it should in turn call fake `libhlml`, instead of the real
+one, on the nodes where there is no real Gaudi HW and SW installed (e.g. CI). This means, if the
+tests are run on your development machine - you should either deploy fresh fake `libhlml.so`, or
+run tests in a `gaudi-dra-driver-test-image` container like CI does.
+
+Deploying fake hlml instead of real `libhlml` should allow running tests in VSCode and other IDEs,
+after `ldconfig` is [configured properly](hack/fake_libhlml/README.md)
+
+## Deploying 
+```shell
+$ cd hack/fake_libhlml
+$ make clean
+rm -f fake_libhlml.o fake_libhlml.so
+$ make
+gcc -O -Wall -Wextra -Wno-unused-parameter -fPIC -c fake_libhlml.c -o fake_libhlml.o
+gcc -shared -o fake_libhlml.so fake_libhlml.o
+$ sudo cp ./fake_libhlml.so /usr/lib/habanalabs/libhlml.so
+$ cat << EOF | sudo tee /etc/ld.so.conf.d/habanalabs.conf
+/usr/lib/habanalabs/
+EOF
+
+$ sudo ldconfig
+```
+
+## Running tests in container
+
+To have your own user ID inside container image without access / permission issues, build a fresh
+container image, then run tests. The CI uses its own user ID.
+
+```shell
+$ make test-image
+$ make test-containerized
+```
+
+Tests provide coverage data. If you need to see the coverage report, just run Make target for needed
+coverage target, e.g.
+
+```
+make gaudi-coverage
 ```

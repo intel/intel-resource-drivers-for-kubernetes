@@ -27,7 +27,7 @@ pkg/gpu/cdihelpers/*.go \
 pkg/gpu/device/*.go \
 pkg/gpu/discovery/*.go
 
-GPU_LDFLAGS = ${LDFLAGS} -X ${PKG}/pkg/version.driverVersion=${GPU_VERSION}
+GPU_LDFLAGS = ${LDFLAGS} -extldflags $(EXT_LDFLAGS) -X ${PKG}/pkg/version.driverVersion=${GPU_VERSION}
 
 .PHONY: gpu
 gpu: $(GPU_BINARIES)

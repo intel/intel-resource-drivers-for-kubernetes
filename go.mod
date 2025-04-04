@@ -1,6 +1,6 @@
 module github.com/intel/intel-resource-drivers-for-kubernetes
 
-go 1.23.0
+go 1.23.1
 
 toolchain go1.23.4
 
@@ -13,7 +13,7 @@ require (
 	golang.org/x/crypto v0.35.0 // indirect
 	golang.org/x/net v0.36.0 // indirect
 	golang.org/x/sys v0.30.0
-	google.golang.org/grpc v1.65.0
+	google.golang.org/grpc v1.65.0 // indirect
 	gopkg.in/inf.v0 v0.9.1
 	k8s.io/api v0.32.0
 	k8s.io/apimachinery v0.32.0
@@ -26,9 +26,11 @@ require (
 	k8s.io/kubernetes v1.32.2
 	k8s.io/pod-security-admission v0.32.0
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738
-	tags.cncf.io/container-device-interface v0.7.2
-	tags.cncf.io/container-device-interface/specs-go v0.7.0
+	tags.cncf.io/container-device-interface v0.8.0
+	tags.cncf.io/container-device-interface/specs-go v0.8.0
 )
+
+require github.com/HabanaAI/gohlml v1.16.0
 
 require (
 	cel.dev/expr v0.18.0 // indirect
@@ -104,6 +106,7 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635 // indirect
+	github.com/urfave/cli/v2 v2.27.5
 	github.com/x448/float16 v0.8.4 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.16 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.16 // indirect
@@ -152,3 +155,14 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.2 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
+
+require (
+	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
+	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
+	sigs.k8s.io/dra-example-driver v0.0.0-20241212131227-5e8f4f92fae9
+)
+
+require github.com/stretchr/testify v1.10.0 // indirect
+
+require github.com/go-logr/zapr v1.3.0 // indirect

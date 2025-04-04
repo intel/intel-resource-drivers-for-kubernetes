@@ -1,0 +1,10 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: intel-qat-resource-driver-kubelet-plugin
+  namespace: intel-qat-resource-driver
+spec:
+  template:
+    spec:
+      nodeSelector:
+        intel.feature.node.kubernetes.io/qat: "true"

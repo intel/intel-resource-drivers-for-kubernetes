@@ -64,7 +64,7 @@ func TestDriver(t *testing.T) {
 		},
 	}
 
-	defer fakesysfs.FakeSysFsRemove()
+	defer fakesysfs.FakeFsRemove()
 	if err := fakesysfs.FakeSysFsQATContents(setupdevices); err != nil {
 		t.Fatalf("err: %v", err)
 	}

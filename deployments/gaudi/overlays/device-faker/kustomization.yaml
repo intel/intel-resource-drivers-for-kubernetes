@@ -1,0 +1,6 @@
+resources:
+  - ../../base
+
+patches:
+  - path: remove-sysfs.yaml
+  - path: device-faker.yaml

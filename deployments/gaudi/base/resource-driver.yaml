@@ -2,26 +2,26 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: intel-gpu-resource-driver-kubelet-plugin
-  namespace: intel-gpu-resource-driver
+  name: intel-gaudi-resource-driver-kubelet-plugin
+  namespace: intel-gaudi-resource-driver
   labels:
-    app: intel-gpu-resource-driver-kubelet-plugin
+    app: intel-gaudi-resource-driver-kubelet-plugin
 spec:
   selector:
     matchLabels:
-      app: intel-gpu-resource-driver-kubelet-plugin
+      app: intel-gaudi-resource-driver-kubelet-plugin
   template:
     metadata:
       labels:
-        app: intel-gpu-resource-driver-kubelet-plugin
+        app: intel-gaudi-resource-driver-kubelet-plugin
     spec:
-      serviceAccount: intel-gpu-resource-driver-service-account
-      serviceAccountName: intel-gpu-resource-driver-service-account
+      serviceAccount: intel-gaudi-resource-driver-service-account
+      serviceAccountName: intel-gaudi-resource-driver-service-account
       containers:
       - name: kubelet-plugin
-        image: intel/intel-gpu-resource-driver:v0.7.0
+        image: intel/intel-gaudi-resource-driver:v0.3.0
         imagePullPolicy: IfNotPresent
-        command: ["/kubelet-gpu-plugin"]
+        command: ["/kubelet-gaudi-plugin", "-m"]
         env:
         - name: NODE_NAME
           valueFrom:
@@ -32,14 +32,11 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: SYSFS_ROOT
-          value: "/sysfs"
-        # Only use devdri when using fake devfs with device-faker.
-        # Use this to tell kubelet-plugin where the fake DRI devices nodes are.
-        # This will be prefix for CDI devices, runtime will try to mount devices
-        # with this prefix into workloads, so the path should be equal to where
-        # fake DRI files are in real host.
-        #- name: DEV_DRI_PATH
-        #  value: "/tmp/test-0123456789/dev/dri"
+          value: "/sys"
+        # Only use DEVFS_ROOT when using fake devfs with device-faker
+        #- name: DEVFS_ROOT
+        #  value: "/devfs"
+
         volumeMounts:
         - name: plugins-registry
           mountPath: /var/lib/kubelet/plugins_registry
@@ -49,15 +46,13 @@ spec:
           mountPath: /etc/cdi
         - name: varruncdi
           mountPath: /var/run/cdi
-        # when using fake sysfs - mount at the same place as on host
         - name: sysfs
-          mountPath: "/sysfs"
-        # Only use devdri when using fake devfs with device-faker
-        #- name: devdri
-        #  mountPath: "/tmp/test-0123456789/dev/dri"
+          mountPath: "/sys"
+        # Only use DEVFS_ROOT when using fake devfs with device-faker
+        #- name: devfs
+        #  mountPath: "/devfs"
         securityContext:
-          privileged: false
-          allowPrivilegeEscalation: false
+          privileged: true
           capabilities:
             drop: [ "ALL" ]
           readOnlyRootFilesystem: true
@@ -80,23 +75,24 @@ spec:
       - name: sysfs
         hostPath:
           path: /sys
-      # Only use devdri when using fake devfs with device-faker
-      #- name: devdri
+      # Only use DEVFS_ROOT when using fake devfs with device-faker
+      #- name: devfs
       #  hostPath:
-      #    path: /tmp/test-0123456789/dev/dri
+      #    path: /dev
+
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: intel-gpu-resource-driver-service-account
-  namespace: intel-gpu-resource-driver
+  name: intel-gaudi-resource-driver-service-account
+  namespace: intel-gaudi-resource-driver
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: intel-gpu-resource-driver-role
-  namespace: intel-gpu-resource-driver
+  name: intel-gaudi-resource-driver-role
+  namespace: intel-gaudi-resource-driver
 rules:
 - apiGroups: [""]
   resources: ["nodes"]
@@ -112,22 +108,22 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: intel-gpu-resource-driver-role-binding
-  namespace: intel-gpu-resource-driver
+  name: intel-gaudi-resource-driver-role-binding
+  namespace: intel-gaudi-resource-driver
 subjects:
 - kind: ServiceAccount
-  name: intel-gpu-resource-driver-service-account
-  namespace: intel-gpu-resource-driver
+  name: intel-gaudi-resource-driver-service-account
+  namespace: intel-gaudi-resource-driver
 roleRef:
   kind: ClusterRole
-  name: intel-gpu-resource-driver-role
+  name: intel-gaudi-resource-driver-role
   apiGroup: rbac.authorization.k8s.io
 
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: resourceslices-policy-dra-kubelet-plugin-gpu
+  name: resourceslices-policy-dra-kubelet-plugin-gaudi
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -139,7 +135,7 @@ spec:
   matchConditions:
   - name: isRestrictedUser
     expression: >-
-      request.userInfo.username == "system:serviceaccount:intel-gpu-resource-driver:intel-gpu-resource-driver-service-account"
+      request.userInfo.username == "system:serviceaccount:intel-gaudi-resource-driver:intel-gaudi-resource-driver-service-account"
   variables:
   - name: userNodeName
     expression: >-
@@ -159,7 +155,7 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: resourceslices-policy-dra-kubelet-plugin-gpu
+  name: resourceslices-policy-dra-kubelet-plugin-gaudi
 spec:
-  policyName: resourceslices-policy-dra-kubelet-plugin-gpu
+  policyName: resourceslices-policy-dra-kubelet-plugin-gaudi
   validationActions: [Deny]
