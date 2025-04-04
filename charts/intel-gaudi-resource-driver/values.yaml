@@ -1,0 +1,45 @@
+# Default values for intel-gaudi-resource-driver.
+nameOverride: ""
+namespaceOverride: "intel-gaudi-resource-driver"
+fullnameOverride: ""
+selectorLabelsOverride: {}
+
+imagePullSecrets: []
+image:
+  repository: intel
+  name: intel-gaudi-resource-driver
+  pullPolicy: IfNotPresent
+  tag: "v0.3.0"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: intel-gaudi-resource-driver-service-account
+  automount: true
+
+kubeletPlugin:
+  podAnnotations: {}
+  nodeSelector: {}
+  # label used when nfd.enabled is true
+    #intel.feature.node.kubernetes.io/gaudi: "true"
+  tolerations:
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+      # Refer to the official documentation for Node Feature Discovery (NFD)
+      # regarding node tainting:
+      # https://nfd.sigs.k8s.io/usage/customization-guide#node-tainting
+    - key: "intel.feature.node.kubernetes.io/gaudi"
+      operator: "Exists"
+      effect: "NoSchedule"
+  affinity: {}
+
+nfd:
+  enabled: false # change to true to install NFD to the cluster
+  nameOverride: intel-gaudi-nfd
+  # TODO: this deprecated NFD option will be replaced in NFD v0.17 with "featureGates.NodeFeatureAPI" (added in v0.16):
+  # https://kubernetes-sigs.github.io/node-feature-discovery/v0.16/deployment/helm.html#general-parameters
+  enableNodeFeatureApi: true

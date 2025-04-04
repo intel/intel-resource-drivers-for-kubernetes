@@ -1,0 +1,46 @@
+# Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+FROM golang:1.23.4@sha256:ccdca3b3bde3bfee2518a087b467f2b452fad9ba3e378d3c1578db494c8cb13b as build
+WORKDIR /build
+COPY . .
+
+RUN cd hack/fake_libhlml && \
+make clean && make
+
+FROM golang:1.23.4@sha256:ccdca3b3bde3bfee2518a087b467f2b452fad9ba3e378d3c1578db494c8cb13b
+ARG UID=1001
+ARG GID=1001
+
+COPY --from=build /build/hack/fake_libhlml/fake_libhlml.so /usr/lib/habanalabs/libhlml.so
+
+RUN \
+echo "existing user: $(id $UID)" && \
+groupadd -g ${GID} ubuntu && \
+useradd -m -g ${GID} -u ${UID} -s /bin/bash ubuntu && \
+mkdir /github && \
+chmod 777 /github
+
+RUN \
+mkdir -m 755 /home/ubuntu/.cache/ && \
+mkdir -m 755 /home/ubuntu/.cache/go-build && \
+mkdir -m 755 /home/ubuntu/.cache/go-mod && \
+chown -R ubuntu:ubuntu /home/ubuntu/.cache && \
+mkdir /home/ubuntu/src && \
+git config --global --add safe.directory /home/ubuntu/src
+
+ENV GOCACHE=/home/ubuntu/.cache/go-build
+ENV GOMODCACHE=/home/ubuntu/.cache/go-mod
+
+USER ubuntu
+WORKDIR /home/ubuntu

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"path"
-	"sync"
 	"time"
 
 	resourcev1 "k8s.io/api/resource/v1beta1"
@@ -35,20 +32,16 @@ import (
 
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/cdihelpers"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
 
 type ClaimPreparations map[string][]*drav1.Device
 
 type nodeState struct {
-	sync.Mutex
-	cdiCache               *cdiapi.Cache
-	allocatable            device.DevicesInfo
-	prepared               ClaimPreparations
-	preparedClaimsFilePath string
-	nodeName               string
+	*helpers.NodeState
 }
 
-func newNodeState(ctx context.Context, detectedDevices map[string]*device.DeviceInfo, cdiRoot string, preparedClaimsFilePath string, nodeName string) (*nodeState, error) {
+func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string, preparedClaimsFilePath string, nodeName string) (*helpers.NodeState, error) {
 	for ddev := range detectedDevices {
 		klog.V(3).Infof("new device: %+v", ddev)
 	}
@@ -73,7 +66,7 @@ func newNodeState(ctx context.Context, detectedDevices map[string]*device.Device
 	}
 
 	// TODO: should be only create prepared claims, discard old preparations. Do we even need the snapshot?
-	preparedClaims, err := getOrCreatePreparedClaims(preparedClaimsFilePath)
+	preparedClaims, err := helpers.GetOrCreatePreparedClaims(preparedClaimsFilePath)
 	if err != nil {
 		klog.Errorf("Error getting prepared claims: %v", err)
 		return nil, fmt.Errorf("failed to get prepared claims: %v", err)
@@ -81,14 +74,15 @@ func newNodeState(ctx context.Context, detectedDevices map[string]*device.Device
 
 	klog.V(5).Info("Creating NodeState")
 	// TODO: allocatable should include cdi-described
-	state := &nodeState{
-		cdiCache:               cdiCache,
-		allocatable:            detectedDevices,
-		prepared:               preparedClaims,
-		preparedClaimsFilePath: preparedClaimsFilePath,
-		nodeName:               nodeName,
+	state := nodeState{
+		NodeState: &helpers.NodeState{
+			CdiCache:               cdiCache,
+			Allocatable:            detectedDevices,
+			Prepared:               preparedClaims,
+			PreparedClaimsFilePath: preparedClaimsFilePath,
+			NodeName:               nodeName,
+		},
 	}
-
 	/*
 		klog.V(5).Info("Syncing allocatable devices")
 		err = state.syncPreparedDevicesFromFile(clientset, preparedClaims)
@@ -97,38 +91,27 @@ func newNodeState(ctx context.Context, detectedDevices map[string]*device.Device
 		}
 	*/
 
+	allocatableDevices, ok := state.Allocatable.(map[string]*device.DeviceInfo)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for state.Allocatable")
+	}
+
 	klog.V(5).Infof("Synced state with CDI and GaudiAllocationState: %+v", state)
-	for duid, ddev := range state.allocatable {
+	for duid, ddev := range allocatableDevices {
 		klog.V(5).Infof("Allocatable device: %v : %+v", duid, ddev)
 	}
 
-	return state, nil
-}
-
-// FreeClaimDevices cleans up prepared claims records and returns error if it was encountered, otherwise nil.
-func (s *nodeState) FreeClaimDevices(claimUID string) error {
-	s.Lock()
-	defer s.Unlock()
-
-	if s.prepared[claimUID] == nil {
-		return nil
-	}
-
-	klog.V(5).Infof("Freeing devices from claim %v", claimUID)
-	delete(s.prepared, claimUID)
-
-	// write prepared claims to file
-	if err := writePreparedClaimsToFile(s.preparedClaimsFilePath, s.prepared); err != nil {
-		return fmt.Errorf("failed to write prepared claims to file: %v", err)
-	}
-
-	return cdihelpers.DeleteDeviceAndWrite(s.cdiCache, claimUID)
+	return state.NodeState, nil
 }
 
 func (s *nodeState) GetResources() kubeletplugin.Resources {
+	s.Lock()
+	defer s.Unlock()
+
 	devices := []resourcev1.Device{}
 
-	for gaudiUID, gaudi := range s.allocatable {
+	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
+	for gaudiUID, gaudi := range allocatableDevices {
 		newDevice := resourcev1.Device{
 			Name: gaudiUID,
 			Basic: &resourcev1.BasicDevice{
@@ -138,6 +121,12 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 					},
 					"pciRoot": {
 						StringValue: &gaudi.PCIRoot,
+					},
+					"serial": {
+						StringValue: &gaudi.Serial,
+					},
+					"healthy": {
+						BoolValue: &gaudi.Healthy,
 					},
 				},
 			},
@@ -152,7 +141,7 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 // cdiHabanaEnvVar ensures there is a CDI device with name == claimUID, that has
 // only env vars for Habana Runtime, without device nodes.
 func (s *nodeState) cdiHabanaEnvVar(claimUID string, visibleDevices string) error {
-	cdidev := s.cdiCache.GetDevice(claimUID)
+	cdidev := s.CdiCache.GetDevice(claimUID)
 	if cdidev != nil { // overwrite the contents
 		cdidev.Device.ContainerEdits = cdiSpecs.ContainerEdits{
 			Env: []string{visibleDevices},
@@ -161,7 +150,7 @@ func (s *nodeState) cdiHabanaEnvVar(claimUID string, visibleDevices string) erro
 		// Save into the same spec where the device was found.
 		deviceSpec := cdidev.GetSpec()
 		specName := path.Base(deviceSpec.GetPath())
-		if err := s.cdiCache.WriteSpec(deviceSpec.Spec, specName); err != nil {
+		if err := s.CdiCache.WriteSpec(deviceSpec.Spec, specName); err != nil {
 			return err
 		}
 
@@ -176,7 +165,7 @@ func (s *nodeState) cdiHabanaEnvVar(claimUID string, visibleDevices string) erro
 		},
 	}
 
-	if err := cdihelpers.AddDeviceToAnySpec(s.cdiCache, device.CDIVendor, newDevice); err != nil {
+	if err := cdihelpers.AddDeviceToAnySpec(s.CdiCache, device.CDIVendor, newDevice); err != nil {
 		return fmt.Errorf("could not add CDI device into CDI registry: %v", err)
 	}
 
@@ -217,6 +206,10 @@ func (s *nodeState) syncPreparedDevicesFromFile(preparedClaims ClaimPreparations
 */
 
 func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim) error {
+	// To prevent concurrent writing of prepared claims file and potential data loss.
+	s.Lock()
+	defer s.Unlock()
+
 	if claim.Status.Allocation == nil {
 		return fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
 	}
@@ -227,12 +220,14 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 
 	for _, allocatedDevice := range claim.Status.Allocation.Devices.Results {
 		// ATM the only pool is cluster node's pool: all devices on current node.
-		if allocatedDevice.Driver != device.DriverName || allocatedDevice.Pool != s.nodeName {
+		if allocatedDevice.Driver != device.DriverName || allocatedDevice.Pool != s.NodeName {
 			klog.FromContext(ctx).Info("ignoring claim allocation device", allocatedDevice)
 			continue
 		}
 
-		allocatableDevice, found := s.allocatable[allocatedDevice.Device]
+		allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
+
+		allocatableDevice, found := allocatableDevices[allocatedDevice.Device]
 		if !found {
 			return fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
 		}
@@ -261,9 +256,9 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		allocatedDevices[0].CDIDeviceIDs = append(allocatedDevices[0].CDIDeviceIDs, cdiName)
 	}
 
-	s.prepared[string(claim.UID)] = allocatedDevices
+	s.Prepared[string(claim.UID)] = allocatedDevices
 
-	err := writePreparedClaimsToFile(s.preparedClaimsFilePath, s.prepared)
+	err := helpers.WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared)
 	if err != nil {
 		klog.Errorf("Error writing prepared claims to file: %v", err)
 		return fmt.Errorf("failed to write prepared claims to file: %v", err)
@@ -271,57 +266,4 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 
 	klog.V(5).Infof("Created prepared claim %v allocation", claim.UID)
 	return nil
-}
-
-// getOrCreatePreparedClaims reads a PreparedClaim from a file and deserializes it or creates the file.
-func getOrCreatePreparedClaims(preparedClaimsFilePath string) (ClaimPreparations, error) {
-	if _, err := os.Stat(preparedClaimsFilePath); os.IsNotExist(err) {
-		klog.V(5).Infof("could not find file %v. Creating file", preparedClaimsFilePath)
-		f, err := os.OpenFile(preparedClaimsFilePath, os.O_CREATE|os.O_WRONLY, 0600)
-		if err != nil {
-			return nil, fmt.Errorf("failed creating file %v. Err: %v", preparedClaimsFilePath, err)
-		}
-		defer f.Close()
-
-		if _, err := f.WriteString("{}"); err != nil {
-			return nil, fmt.Errorf("failed writing to file %v. Err: %v", preparedClaimsFilePath, err)
-		}
-
-		klog.V(5).Infof("empty prepared claims file created %v", preparedClaimsFilePath)
-
-		return ClaimPreparations{}, nil
-	}
-
-	return readPreparedClaimsFromFile(preparedClaimsFilePath)
-}
-
-// readPreparedClaimToFile returns unmarshaled content for given prepared claims JSON file.
-func readPreparedClaimsFromFile(preparedClaimsFilePath string) (ClaimPreparations, error) {
-
-	preparedClaims := make(ClaimPreparations)
-
-	preparedClaimsConfigBytes, err := os.ReadFile(preparedClaimsFilePath)
-	if err != nil {
-		klog.V(5).Infof("could not read prepared claims configuration from file %v. Err: %v", preparedClaimsFilePath, err)
-		return nil, fmt.Errorf("failed reading file %v. Err: %v", preparedClaimsFilePath, err)
-	}
-
-	if err := json.Unmarshal(preparedClaimsConfigBytes, &preparedClaims); err != nil {
-		klog.V(5).Infof("Could not parse default prepared claims configuration from file %v. Err: %v", preparedClaimsFilePath, err)
-		return nil, fmt.Errorf("failed parsing file %v. Err: %v", preparedClaimsFilePath, err)
-	}
-
-	return preparedClaims, nil
-}
-
-// writePreparedClaimsToFile serializes PreparedClaims and writes it to a file.
-func writePreparedClaimsToFile(preparedClaimsFilePath string, preparedClaims ClaimPreparations) error {
-	if preparedClaims == nil {
-		preparedClaims = ClaimPreparations{}
-	}
-	encodedPreparedClaims, err := json.MarshalIndent(preparedClaims, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed encoding json. Err: %v", err)
-	}
-	return os.WriteFile(preparedClaimsFilePath, encodedPreparedClaims, 0600)
 }

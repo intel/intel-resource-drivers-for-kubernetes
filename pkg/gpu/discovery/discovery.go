@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 
 	"k8s.io/klog/v2"
 )
@@ -68,7 +69,7 @@ func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo
 			continue
 		}
 		deviceId := strings.TrimSpace(string(deviceIdBytes))
-		uid := device.DeviceUIDFromPCIinfo(devicePCIAddress, deviceId)
+		uid := helpers.DeviceUIDFromPCIinfo(devicePCIAddress, deviceId)
 		klog.V(5).Infof("New gpu UID: %v", uid)
 		newDeviceInfo := &device.DeviceInfo{
 			UID:        uid,
@@ -134,7 +135,7 @@ func detectSRIOV(newDeviceInfo *device.DeviceInfo, sysfsI915Dir string, devicePC
 			return
 		}
 
-		parentUID := device.DeviceUIDFromPCIinfo(parentPCIAddress, deviceID)
+		parentUID := helpers.DeviceUIDFromPCIinfo(parentPCIAddress, deviceID)
 
 		newDeviceInfo.VFIndex = vfIdx
 		newDeviceInfo.Millicores = initialMillicores

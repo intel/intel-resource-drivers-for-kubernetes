@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 
 	"k8s.io/klog/v2"
 )
@@ -68,13 +69,14 @@ func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo
 			continue
 		}
 		deviceId := strings.TrimSpace(string(deviceIdBytes))
-		uid := device.DeviceUIDFromPCIinfo(devicePCIAddress, deviceId)
+		uid := helpers.DeviceUIDFromPCIinfo(devicePCIAddress, deviceId)
 		klog.V(5).Infof("New gaudi UID: %v", uid)
 		newDeviceInfo := &device.DeviceInfo{
 			UID:        uid,
 			PCIAddress: devicePCIAddress,
 			Model:      deviceId,
 			DeviceIdx:  0,
+			Healthy:    true,
 		}
 		newDeviceInfo.SetModelName()
 

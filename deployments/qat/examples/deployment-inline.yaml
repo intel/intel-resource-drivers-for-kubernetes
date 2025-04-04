@@ -6,12 +6,36 @@ spec:
   spec:
     devices:
       requests:
-      - name: qat-request-sym-asym
+      - name: qat-request-sym
         deviceClassName: qat.intel.com
         selectors:
         - cel:
            expression: |-
-              device.attributes["qat.intel.com"].services.matches("[^a]?sym")
+              device.attributes["qat.intel.com"].services == "sym" ||
+              device.attributes["qat.intel.com"].services == "sym;asym" ||
+              device.attributes["qat.intel.com"].services == "sym;dc" ||
+              device.attributes["qat.intel.com"].services == "asym;sym" ||
+              device.attributes["qat.intel.com"].services == "dc;sym" ||
+
+---
+apiVersion: resource.k8s.io/v1beta1
+kind: ResourceClaimTemplate
+metadata:
+  name: qat-template-asym
+spec:
+  spec:
+    devices:
+      requests:
+      - name: qat-request-asym
+        deviceClassName: qat.intel.com
+        selectors:
+        - cel:
+           expression: |-
+              device.attributes["qat.intel.com"].services == "asym" ||
+              device.attributes["qat.intel.com"].services == "asym;sym" ||
+              device.attributes["qat.intel.com"].services == "asym;dc" ||
+              device.attributes["qat.intel.com"].services == "sym;asym" ||
+              device.attributes["qat.intel.com"].services == "dc;asym" ||
 
 ---
 apiVersion: resource.k8s.io/v1beta1
@@ -27,7 +51,12 @@ spec:
         selectors:
         - cel:
            expression: |-
-              device.attributes["qat.intel.com"].services.matches("dc[^c]?")
+              device.attributes["qat.intel.com"].services == "dc" ||
+              device.attributes["qat.intel.com"].services == "dc;sym" ||
+              device.attributes["qat.intel.com"].services == "dc;asym" ||
+              device.attributes["qat.intel.com"].services == "sym;dc" ||
+              device.attributes["qat.intel.com"].services == "asym;dc" ||
+              device.attributes["qat.intel.com"].services == "dcc"
 
 ---
 apiVersion: v1
@@ -56,13 +85,16 @@ spec:
               ["IPC_LOCK"]
         resources:
           claims:
-          - name: resource-sym-asym
+          - name: resource-sym
+          - name: resource-asym
           - name: resource-dc
       - name: without-resource
         image: registry.k8s.io/e2e-test-images/busybox:1.29-2
         command: ["sh", "-c", "ls -la /dev/ && sleep 300"]
       resourceClaims:
-      - name: resource-sym-asym
+      - name: resource-sym
         resourceClaimTemplateName: qat-template-sym
+      - name: resource-asym
+        resourceClaimTemplateName: qat-template-asym
       - name: resource-dc
         resourceClaimTemplateName: qat-template-dc

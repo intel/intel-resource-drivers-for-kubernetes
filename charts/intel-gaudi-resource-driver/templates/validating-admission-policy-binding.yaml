@@ -1,0 +1,7 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: resourceslices-policy-dra-kubelet-plugin-gaudi
+spec:
+  policyName: resourceslices-policy-dra-kubelet-plugin-gaudi
+  validationActions: [Deny]

@@ -217,7 +217,7 @@ func addFakeVFsOnParent(numvfsFilePath string, devfsRoot string, numVFs uint64, 
 		}
 
 		vfPCIAddress := fmt.Sprintf("%s%d", currentPCIdev, pciFunctionIdx)
-		vfUID = device.DeviceUIDFromPCIinfo(vfPCIAddress, model)
+		vfUID = helpers.DeviceUIDFromPCIinfo(vfPCIAddress, model)
 
 		vfMem, err := getVFMemoryAmountMiB(parentVFsDir, vfIdx)
 		if err != nil {
@@ -233,7 +233,7 @@ func addFakeVFsOnParent(numvfsFilePath string, devfsRoot string, numVFs uint64, 
 			RenderdIdx: highestRenderDIdx + vfIdx + 1,
 			UID:        vfUID,
 			VFIndex:    vfIdx,
-			ParentUID:  device.DeviceUIDFromPCIinfo(parentPCIAddress, model),
+			ParentUID:  helpers.DeviceUIDFromPCIinfo(parentPCIAddress, model),
 		}
 	}
 
@@ -349,7 +349,7 @@ func fakeSysfsSRIOVContents(sysfsRoot string, gpus device.DevicesInfo) error {
 			if len(gpu.UID) != device.UIDLength {
 				return fmt.Errorf("cannot determine PCI address for device: %v. Neither PCIAddress nor UID contain valid PCI address", gpu)
 			}
-			gpu.PCIAddress, _ = device.PciInfoFromDeviceUID(deviceUID)
+			gpu.PCIAddress, _ = helpers.PciInfoFromDeviceUID(deviceUID)
 		}
 		i915DevDir := path.Join(sysfsRoot, "bus/pci/drivers/i915/", gpu.PCIAddress)
 
@@ -436,7 +436,7 @@ func fakeSysfsVF(vf *device.DeviceInfo, numvfs int, sysfsRoot string, i915DevDir
 		if len(vf.UID) != device.UIDLength {
 			return fmt.Errorf("cannot determine PCI address for VF: %v. Neither PCIAddress nor UID contain valid PCI address", vf)
 		}
-		vf.PCIAddress, _ = device.PciInfoFromDeviceUID(vf.UID)
+		vf.PCIAddress, _ = helpers.PciInfoFromDeviceUID(vf.UID)
 	}
 	targetName := fmt.Sprintf("../%s", vf.PCIAddress)
 
@@ -574,7 +574,7 @@ func FakeSysFsGpuContents(sysfsRoot string, devfsRoot string, gpus device.Device
 func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.DevicesInfo, realDevices bool) error {
 	for _, gpu := range gpus {
 		if gpu.PCIAddress == "" {
-			gpu.PCIAddress, _ = device.PciInfoFromDeviceUID(gpu.UID)
+			gpu.PCIAddress, _ = helpers.PciInfoFromDeviceUID(gpu.UID)
 		}
 
 		// driver setup

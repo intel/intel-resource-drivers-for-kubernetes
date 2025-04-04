@@ -1,0 +1,44 @@
+# Default values for intel-qat-resource-driver.
+nameOverride: ""
+namespaceOverride: "intel-qat-resource-driver"
+fullnameOverride: ""
+selectorLabelsOverride: {}
+
+imagePullSecrets: []
+image:
+  repository: intel
+  name: intel-qat-resource-driver
+  pullPolicy: IfNotPresent
+  tag: "v0.2.0"
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: "intel-qat-resource-driver-service-account"
+  automount: true
+
+kubeletPlugin:
+  podAnnotations: {}
+  nodeSelector:
+    feature.node.kubernetes.io/qat: "true"
+  tolerations:
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+      # Refer to the official documentation for Node Feature Discovery (NFD)
+      # regarding node tainting:
+      # https://nfd.sigs.k8s.io/usage/customization-guide#node-tainting
+    - key: "node.kubernetes.io/qat"
+      operator: "Exists"
+      effect: "NoSchedule"
+  affinity: {}
+
+nfd:
+  enabled: false # change to true to install NFD to the cluster
+  nameOverride: intel-qat-nfd
+  # TODO: this deprecated NFD option will be replaced in NFD v0.17 with "featureGates.NodeFeatureAPI" (added in v0.16):
+  # https://kubernetes-sigs.github.io/node-feature-discovery/v0.16/deployment/helm.html#general-parameters
+  enableNodeFeatureApi: true

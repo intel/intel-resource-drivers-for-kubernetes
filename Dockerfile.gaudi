@@ -12,10 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.23.4@sha256:70031844b8c225351d0bb63e2c383f80db85d92ba894e3da7e13bcf80efa9a37 as build
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+
+FROM golang:1.23.4@sha256:ccdca3b3bde3bfee2518a087b467f2b452fad9ba3e378d3c1578db494c8cb13b as build
 ARG LOCAL_LICENSES
 WORKDIR /build
 COPY . .
+
+# install libhlml.so
+RUN \
+export http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} no_proxy=${NO_PROXY} && \
+curl -fsSL https://vault.habana.ai/artifactory/api/gpg/key/public | gpg --dearmor | tee /etc/apt/trusted.gpg.d/habanalabs.gpg > /dev/null && \
+wget -q -O /etc/apt/sources.list.d/habanalabs_synapseai.list "https://vault.habana.ai/artifactory/gaudi-installer/repos/1.16.2/debian10.10/habanalabs_synapseai.list" > /dev/null && \
+apt-get update && \
+apt-get download habanalabs-firmware-tools && \
+ls -al && \
+dpkg --force-all -i *.deb
 
 RUN make gaudi && \
 mkdir -p /install_root && \
@@ -23,11 +37,34 @@ if [ -z "$LOCAL_LICENSES" ]; then \
     make licenses; \
 fi && \
 cp -r licenses /install_root/ && \
+mkdir /install_root/licenses/habanalabs && \
+cp /usr/share/doc/habanalabs-firmware-tools/* /install_root/licenses/habanalabs/ && \
 cp bin/kubelet-gaudi-plugin /install_root/
 
+# Get libc and sources from Ubuntu24, libhlml needs GLIBC_2.38
+FROM ubuntu:24.04@sha256:80dd3c3b9c6cecb9f1667e9290b3bc61b78c2678c02cbdae5f0fea92cc6734ab as ubuntu
+RUN \
+cat /etc/apt/sources.list.d/ubuntu.sources && \
+sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources && \
+apt-get update && \
+apt-get install -y dpkg-dev && \
+mkdir /tmp/src && \
+cd /tmp/src && \
+apt-get source libc6 coreutils dash
 
 FROM scratch
-WORKDIR /
 LABEL description="Intel Gaudi resource driver for Kubernetes"
 
 COPY --from=build /install_root /
+COPY --from=build /usr/lib/habanalabs/libhlml.so /usr/lib/habanalabs/libhlml.so
+COPY --from=ubuntu /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so.6
+COPY --from=ubuntu /lib64/ld-linux-x86-64.so.2 /lib64/ld-linux-x86-64.so.2
+COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libm.so.6 /usr/lib/x86_64-linux-gnu/libm.so.6
+COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so.2
+COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libz.so.1 /usr/lib/x86_64-linux-gnu/libz.so.1
+COPY --from=ubuntu /bin/cat /bin/cat
+COPY --from=ubuntu /bin/sh /bin/sh
+COPY --from=ubuntu /tmp/src/*tar.xz /src/
+
+ENV LD_LIBRARY_PATH=/usr/lib/habanalabs:/lib/x86_64-linux-gnu:/lib64:/usr/lib/x86_64-linux-gnu
+ENV PATH=/bin

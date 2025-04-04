@@ -20,10 +20,10 @@ import (
 
 const (
 	qatNamespace                 = "intel-qat-resource-driver"
-	qatDeviceClassYaml           = "deployments/qat/device-class.yaml"
+	qatDeviceClassYaml           = "deployments/qat/base/device-class.yaml"
 	qatConfigMapYaml             = "deployments/qat/examples/intel-qat-resource-driver-configuration.yaml"
-	qatNamespaceYaml             = "deployments/qat/resource-driver-namespace.yaml"
-	qatDriverYaml                = "deployments/qat/resource-driver.yaml"
+	qatNamespaceYaml             = "deployments/qat/base/namespace.yaml"
+	qatDriverYaml                = "deployments/qat/base/resource-driver.yaml"
 	qatResourceClaimTemplateYaml = "deployments/qat/tests/resource-claim-template.yaml"
 )
 
@@ -106,8 +106,8 @@ func describeQatDraDriver() {
 			e2ekubectl.RunKubectlOrDie(qatNamespace, "apply", "-k", filepath.Dir(opensslEngineKustomizationYamlPath))
 
 			ginkgo.By("waiting the openssl-qat-engine pod to finish successfully")
-			err := e2epod.WaitForPodSuccessInNamespaceTimeout(ctx, f.ClientSet, "openssl-qat-engine-sym", qatNamespace, 300*time.Second)
-			gomega.Expect(err).To(gomega.BeNil(), utils.GetPodLogs(ctx, f, "openssl-qat-engine-sym", "openssl-qat-engine-sym"))
+			err := e2epod.WaitForPodSuccessInNamespaceTimeout(ctx, f.ClientSet, "openssl-qat-engine-asym", qatNamespace, 300*time.Second)
+			gomega.Expect(err).To(gomega.BeNil(), utils.GetPodLogs(ctx, f, "openssl-qat-engine-asym", "openssl-qat-engine-asym"))
 		})
 
 		ginkgo.It("deploys a qat-dpdk-test pod", func(ctx context.Context) {

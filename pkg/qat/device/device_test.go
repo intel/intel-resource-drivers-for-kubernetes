@@ -271,7 +271,7 @@ func TestDevicesAllocateAndFree(t *testing.T) {
 		},
 	}
 
-	defer fakesysfs.FakeSysFsRemove()
+	defer fakesysfs.FakeFsRemove()
 	if err := fakesysfs.FakeSysFsQATContents(setupdevices); err != nil {
 		t.Errorf("err: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestDevicesAllocateAndFreeAll(t *testing.T) {
 		},
 	}
 
-	defer fakesysfs.FakeSysFsRemove()
+	defer fakesysfs.FakeFsRemove()
 	if err := fakesysfs.FakeSysFsQATContents(setupdevices); err != nil {
 		t.Errorf("err: %v", err)
 	}

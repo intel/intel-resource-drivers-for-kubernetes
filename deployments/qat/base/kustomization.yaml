@@ -1,0 +1,8 @@
+resources:
+  - device-class.yaml
+  - namespace.yaml
+  - resource-driver.yaml
+
+images:
+  - name: intel/intel-qat-resource-driver
+    newTag: v0.2.0

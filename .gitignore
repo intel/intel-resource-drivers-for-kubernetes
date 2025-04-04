@@ -12,5 +12,6 @@
 *.sublime-project
 *.sublime-workspace
 *~
-
+*.o
+*.so
 *.out

@@ -1,0 +1,41 @@
+# Dynamic Resource Allocation (DRA) Intel GPU Driver Helm Chart
+
+## The chart installs GPU resource driver:
+
+- [GPU](https://github.com/intel/intel-resource-drivers-for-kubernetes/tree/main/doc/gpu/README.md)
+
+More info: [Intel Resource Drivers for Kubernetes](https://github.com/intel/intel-resource-drivers-for-kubernetes/tree/main)
+
+
+## Installing the chart
+
+```
+helm install intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver \
+    --create-namespace \
+    --namespace intel-gpu-resource-driver
+```
+
+## Uninstalling the chart
+```
+helm uninstall intel-gpu-resource-driver --namespace intel-gpu-resource-driver
+```
+(Optional) Delete the namespace:
+```
+kubectl delete ns intel-gpu-resource-driver
+```
+
+## Configuration
+See [Customizing the Chart Before Installing](https://helm.sh/docs/intro/using_helm/#customizing-the-chart-before-installing). To see all configurable options with detailed comments:
+
+```console
+helm show values oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver
+```
+
+You may also run `helm show values` on this chart's dependencies for additional options.
+
+| Key | Type | Default |
+|-----|------|---------|
+| image.repository | string | `intel` |
+| image.name | string | `"intel-gpu-resource-driver"` |
+| image.pullPolicy | string | `"IfNotPresent"` |
+| image.tag | string | `"v0.7.0"` |

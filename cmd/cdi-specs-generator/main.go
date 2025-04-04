@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import (
 	gpuCdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
 	gpuDevice "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	gpuDiscovery "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/discovery"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 
 	gaudiCdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/cdihelpers"
 	gaudiDevice "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
@@ -137,7 +138,7 @@ func newCommand() *cobra.Command {
 }
 
 func handleGPUDevices(cdiCache *cdiapi.Cache, namingStyle string, dryRun bool) error {
-	sysfsDir := gpuDevice.GetSysfsRoot()
+	sysfsDir := helpers.GetSysfsRoot(gpuDevice.SysfsDRMpath)
 
 	fmt.Println("Scanning for GPUs")
 
@@ -165,7 +166,7 @@ func handleGPUDevices(cdiCache *cdiapi.Cache, namingStyle string, dryRun bool) e
 }
 
 func handleGaudiDevices(cdiCache *cdiapi.Cache, namingStyle string, dryRun bool) error {
-	sysfsDir := gaudiDevice.GetSysfsRoot()
+	sysfsDir := helpers.GetSysfsRoot(gaudiDevice.SysfsAccelPath)
 
 	fmt.Println("Scanning for Gaudi accelerators")
 

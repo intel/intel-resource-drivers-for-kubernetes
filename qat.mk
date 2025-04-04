@@ -27,7 +27,7 @@ $(COMMON_SRC) \
 pkg/qat/device/*.go \
 pkg/qat/cdi/*.go
 
-QAT_LDFLAGS = ${LDFLAGS} -X ${PKG}/pkg/version.driverVersion=${QAT_VERSION}
+QAT_LDFLAGS = ${LDFLAGS} -extldflags $(EXT_LDFLAGS) -X ${PKG}/pkg/version.driverVersion=${QAT_VERSION}
 
 .PHONY: qat
 qat: $(QAT_BINARIES)
@@ -49,3 +49,8 @@ qat-container-build: cleanall vendor
 .PHONY: qat-container-push
 qat-container-push: qat-container-build
 	$(DOCKER) push $(QAT_IMAGE_TAG)
+
+.PHONY: e2e-qat
+e2e-qat:
+	sed -i 's|\(intel/intel-qat-resource-driver:\)[^ ]*|\1devel|' deployments/qat/base/resource-driver.yaml
+	go test -v ./test/e2e/... --clean-start=true -ginkgo.v -ginkgo.trace -ginkgo.show-node-events

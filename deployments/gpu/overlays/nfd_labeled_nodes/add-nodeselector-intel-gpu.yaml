@@ -1,0 +1,10 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: intel-gpu-resource-driver-kubelet-plugin
+  namespace: intel-gpu-resource-driver
+spec:
+  template:
+    spec:
+      nodeSelector:
+        intel.feature.node.kubernetes.io/gpu: "true"
