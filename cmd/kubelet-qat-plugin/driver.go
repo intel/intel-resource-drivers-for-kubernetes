@@ -13,6 +13,7 @@ import (
 	resourceapi "k8s.io/api/resource/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
+	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
 	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 
@@ -214,8 +215,12 @@ func (d *driver) UpdateDeviceResources(ctx context.Context) error {
 		return nil
 	}
 
-	resources := kubeletplugin.Resources{
-		Devices: *deviceResources(device.GetResourceDevices(d.devices)),
+	resources := resourceslice.DriverResources{
+		Pools: map[string]resourceslice.Pool{
+			d.nodename: {
+				Slices: []resourceslice.Slice{{
+					Devices: *deviceResources(device.GetResourceDevices(d.devices)),
+				}}}},
 	}
 
 	return d.plugin.PublishResources(ctx, resources)

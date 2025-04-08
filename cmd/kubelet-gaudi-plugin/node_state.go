@@ -23,7 +23,7 @@ import (
 	"time"
 
 	resourcev1 "k8s.io/api/resource/v1beta1"
-	"k8s.io/dynamic-resource-allocation/kubeletplugin"
+	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
 	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
@@ -104,7 +104,7 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 	return state.NodeState, nil
 }
 
-func (s *nodeState) GetResources() kubeletplugin.Resources {
+func (s *nodeState) GetResources() resourceslice.DriverResources {
 	s.Lock()
 	defer s.Unlock()
 
@@ -135,7 +135,15 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 		devices = append(devices, newDevice)
 	}
 
-	return kubeletplugin.Resources{Devices: devices}
+	driverResource := resourceslice.DriverResources{
+		Pools: map[string]resourceslice.Pool{
+			s.NodeName: {
+				Slices: []resourceslice.Slice{{
+					Devices: devices,
+				}}}},
+	}
+
+	return driverResource
 }
 
 // cdiHabanaEnvVar ensures there is a CDI device with name == claimUID, that has

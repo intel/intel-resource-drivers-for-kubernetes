@@ -207,8 +207,8 @@ func (d *driver) nodeUnprepareResource(ctx context.Context, claim *drav1.Claim) 
 func (d *driver) PublishResourceSlice(ctx context.Context) error {
 	state := nodeState{NodeState: d.state}
 	resources := state.GetResources()
-	klog.FromContext(ctx).Info("Publishing resources", "len", len(resources.Devices))
-	klog.V(5).Infof("devices: %+v", resources.Devices)
+	klog.FromContext(ctx).Info("Publishing resources", "len", len(resources.Pools[state.NodeName].Slices[0].Devices))
+	klog.V(5).Infof("devices: %+v", resources.Pools[state.NodeName].Slices[0].Devices)
 	if err := d.plugin.PublishResources(ctx, resources); err != nil {
 		return fmt.Errorf("error publishing resources: %v", err)
 	}

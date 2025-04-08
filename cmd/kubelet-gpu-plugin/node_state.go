@@ -24,7 +24,7 @@ import (
 	inf "gopkg.in/inf.v0"
 	resourcev1 "k8s.io/api/resource/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/dynamic-resource-allocation/kubeletplugin"
+	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
 	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
@@ -92,13 +92,14 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 	return state.NodeState, nil
 }
 
-func (s *nodeState) GetResources() kubeletplugin.Resources {
+func (s *nodeState) GetResources() resourceslice.DriverResources {
 	devices := []resourcev1.Device{}
 
 	allocatableDevices, ok := s.Allocatable.(map[string]*device.DeviceInfo)
 	if !ok {
 		klog.Error("unexpected type for state.Allocatable")
-		return kubeletplugin.Resources{Devices: nil}
+		return resourceslice.DriverResources{Pools: map[string]resourceslice.Pool{
+			s.NodeName: {Slices: []resourceslice.Slice{{Devices: nil}}}}}
 	}
 
 	for gpuUID, gpu := range allocatableDevices {
@@ -129,7 +130,8 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 		devices = append(devices, newDevice)
 	}
 
-	return kubeletplugin.Resources{Devices: devices}
+	return resourceslice.DriverResources{Pools: map[string]resourceslice.Pool{
+		s.NodeName: {Slices: []resourceslice.Slice{{Devices: devices}}}}}
 }
 
 func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim) error {

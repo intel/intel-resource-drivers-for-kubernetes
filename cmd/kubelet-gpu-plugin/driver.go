@@ -95,8 +95,8 @@ KubeletPluginSocketPath: %v`,
 
 	state := nodeState{NodeState: driver.state}
 	resources := state.GetResources()
-	klog.FromContext(ctx).Info("Publishing resources", "len", len(resources.Devices))
-	klog.V(5).Infof("devices: %+v", resources.Devices)
+	klog.FromContext(ctx).Info("Publishing resources", "len", len(resources.Pools[state.NodeName].Slices[0].Devices))
+	klog.V(5).Infof("devices: %+v", resources.Pools[state.NodeName].Slices[0].Devices)
 	if err := plugin.PublishResources(ctx, resources); err != nil {
 		return nil, fmt.Errorf("error publishing resources: %v", err)
 	}
