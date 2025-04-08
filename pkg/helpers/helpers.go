@@ -29,7 +29,6 @@ import (
 	"github.com/urfave/cli/v2"
 	coreclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/dra-example-driver/pkg/flags"
 )
 
 const (
@@ -45,8 +44,8 @@ var (
 )
 
 type Flags struct {
-	kubeClientConfig flags.KubeClientConfig
-	loggingConfig    *flags.LoggingConfig
+	kubeClientConfig KubeClientConfig
+	loggingConfig    *LoggingConfig
 
 	NodeName                  string
 	KubeletPluginDir          string
@@ -68,7 +67,7 @@ func NewApp(driverName string, newDriver func(ctx context.Context, config *Confi
 	}
 
 	flags := &Flags{
-		loggingConfig:             flags.NewLoggingConfig(),
+		loggingConfig:             NewLoggingConfig(),
 		NodeName:                  nodeName,
 		CdiRoot:                   DefaultCDIRoot,
 		KubeletPluginDir:          filepath.Join(DefaultKubeletPluginDir, driverName),
