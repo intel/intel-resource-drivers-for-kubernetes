@@ -66,10 +66,7 @@ func cobraRunFunc(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	dryRun := false
-	if cmd.Flag("dry-run").Value.String() == "true" {
-		dryRun = true
-	}
+	dryRun := cmd.Flag("dry-run").Value.String() == "true"
 
 	for _, argx := range args {
 		switch strings.ToLower(argx) {

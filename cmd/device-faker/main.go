@@ -74,15 +74,9 @@ func newCommand() *cobra.Command {
 
 			targetDir := cmd.Flag("target-dir").Value.String()
 
-			realDevices := false
-			if cmd.Flag("real-devices").Value.String() == "true" {
-				realDevices = true
-			}
+			realDevices := cmd.Flag("real-devices").Value.String() == "true"
 
-			newTemplate := false
-			if cmd.Flag("new-template").Value.String() == "true" {
-				newTemplate = true
-			}
+			newTemplate := cmd.Flag("new-template").Value.String() == "true"
 			if newTemplate {
 				return createNewTemplate(deviceType)
 			}

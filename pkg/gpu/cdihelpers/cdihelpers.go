@@ -99,7 +99,7 @@ func SyncDetectedDevicesWithRegistry(cdiCache *cdiapi.Cache, detectedDevices dev
 		}
 		// update spec if it was changed
 		if specChanged {
-			vendorSpec.Spec.Devices = filteredDevices
+			vendorSpec.Devices = filteredDevices
 			specName := path.Base(vendorSpec.GetPath())
 			klog.V(5).Infof("Updating spec %v", specName)
 			err := cdiCache.WriteSpec(vendorSpec.Spec, specName)

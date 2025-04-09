@@ -151,7 +151,7 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 func (s *nodeState) cdiHabanaEnvVar(claimUID string, visibleDevices string) error {
 	cdidev := s.CdiCache.GetDevice(claimUID)
 	if cdidev != nil { // overwrite the contents
-		cdidev.Device.ContainerEdits = cdiSpecs.ContainerEdits{
+		cdidev.ContainerEdits = cdiSpecs.ContainerEdits{
 			Env: []string{visibleDevices},
 		}
 

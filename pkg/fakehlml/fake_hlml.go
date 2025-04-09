@@ -27,7 +27,7 @@ import (
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
 )
 
-// KEEP THIS IDENTICAL TO fake_hlml.h call_identity_t
+// KEEP THIS IDENTICAL TO fake_hlml.h call_identity_t.
 const (
 	FakeInit uint32 = iota
 	FakeInitWithFlags
@@ -45,7 +45,7 @@ const (
 	FakeEventSetWait
 )
 
-// KEEP THIS IDENTICAL TO hlml.h hlml_return_t
+// KEEP THIS IDENTICAL TO hlml.h hlml_return_t.
 const (
 	HLMLSuccess                 = 0
 	HLMLErrorUninitialized      = 1
