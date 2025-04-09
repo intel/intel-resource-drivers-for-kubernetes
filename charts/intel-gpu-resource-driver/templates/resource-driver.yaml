@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: intel-gpu-resource-driver-kubelet-plugin
-  namespace: {{ include "intel-gpu-resource-driver.namespace" . }}
+  namespace: {{ .Values.namespace }}
   labels:
     {{- include "intel-gpu-resource-driver.labels" . | nindent 4 }}
 spec:
