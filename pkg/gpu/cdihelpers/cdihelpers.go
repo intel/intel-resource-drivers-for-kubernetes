@@ -37,13 +37,13 @@ const (
 )
 
 func getGPUSpecs(cdiCache *cdiapi.Cache) []*cdiapi.Spec {
-	gaudiSpecs := []*cdiapi.Spec{}
+	gpuSpecs := []*cdiapi.Spec{}
 	for _, cdiSpec := range cdiCache.GetVendorSpecs(device.CDIVendor) {
 		if cdiSpec.Kind == device.CDIKind {
-			gaudiSpecs = append(gaudiSpecs, cdiSpec)
+			gpuSpecs = append(gpuSpecs, cdiSpec)
 		}
 	}
-	return gaudiSpecs
+	return gpuSpecs
 }
 
 // SyncDetectedDevicesWithRegistry adds detected devices into cdi registry if they are not yet there.
