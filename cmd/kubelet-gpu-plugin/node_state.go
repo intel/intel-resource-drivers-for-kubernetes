@@ -98,6 +98,7 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
 
 	for gpuUID, gpu := range allocatableDevices {
+		sriovSupported := gpu.MaxVFs > 0
 		newDevice := resourcev1.Device{
 			Name: gpuUID,
 			Basic: &resourcev1.BasicDevice{
@@ -107,6 +108,12 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 					},
 					"family": {
 						StringValue: &gpu.FamilyName,
+					},
+					"driver": {
+						StringValue: &gpu.Driver,
+					},
+					"sriov": {
+						BoolValue: &sriovSupported,
 					},
 					"pciId": {
 						StringValue: &gpu.Model,

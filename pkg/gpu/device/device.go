@@ -35,8 +35,10 @@ const (
 
 	// driver.sysfsI915Dir and driver.sysfsDRMDir are sysfsI915path and sysfsDRMpath
 	// respectively prefixed with $SYSFS_ROOT.
-	SysfsI915path = "bus/pci/drivers/i915"
-	SysfsDRMpath  = "class/drm/"
+	SysfsPCIBuspath     = "bus/pci/drivers/"
+	SysfsI915DriverName = "i915"
+	SysfsXeDriverName   = "xe"
+	SysfsDRMpath        = "class/drm/"
 
 	CDIVendor  = "intel.com"
 	CDIClass   = "gpu"
@@ -143,6 +145,7 @@ type DeviceInfo struct {
 	VFProfile   string `json:"vfprofile"`   // name of the SR-IOV profile
 	VFIndex     uint64 `json:"vfindex"`     // 0-based PCI index of the VF on the GPU, DRM indexing starts with 1
 	Provisioned bool   `json:"provisioned"` // true if the SR-IOV VF is configured and enabled
+	Driver      string `json:"driver"`      // i915 | xe
 }
 
 func (g DeviceInfo) CDIName() string {
