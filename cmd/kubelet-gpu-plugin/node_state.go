@@ -95,12 +95,7 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 func (s *nodeState) GetResources() resourceslice.DriverResources {
 	devices := []resourcev1.Device{}
 
-	allocatableDevices, ok := s.Allocatable.(map[string]*device.DeviceInfo)
-	if !ok {
-		klog.Error("unexpected type for state.Allocatable")
-		return resourceslice.DriverResources{Pools: map[string]resourceslice.Pool{
-			s.NodeName: {Slices: []resourceslice.Slice{{Devices: nil}}}}}
-	}
+	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
 
 	for gpuUID, gpu := range allocatableDevices {
 		newDevice := resourcev1.Device{
@@ -149,10 +144,7 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 			continue
 		}
 
-		allocatableDevices, ok := s.Allocatable.(map[string]*device.DeviceInfo)
-		if !ok {
-			return fmt.Errorf("unexpected type for state.Allocatable")
-		}
+		allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
 
 		allocatableDevice, found := allocatableDevices[allocatedDevice.Device]
 		if !found {
