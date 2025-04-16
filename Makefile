@@ -230,17 +230,17 @@ $(COVERAGE_FILE): $(shell find cmd pkg -name '*.go')
 
 .PHONY: gpu-coverage gaudi-coverage qat-coverage cdispecsgen-coverage excluded-coverage
 
-gpu-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gaudi-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gaudi|pkg/fakesysfs|plugintesthelpers|fake_hlml"
+gpu-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gaudi-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gaudi|pkg/fakesysfs|plugintesthelpers|fake_hlml|version"
 gpu-coverage: excluded-coverage
 # See: https://www.gnu.org/software/make/manual/html_node/Target_002dspecific.html
 
-gaudi-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gpu-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gpu|pkg/fakesysfs|plugintesthelpers"
+gaudi-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gpu-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gpu|pkg/fakesysfs|plugintesthelpers|version"
 gaudi-coverage: excluded-coverage
 
-qat-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gpu-plugin|kubelet-gaudi-plugin|pkg/gpu|pkg/gaudi|pkg/fakesysfs|plugintesthelpers|fake_hlml"
+qat-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gpu-plugin|kubelet-gaudi-plugin|pkg/gpu|pkg/gaudi|pkg/fakesysfs|plugintesthelpers|fake_hlml|version"
 qat-coverage: excluded-coverage
 
-cdispecsgen-coverage: COVERAGE_EXCLUDE="device-faker|kubelet-gpu-plugin|kubelet-gaudi-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gpu|pkg/gaudi|pkg/fakesysfs|plugintesthelpers"
+cdispecsgen-coverage: COVERAGE_EXCLUDE="device-faker|kubelet-gpu-plugin|kubelet-gaudi-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gpu|pkg/gaudi|pkg/fakesysfs|plugintesthelpers|fake_hlml|version"
 cdispecsgen-coverage: excluded-coverage
 
 COVERAGE_EXCLUDE ?= "$^"
