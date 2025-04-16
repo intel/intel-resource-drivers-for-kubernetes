@@ -9,7 +9,7 @@ image:
   repository: intel
   name: intel-gaudi-resource-driver
   pullPolicy: IfNotPresent
-  tag: "v0.3.0"
+  tag: "v0.4.0"
 
 serviceAccount:
   create: true

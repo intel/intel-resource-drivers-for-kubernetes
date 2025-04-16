@@ -10,7 +10,7 @@ home: https://github.com/intel/intel-resource-drivers-for-kubernetes/charts
 dependencies:
   - name: node-feature-discovery
     alias: nfd
-    version: "0.17.1"
+    version: "0.17.2"
     condition: nfd.enabled
     repository: https://kubernetes-sigs.github.io/node-feature-discovery/charts
 

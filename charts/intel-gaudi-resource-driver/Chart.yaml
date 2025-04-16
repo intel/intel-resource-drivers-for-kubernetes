@@ -3,20 +3,20 @@ name: intel-gaudi-resource-driver
 description: A Helm chart for a Dynamic Resource Allocation (DRA) Intel Gaudi Resource Driver
 
 type: application
-version: 0.3.0
-appVersion: "v0.3.0"
+version: 0.4.0
+appVersion: "v0.4.0"
 home: https://github.com/intel/intel-resource-drivers-for-kubernetes/charts
 
 dependencies:
   - name: node-feature-discovery
     alias: nfd
-    version: "0.17.1"
+    version: "0.17.2"
     condition: nfd.enabled
     repository: https://kubernetes-sigs.github.io/node-feature-discovery/charts
 
 annotations:
   org.opencontainers.image.url: "https://github.com/intel/intel-resource-drivers-for-kubernetes"
   org.opencontainers.image.source: "https://github.com/intel/intel-resource-drivers-for-kubernetes"
-  org.opencontainers.image.version: "0.3.0"
+  org.opencontainers.image.version: "0.4.0"
   org.opencontainers.image.title: "Intel Gaudi Resource Driver"
   org.opencontainers.image.description: "This chart installs the Intel Gaudi resource driver on Kubernetes."

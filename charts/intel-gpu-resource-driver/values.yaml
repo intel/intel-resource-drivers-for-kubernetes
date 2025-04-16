@@ -1,5 +1,6 @@
 # Default values for intel-gpu-resource-driver.
 nameOverride: ""
+namespaceOverride: ""
 fullnameOverride: ""
 selectorLabelsOverride: {}
 

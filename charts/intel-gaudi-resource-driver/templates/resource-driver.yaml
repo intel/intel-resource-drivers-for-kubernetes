@@ -45,8 +45,7 @@ spec:
         - name: sysfs
           mountPath: "/sysfs"
         securityContext:
-          privileged: false
-          allowPrivilegeEscalation: false
+          privileged: true
           capabilities:
             drop: ["ALL"]
           readOnlyRootFilesystem: true
