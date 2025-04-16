@@ -446,3 +446,20 @@ func TestNodeUnprepareResources(t *testing.T) {
 		}
 	}
 }
+
+func TestShutdown(t *testing.T) {
+	testDirs, err := testhelpers.NewTestDirs(device.DriverName)
+	if err != nil {
+		t.Fatalf("could not create fake system dirs: %v", err)
+	}
+
+	driver, err := getFakeDriver(testDirs)
+	if err != nil {
+		t.Fatalf("could not create driver: %v", err)
+	}
+
+	err = driver.Shutdown(context.TODO())
+	if err != nil {
+		t.Errorf("Shutdown() error = %v, wantErr %v", err, nil)
+	}
+}
