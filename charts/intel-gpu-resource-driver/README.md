@@ -9,10 +9,22 @@ More info: [Intel Resource Drivers for Kubernetes](https://github.com/intel/inte
 
 ## Installing the chart
 
+> [!WARNING]  
+> `--namespace` and `--create-namespace` Helm parameters should not be used. The chart creates a
+> workspace with a security label that will not be created when using `--create-namespace`
+> parameter, and when using `--namespace` option, Helm will ensure that the namespace exists before
+> processing templates.
+
+To change the target namespace from default `intel-gpu-resource-driver` to something else, use Helm
+parameter to change the value:
 ```
-helm install intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver \
-    --create-namespace \
-    --namespace intel-gpu-resource-driver
+helm install \
+    --set namespace="new-namespace" \
+    intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver
+```
+
+```
+helm install intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver
 ```
 
 ## Uninstalling the chart
@@ -39,3 +51,4 @@ You may also run `helm show values` on this chart's dependencies for additional 
 | image.name | string | `"intel-gpu-resource-driver"` |
 | image.pullPolicy | string | `"IfNotPresent"` |
 | image.tag | string | `"v0.7.0"` |
+| namespace | string | "intel-gpu-resource-driver" |

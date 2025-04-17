@@ -2,7 +2,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: {{ include "intel-gpu-resource-driver.clusterRoleName" . }}
-  namespace: {{ include "intel-gpu-resource-driver.namespace" . }}
+  namespace: {{ .Values.namespace }}
 rules:
 - apiGroups: [""]
   resources: ["nodes"]
