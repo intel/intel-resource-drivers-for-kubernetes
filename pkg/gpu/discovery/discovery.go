@@ -45,7 +45,7 @@ func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo
 	files, err := os.ReadDir(sysfsI915Dir)
 
 	if err != nil {
-		if err == os.ErrNotExist {
+		if os.IsNotExist(err) {
 			klog.V(5).Infof("No Intel GPU devices found on this host. %v does not exist", sysfsI915Dir)
 			return devices
 		}

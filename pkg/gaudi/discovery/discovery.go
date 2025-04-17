@@ -44,7 +44,7 @@ func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo
 
 	driverDirFiles, err := os.ReadDir(sysfsDriverDir)
 	if err != nil {
-		if err == os.ErrNotExist {
+		if os.IsNotExist(err) {
 			klog.V(5).Infof("No Intel Gaudi devices found on this host. %v does not exist", sysfsDriverDir)
 			return devices
 		}
@@ -123,7 +123,7 @@ func getAccelIndexes(sysfsAccelDir string) map[string]gaudiIndexesType {
 	devices := map[string]gaudiIndexesType{}
 	accelDirFiles, err := os.ReadDir(sysfsAccelDir)
 	if err != nil {
-		if err == os.ErrNotExist {
+		if os.IsNotExist(err) {
 			klog.V(5).Infof("No Accel devices found on this host. %v does not exist", sysfsAccelDir)
 			return devices
 		}
