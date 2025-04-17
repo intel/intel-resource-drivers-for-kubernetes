@@ -64,6 +64,7 @@ func errorCheck(t *testing.T, name, substr string, err error) {
 }
 
 // TestPreparedClaimsFiles checks prepared claims JSON read & write helpers.
+// nolint:cyclop
 func TestPreparedClaimsFiles(t *testing.T) {
 	type testOp struct {
 		// if non-empty, op1 writes to given file, op2 reads file & compares against

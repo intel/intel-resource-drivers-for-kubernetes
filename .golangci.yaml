@@ -7,13 +7,13 @@ linters:
     - contextcheck
     - forcetypeassert
     - gocritic
-    - gocyclo
+    - cyclop
     - godot
     - misspell
     - staticcheck
   settings:
-    gocyclo:
-      min-complexity: 15
+    cyclop:
+      max-complexity: 15
     staticcheck:
       initialisms:
         - ACL

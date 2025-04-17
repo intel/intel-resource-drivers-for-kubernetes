@@ -42,6 +42,7 @@ func createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot string) error {
 	return nil
 }
 
+//nolint:cyclop
 func TestDiscoverDevices(t *testing.T) {
 	tests := []struct {
 		name        string
