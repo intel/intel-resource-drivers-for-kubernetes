@@ -200,6 +200,34 @@ test-image: vendor
 test-image-push: test-image
 	$(DOCKER) push "$(TEST_IMAGE)"
 
+.PHONY: update-dependencies package-helm-charts push-helm-charts
+update-dependencies:
+	@helm repo add nfd https://kubernetes-sigs.github.io/node-feature-discovery/charts || true
+	@helm repo update
+	@set -x; for chart in charts/*; do \
+		if [ -d "$$chart" ]; then \
+			echo "Updating dependencies for $$chart"; \
+			helm dependency update $$chart; \
+			helm dependency build $$chart; \
+		fi \
+	done
+
+package-helm-charts:
+	@set -x; for chart in charts/*; do \
+		if [ -d "$$chart" ]; then \
+			chart_name=$$(basename $$chart); \
+			chart_version=$$(awk '/^version:/ {print $$2; exit}' $$chart/Chart.yaml); \
+			release_version=$$(awk '/^appVersion:/ {print $$2; exit}' $$chart/Chart.yaml); \
+			echo "Packaging $$chart_name with chart version $$chart_version and application version $$release_version"; \
+			helm package $$chart --version $$chart_version --app-version $$release_version --destination .charts; \
+		fi \
+	done
+
+push-helm-charts: package-helm-charts
+	@for tgz in .charts/*.tgz; do \
+		helm push $$tgz oci://${RELEASE_REGISTRY}; \
+	done
+
 .PHONY: test html-coverage test-containerized
 COVERAGE_FILE := coverage.out
 # Gaudi tests expect fake HLML library to be present at /usr/lib/habanalabs/libhlml.so
