@@ -127,7 +127,7 @@ var ModelDetails = map[string]map[string]string{
 // DeviceInfo is an internal structure type to store info about discovered device.
 type DeviceInfo struct {
 	// UID is a unique identifier on node, used in ResourceSlice K8s API object as RFC1123-compliant identifier.
-	// Consists of PCIAddress and Model with colons and dots replaced with hyphens, e.g. 0000-01-02-0-0x12345.
+	// Consists of PCIAddress and Model with colons and dots replaced with hyphens, e.g. 0000-01-02-0-0x1234.
 	UID         string `json:"uid"`
 	PCIAddress  string `json:"pciaddress"`  // PCI address in Linux DBDF notation for use with sysfs, e.g. 0000:00:00.0
 	Model       string `json:"model"`       // PCI device ID

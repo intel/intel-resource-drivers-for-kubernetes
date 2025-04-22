@@ -13,16 +13,16 @@ func TestCDIName(t *testing.T) {
 		{
 			name: "Valid device UID",
 			device: DeviceInfo{
-				UID: "0000-01-02-0-0x12345",
+				UID: "0000-01-02-0-0x1234",
 			},
-			expected: "intel.com/gaudi=0000-01-02-0-0x12345",
+			expected: "intel.com/gaudi=0000-01-02-0-0x1234",
 		},
 		{
 			name: "Another valid device UID",
 			device: DeviceInfo{
-				UID: "0000-02-03-0-0x67890",
+				UID: "0000-02-03-0-0x6789",
 			},
-			expected: "intel.com/gaudi=0000-02-03-0-0x67890",
+			expected: "intel.com/gaudi=0000-02-03-0-0x6789",
 		},
 	}
 
@@ -38,8 +38,8 @@ func TestCDIName(t *testing.T) {
 
 func TestDevicesInfoDeepCopy(t *testing.T) {
 	original := DevicesInfo{
-		"0000-01-02-0-0x12345": {
-			UID:        "0000-01-02-0-0x12345",
+		"0000-01-02-0-0x1234": {
+			UID:        "0000-01-02-0-0x1234",
 			PCIAddress: "0000:01:02.0",
 			Model:      "0x1020",
 			ModelName:  "Gaudi2",
