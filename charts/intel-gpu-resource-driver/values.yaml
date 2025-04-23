@@ -3,8 +3,6 @@ nameOverride: ""
 fullnameOverride: ""
 selectorLabelsOverride: {}
 
-namespace: "intel-gpu-resource-driver"
-
 imagePullSecrets: []
 image:
   repository: intel
