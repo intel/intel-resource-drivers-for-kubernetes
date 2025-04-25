@@ -159,7 +159,7 @@ func TestInitHLMLErrors(t *testing.T) {
 		{
 			name:        "all hlml calls succeed, but device UID is missing from node_state.Allocatable",
 			flowControl: map[uint32]uint32{},
-			expectedErr: "could not find device with UID 0000-d5-00-0-0x1020",
+			expectedErr: "could not find allocatable device with PCI address 0000:d5:00.0",
 			addUnexpectedDevices: device.DevicesInfo{
 				"0000-d5-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:d5:00.0", DeviceIdx: 2, UID: "0000-d5-00-0-0x1020", Serial: "000003"},
 			},
