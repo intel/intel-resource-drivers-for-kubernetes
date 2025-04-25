@@ -267,3 +267,14 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 	klog.V(5).Infof("Created prepared claim %v allocation", claim.UID)
 	return nil
 }
+
+func (s *nodeState) AllocatableByPCIAddress(pciAddress string) *device.DeviceInfo {
+	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
+	for _, device := range allocatableDevices {
+		if device.PCIAddress == pciAddress {
+			return device
+		}
+	}
+
+	return nil
+}

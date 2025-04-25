@@ -25,7 +25,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
 
 const (
@@ -45,7 +44,7 @@ func (d *driver) initHLML() error {
 		return fmt.Errorf("failed to get device count: %v", ret)
 	}
 
-	allocatable, _ := d.state.Allocatable.(map[string]*device.DeviceInfo)
+	state := nodeState{d.state}
 
 	for i := uint(0); i < count; i++ {
 		hlmlDevice, err := hlml.DeviceHandleByIndex(i)
@@ -63,19 +62,10 @@ func (d *driver) initHLML() error {
 			return fmt.Errorf("failed to get PCI bus ID of device at index %d: %v", i, err)
 		}
 
-		pciIdHex, err := hlmlDevice.PCIID()
-		if err != nil {
-			return fmt.Errorf("failed to get PCI ID of device at index %d: %v", i, err)
+		gaudi := state.AllocatableByPCIAddress(pciAddress)
+		if gaudi == nil {
+			return fmt.Errorf("could not find allocatable device with PCI address %v", pciAddress)
 		}
-		// hlml.Device.PCIID has both vendor and device ID, but device ID has no '0x' prefix.
-		pciId := fmt.Sprintf("%08x", pciIdHex)
-		klog.V(5).Infof("HLML: found device: serial %v, PCI bus %v, PCI ID %v\n", serial, pciAddress, pciId)
-		uid := helpers.DeviceUIDFromPCIinfo(pciAddress, fmt.Sprintf("0x%v", pciId[4:]))
-		gaudi, found := allocatable[uid]
-		if !found {
-			return fmt.Errorf("could not find device with UID %v", uid)
-		}
-
 		gaudi.Serial = serial
 	}
 
