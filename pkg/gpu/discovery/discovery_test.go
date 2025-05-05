@@ -16,7 +16,10 @@ import (
 	testhelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
 )
 
-func createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot string) error {
+func createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot string, driver string) error {
+	if driver == "" {
+		driver = device.SysfsI915DriverName
+	}
 	if err := fakesysfs.FakeSysFsGpuContents(
 		sysfsRoot,
 		devfsRoot,
@@ -33,6 +36,7 @@ func createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot string) error {
 				Millicores: 1000,
 				UID:        "0000-0f-00-0-0x56c0",
 				MaxVFs:     16,
+				Driver:     driver,
 			},
 		},
 		false,
@@ -46,7 +50,7 @@ func createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot string) error {
 func TestDiscoverDevices(t *testing.T) {
 	tests := []struct {
 		name        string
-		setupFunc   func(sysfsDir string, namingStyle string) error
+		setupFunc   func(sysfsDir string, namingStyle string, driver string) error
 		namingStyle string
 		expected    map[string]*device.DeviceInfo
 	}{
@@ -71,12 +75,16 @@ func TestDiscoverDevices(t *testing.T) {
 					Millicores: 1000,
 					UID:        "0000-0f-00-0-0x56c0",
 					MaxVFs:     16,
+					Driver:     device.SysfsI915DriverName,
 				},
 			},
 		},
 		{
 			name: "with 1 vf",
-			setupFunc: func(sysfsRoot, devfsRoot string) error {
+			setupFunc: func(sysfsRoot, devfsRoot string, driver string) error {
+				if driver == "" {
+					driver = device.SysfsI915DriverName
+				}
 				if err := fakesysfs.FakeSysFsGpuContents(
 					sysfsRoot,
 					devfsRoot,
@@ -93,6 +101,7 @@ func TestDiscoverDevices(t *testing.T) {
 							Millicores: 1000,
 							UID:        "0000-0f-00-0-0x56c0",
 							MaxVFs:     16,
+							Driver:     driver,
 						},
 						"0000-0f-00-1-0x56c0": {
 							Model:      "0x56c0",
@@ -107,6 +116,7 @@ func TestDiscoverDevices(t *testing.T) {
 							Millicores: 1000,
 							UID:        "0000-0f-00-1-0x56c0",
 							MaxVFs:     0,
+							Driver:     driver,
 						},
 					},
 					false,
@@ -128,6 +138,7 @@ func TestDiscoverDevices(t *testing.T) {
 					Millicores: 1000,
 					UID:        "0000-0f-00-0-0x56c0",
 					MaxVFs:     16,
+					Driver:     device.SysfsI915DriverName,
 				},
 				"0000-0f-00-1-0x56c0": {
 					Model:      "0x56c0",
@@ -142,26 +153,33 @@ func TestDiscoverDevices(t *testing.T) {
 					Millicores: 1000,
 					UID:        "0000-0f-00-1-0x56c0",
 					MaxVFs:     0,
+					Driver:     device.SysfsI915DriverName,
 				},
 			},
 		},
 		{
 			name: "i915 device file read error",
-			setupFunc: func(sysfsRoot, devfsRoot string) error {
-				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot); err != nil {
+			setupFunc: func(sysfsRoot, devfsRoot string, driver string) error {
+				if driver == "" {
+					driver = device.SysfsI915DriverName
+				}
+				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot, driver); err != nil {
 					return err
 				}
-				return os.Remove(path.Join(sysfsRoot, device.SysfsI915path, "0000:0f:00.0", "device"))
+				return os.Remove(path.Join(sysfsRoot, device.SysfsPCIBuspath, driver, "0000:0f:00.0", "device"))
 			},
 			expected: map[string]*device.DeviceInfo{},
 		},
 		{
 			name: "totalvfs read error",
-			setupFunc: func(sysfsRoot, devfsRoot string) error {
-				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot); err != nil {
+			setupFunc: func(sysfsRoot, devfsRoot string, driver string) error {
+				if driver == "" {
+					driver = device.SysfsI915DriverName
+				}
+				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot, driver); err != nil {
 					return err
 				}
-				return os.Remove(path.Join(sysfsRoot, device.SysfsI915path, "0000:0f:00.0", "sriov_totalvfs"))
+				return os.Remove(path.Join(sysfsRoot, device.SysfsPCIBuspath, driver, "0000:0f:00.0", "sriov_totalvfs"))
 			},
 			expected: map[string]*device.DeviceInfo{
 				"0000-0f-00-0-0x56c0": {
@@ -176,16 +194,20 @@ func TestDiscoverDevices(t *testing.T) {
 					Millicores: 1000,
 					UID:        "0000-0f-00-0-0x56c0",
 					MaxVFs:     0,
+					Driver:     device.SysfsI915DriverName,
 				},
 			},
 		},
 		{
 			name: "driversAutoprobeFile read error",
-			setupFunc: func(sysfsRoot, devfsRoot string) error {
-				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot); err != nil {
+			setupFunc: func(sysfsRoot, devfsRoot string, driver string) error {
+				if driver == "" {
+					driver = device.SysfsI915DriverName
+				}
+				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot, driver); err != nil {
 					return err
 				}
-				return os.RemoveAll(path.Join(sysfsRoot, device.SysfsI915path, "0000:0f:00.0", "sriov_drivers_autoprobe"))
+				return os.RemoveAll(path.Join(sysfsRoot, device.SysfsPCIBuspath, driver, "0000:0f:00.0", "sriov_drivers_autoprobe"))
 			},
 			expected: map[string]*device.DeviceInfo{
 				"0000-0f-00-0-0x56c0": {
@@ -200,33 +222,43 @@ func TestDiscoverDevices(t *testing.T) {
 					Millicores: 1000,
 					UID:        "0000-0f-00-0-0x56c0",
 					MaxVFs:     0,
+					Driver:     device.SysfsI915DriverName,
 				},
 			},
 		},
 		{
 			name: "drm dir read error",
-			setupFunc: func(sysfsRoot, devfsRoot string) error {
-				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot); err != nil {
+			setupFunc: func(sysfsRoot, devfsRoot string, driver string) error {
+				if driver == "" {
+					driver = device.SysfsI915DriverName
+				}
+				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot, driver); err != nil {
 					return err
 				}
-				return os.RemoveAll(path.Join(sysfsRoot, device.SysfsI915path, "0000:0f:00.0", "drm"))
+				return os.RemoveAll(path.Join(sysfsRoot, device.SysfsPCIBuspath, driver, "0000:0f:00.0", "drm"))
 			},
 			expected: map[string]*device.DeviceInfo{},
 		},
 		{
 			name: "drm dir read error",
-			setupFunc: func(sysfsRoot, devfsRoot string) error {
-				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot); err != nil {
+			setupFunc: func(sysfsRoot, devfsRoot string, driver string) error {
+				if driver == "" {
+					driver = device.SysfsI915DriverName
+				}
+				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot, driver); err != nil {
 					return err
 				}
-				return os.RemoveAll(path.Join(sysfsRoot, device.SysfsI915path, "0000:0f:00.0", "drm"))
+				return os.RemoveAll(path.Join(sysfsRoot, device.SysfsPCIBuspath, driver, "0000:0f:00.0", "drm"))
 			},
 			expected: map[string]*device.DeviceInfo{},
 		},
 		{
 			name: "lmem_total_bytes read error",
-			setupFunc: func(sysfsRoot, devfsRoot string) error {
-				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot); err != nil {
+			setupFunc: func(sysfsRoot, devfsRoot string, driver string) error {
+				if driver == "" {
+					driver = device.SysfsI915DriverName
+				}
+				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot, driver); err != nil {
 					return err
 				}
 				return os.RemoveAll(path.Join(sysfsRoot, device.SysfsDRMpath, "card0", "lmem_total_bytes"))
@@ -244,13 +276,17 @@ func TestDiscoverDevices(t *testing.T) {
 					Millicores: 1000,
 					UID:        "0000-0f-00-0-0x56c0",
 					MaxVFs:     16,
+					Driver:     device.SysfsI915DriverName,
 				},
 			},
 		},
 		{
 			name: "invalid lmem_total_bytes value triggers conversion error",
-			setupFunc: func(sysfsRoot, devfsRoot string) error {
-				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot); err != nil {
+			setupFunc: func(sysfsRoot, devfsRoot string, driver string) error {
+				if driver == "" {
+					driver = device.SysfsI915DriverName
+				}
+				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot, driver); err != nil {
 					return err
 				}
 				return os.WriteFile(path.Join(sysfsRoot, device.SysfsDRMpath, "card0", "lmem_total_bytes"), []byte("invalid"), 0644)
@@ -268,6 +304,7 @@ func TestDiscoverDevices(t *testing.T) {
 					Millicores: 1000,
 					UID:        "0000-0f-00-0-0x56c0",
 					MaxVFs:     16,
+					Driver:     device.SysfsI915DriverName,
 				},
 			},
 		},
@@ -288,6 +325,7 @@ func TestDiscoverDevices(t *testing.T) {
 					Millicores: 1000,
 					UID:        "0000-0f-00-0-0x56c0",
 					MaxVFs:     16,
+					Driver:     device.SysfsI915DriverName,
 				},
 			},
 		},
@@ -304,7 +342,7 @@ func TestDiscoverDevices(t *testing.T) {
 
 			// Setup fake sysfs gpu contents
 			if tt.setupFunc != nil {
-				if err := tt.setupFunc(testDirs.SysfsRoot, testDirs.DevfsRoot); err != nil {
+				if err := tt.setupFunc(testDirs.SysfsRoot, testDirs.DevfsRoot, device.SysfsI915DriverName); err != nil {
 					t.Fatalf("could not set up test: %v", err)
 				}
 			}

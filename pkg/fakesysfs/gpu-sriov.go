@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/fsnotify/fsnotify"
+
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/discovery"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
@@ -327,7 +328,7 @@ func fakeSysfsSRIOVContents(sysfsRoot string, gpus device.DevicesInfo) error {
 
 func fakeSysfsVF(vf *device.DeviceInfo, numvfs int, sysfsRoot string, i915DevDir string) error {
 	if vf.Driver != "i915" {
-		return fmt.Errorf("Fake SR-IOV only supported for i915 KMD")
+		return fmt.Errorf("fake SR-IOV only supported for i915 KMD")
 	}
 
 	if err := os.Symlink(fmt.Sprintf("../%s", vf.ParentPCIAddress()), path.Join(i915DevDir, "physfn")); err != nil {
