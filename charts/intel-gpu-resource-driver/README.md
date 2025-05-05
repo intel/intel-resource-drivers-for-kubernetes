@@ -10,9 +10,22 @@ More info: [Intel Resource Drivers for Kubernetes](https://github.com/intel/inte
 ## Installing the chart
 
 ```
-helm install intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver \
+helm install \
+    --namespace "intel-gpu-resource-driver" \
     --create-namespace \
-    --namespace intel-gpu-resource-driver
+    intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver
+```
+
+> [!NOTE]
+> For Kubernetes clusters using [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/),
+> pre-create the namespace with the respective label allowing to use HostPath Volumes.
+
+```
+kubectl create namespace intel-gpu-resource-driver
+kubectl label --overwrite namespace intel-gpu-resource-driver pod-security.kubernetes.io/enforce=privileged
+helm install \
+    --namespace "intel-gpu-resource-driver" \
+    intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver
 ```
 
 ## Uninstalling the chart

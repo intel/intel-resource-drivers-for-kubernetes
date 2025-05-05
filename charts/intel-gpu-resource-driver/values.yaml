@@ -1,6 +1,5 @@
 # Default values for intel-gpu-resource-driver.
 nameOverride: ""
-namespaceOverride: "intel-gpu-resource-driver"
 fullnameOverride: ""
 selectorLabelsOverride: {}
 
@@ -14,14 +13,12 @@ image:
 serviceAccount:
   create: true
   annotations: {}
-  name: intel-gpu-resource-driver-service-account
+  name: ""
   automount: true
 
 kubeletPlugin:
   podAnnotations: {}
-  nodeSelector: {}
-  # label used when nfd.enabled is true
-    #intel.feature.node.kubernetes.io/gpu: "true"
+  nodeSelector: {} # ignored when .Values.nodeFeatureRules.enabled or .Values.nfd.enabled
   tolerations:
     - key: node-role.kubernetes.io/master
       operator: Exists
@@ -36,6 +33,13 @@ kubeletPlugin:
       operator: "Exists"
       effect: "NoSchedule"
   affinity: {}
+
+cdi:
+  staticPath: /etc/cdi
+  dynamicPath: /var/run/cdi
+
+nodeFeatureRules:
+  enabled: false
 
 nfd:
   enabled: false # change to true to install NFD to the cluster

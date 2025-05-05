@@ -20,10 +20,6 @@ intel-gpu-resource-driver
 {{- end -}}
 {{- end }}
 
-{{- define "intel-gpu-resource-driver.namespace" -}}
-{{- default .Release.Namespace .Values.namespaceOverride }}
-{{- end }}
-
 {{/* Labels for templates */}}
 {{- define "intel-gpu-resource-driver.labels" -}}
 helm.sh/chart: {{ include "intel-gpu-resource-driver.chart" . }}

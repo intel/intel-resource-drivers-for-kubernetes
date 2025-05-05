@@ -273,17 +273,7 @@ Unlike with normal GPU ResourceClaims:
 * Monitor deployment gets access to all GPU devices on a node
 * `adminAccess` ResourceClaim allocations are not counted by scheduler as consumed resource, and can be allocated to workloads
 
-### Helm Charts
+### Helm Chart
 
-[Intel GPU Resource Driver Helm Chart](https://github.com/intel/helm-charts/tree/main/charts/intel-gpu-resource-driver) is located in Intel Helm Charts repository.
-
-To add repo:
-```
-helm repo add intel https://intel.github.io/helm-charts
-```
-
-To install Helm Chart:
-```
-helm install intel-gpu-resource-driver intel/intel-gpu-resource-driver \
---create-namespace --namespace intel-gpu-resource-driver
-```
+The [Intel GPU Resource Driver Helm Chart](../../charts/intel-gpu-resource-driver) is published
+as a package to GitHub OCI registry, and can be installed directly with Helm.
