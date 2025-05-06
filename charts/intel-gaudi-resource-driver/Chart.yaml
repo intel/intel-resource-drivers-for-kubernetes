@@ -4,7 +4,7 @@ description: A Helm chart for a Dynamic Resource Allocation (DRA) Intel Gaudi Re
 
 type: application
 version: 0.4.1
-appVersion: "v0.4.1"
+appVersion: v0.4.1
 home: https://github.com/intel/intel-resource-drivers-for-kubernetes/charts
 
 dependencies:

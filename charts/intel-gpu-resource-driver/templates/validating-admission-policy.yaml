@@ -13,7 +13,7 @@ spec:
   matchConditions:
   - name: isRestrictedUser
     expression: >-
-      request.userInfo.username == "system:serviceaccount:{{ include "intel-gpu-resource-driver.namespace" . }}:{{ include "intel-gpu-resource-driver.serviceAccountName" . }}"
+      request.userInfo.username == "system:serviceaccount:{{ .Release.Namespace }}:{{ include "intel-gpu-resource-driver.serviceAccountName" . }}"
   variables:
   - name: userNodeName
     expression: >-

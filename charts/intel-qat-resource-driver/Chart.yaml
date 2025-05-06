@@ -4,7 +4,7 @@ description: A Helm chart for a Dynamic Resource Allocation (DRA) Intel QAT Reso
 
 type: application
 version: 0.2.0
-appVersion: "v0.2.0"
+appVersion: v0.2.0
 home: https://github.com/intel/intel-resource-drivers-for-kubernetes/charts
 
 dependencies:

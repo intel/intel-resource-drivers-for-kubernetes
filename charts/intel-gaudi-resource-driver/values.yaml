@@ -13,7 +13,7 @@ image:
 serviceAccount:
   create: true
   annotations: {}
-  name: intel-gaudi-resource-driver-service-account
+  name: ""
   automount: true
 
 kubeletPlugin:
@@ -35,6 +35,10 @@ kubeletPlugin:
       operator: "Exists"
       effect: "NoSchedule"
   affinity: {}
+
+cdi:
+  staticPath: /etc/cdi
+  dynamicPath: /var/run/cdi
 
 nfd:
   enabled: false # change to true to install NFD to the cluster

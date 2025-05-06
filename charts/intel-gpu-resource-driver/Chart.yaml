@@ -3,8 +3,8 @@ name: intel-gpu-resource-driver
 description: A Helm chart for a Dynamic Resource Allocation (DRA) Intel GPU Resource Driver
 
 type: application
-version: 0.7.0
-appVersion: "v0.7.0"
+version: 0.7.1
+appVersion: v0.7.0
 home: https://github.com/intel/intel-resource-drivers-for-kubernetes/charts
 
 dependencies:
