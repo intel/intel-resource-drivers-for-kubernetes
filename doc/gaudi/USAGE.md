@@ -265,3 +265,7 @@ Unlike with normal Gaudi ResourceClaims:
 * Monitor deployment gets access to all Gaudi devices on a node
 * `adminAccess` ResourceClaim allocations are not counted by scheduler as consumed resource, and can be allocated to workloads
 
+### Helm Chart
+
+The [Intel Gaudi Resource Driver Helm Chart](../../charts/intel-gaudi-resource-driver) is published
+as a package to GitHub OCI registry, and can be installed directly with Helm.
