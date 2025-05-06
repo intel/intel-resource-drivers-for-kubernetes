@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: intel-gaudi-resource-driver-kubelet-plugin
-  namespace: {{ include "intel-gaudi-resource-driver.namespace" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "intel-gaudi-resource-driver.labels" . | nindent 4 }}
 spec:
@@ -45,8 +45,7 @@ spec:
         - name: sysfs
           mountPath: "/sysfs"
         securityContext:
-          privileged: false
-          allowPrivilegeEscalation: false
+          privileged: true
           capabilities:
             drop: ["ALL"]
           readOnlyRootFilesystem: true

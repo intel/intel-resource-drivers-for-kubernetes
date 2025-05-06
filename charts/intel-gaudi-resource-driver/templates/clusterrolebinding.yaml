@@ -2,11 +2,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: {{ include "intel-gaudi-resource-driver.clusterRoleBindingName" . }}
-  namespace: {{ include "intel-gaudi-resource-driver.namespace" . }}
+  namespace: {{ .Release.Namespace }}
 subjects:
 - kind: ServiceAccount
   name: {{ include "intel-gaudi-resource-driver.serviceAccountName" . }}
-  namespace: {{ include "intel-gaudi-resource-driver.namespace" . }}
+  namespace: {{ .Release.Namespace }}
 roleRef:
   kind: ClusterRole
   name: {{ include "intel-gaudi-resource-driver.clusterRoleName" . }}
