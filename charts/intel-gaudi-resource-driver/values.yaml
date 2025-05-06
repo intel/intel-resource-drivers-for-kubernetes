@@ -1,6 +1,5 @@
 # Default values for intel-gaudi-resource-driver.
 nameOverride: ""
-namespaceOverride: "intel-gaudi-resource-driver"
 fullnameOverride: ""
 selectorLabelsOverride: {}
 
@@ -9,7 +8,7 @@ image:
   repository: intel
   name: intel-gaudi-resource-driver
   pullPolicy: IfNotPresent
-  tag: "v0.4.0"
+  tag: "v0.4.1"
 
 serviceAccount:
   create: true

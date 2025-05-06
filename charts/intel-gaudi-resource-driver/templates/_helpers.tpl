@@ -22,10 +22,6 @@ intel-gaudi-resource-driver
 {{- end -}}
 {{- end }}
 
-{{- define "intel-gaudi-resource-driver.namespace" -}}
-{{- default .Release.Namespace .Values.namespaceOverride }}
-{{- end }}
-
 {{/* Labels for templates */}}
 {{- define "intel-gaudi-resource-driver.labels" -}}
 helm.sh/chart: {{ include "intel-gaudi-resource-driver.chart" . }}
