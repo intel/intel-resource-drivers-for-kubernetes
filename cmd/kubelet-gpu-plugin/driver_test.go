@@ -47,7 +47,8 @@ func TestFakeSysfs(t *testing.T) {
 		testDirs.SysfsRoot,
 		testDirs.DevfsRoot,
 		device.DevicesInfo{
-			"0000-00-02-0-0x56c0": {Model: "0x56c0", MemoryMiB: 8192, DeviceType: "gpu", CardIdx: 0, RenderdIdx: 128, UID: "0000-00-02-0-0x56c0", MaxVFs: 16},
+			"0000-00-02-0-0x56c0": {Model: "0x56c0", MemoryMiB: 8192, DeviceType: "gpu", CardIdx: 0, RenderdIdx: 128, UID: "0000-00-02-0-0x56c0", MaxVFs: 16, Driver: "i915"},
+			"0000-00-03-0-0x56c0": {Model: "0x56c0", MemoryMiB: 8192, DeviceType: "gpu", CardIdx: 1, RenderdIdx: 128, UID: "0000-00-03-0-0x56c0", MaxVFs: 16, Driver: "xe"},
 		},
 		false,
 	); err != nil {
@@ -247,6 +248,37 @@ func TestNodePrepareResources(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "single Xe GPU",
+			claims: []*resourcev1.ResourceClaim{
+				testhelpers.NewClaim("namespacexe", "claimxe", "uidxe", "requestxe", "gpu.intel.com", "node1", []string{"0000-00-05-0-0x56c0"}),
+			},
+			request: &drav1.NodePrepareResourcesRequest{
+				Claims: []*drav1.Claim{
+					{UID: "uidxe", Name: "claimxe", Namespace: "namespacexe"},
+				},
+			},
+			expectedResponse: &drav1.NodePrepareResourcesResponse{
+				Claims: map[string]*drav1.NodePrepareResourceResponse{
+					"uidxe": {
+						Devices: []*drav1.Device{
+							{RequestNames: []string{"requestxe"}, PoolName: "node1", DeviceName: "0000-00-05-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0x56c0"}},
+						},
+					},
+				},
+			},
+			preparedClaims: helpers.ClaimPreparations{},
+			expectedPreparedClaims: helpers.ClaimPreparations{
+				"uidxe": {
+					{
+						RequestNames: []string{"requestxe"},
+						PoolName:     "node1",
+						DeviceName:   "0000-00-05-0-0x56c0",
+						CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0x56c0"},
+					},
+				},
+			},
+		},
 	}
 
 	for _, testcase := range testcases {
@@ -268,6 +300,7 @@ func TestNodePrepareResources(t *testing.T) {
 				"0000-00-03-1-0x56c0": {Model: "0x56c0", MemoryMiB: 8064, DeviceType: "vf", CardIdx: 2, RenderdIdx: 130, UID: "0000-00-03-1-0x56c0", VFIndex: 0, VFProfile: "flex170_m2", ParentUID: "0000-00-03-0-0x56c0", Driver: "i915"},
 				// dummy, no SR-IOV tiles
 				"0000-00-04-0-0x0000": {Model: "0x0000", MemoryMiB: 14248, DeviceType: "gpu", CardIdx: 3, RenderdIdx: 131, UID: "0000-00-04-0-0x0000", MaxVFs: 16, Driver: "i915"},
+				"0000-00-05-0-0x56c0": {Model: "0x56c0", MemoryMiB: 16256, DeviceType: "gpu", CardIdx: 4, RenderdIdx: 128, UID: "0000-00-05-0-0x56c0", MaxVFs: 16, Driver: "xe"},
 			},
 			false,
 		); err != nil {
