@@ -267,5 +267,5 @@ Unlike with normal Gaudi ResourceClaims:
 
 ### Helm Chart
 
-The [Intel Gaudi Resource Driver Helm Chart](../../charts/intel-gaudi-resource-driver) is published
+The [Intel GPU Resource Driver Helm Chart](../../charts/intel-gpu-resource-driver) is published
 as a package to GitHub OCI registry, and can be installed directly with Helm.
