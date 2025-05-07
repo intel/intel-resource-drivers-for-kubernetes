@@ -16,7 +16,6 @@ helm install \
     intel-gaudi-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver \
 ```
 
-
 > [!NOTE]
 > For Kubernetes clusters using [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/),
 > pre-create the namespace with the respective label allowing to use HostPath Volumes.
