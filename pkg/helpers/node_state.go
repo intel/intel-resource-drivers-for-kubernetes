@@ -23,12 +23,12 @@ import (
 	"os"
 	"sync"
 
+	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 )
 
-type ClaimPreparations map[string][]*drav1.Device
+type ClaimPreparations map[string]kubeletplugin.PrepareResult
 
 type NodeState struct {
 	sync.Mutex
@@ -44,7 +44,7 @@ func (s *NodeState) Unprepare(ctx context.Context, claimUID string) error {
 	s.Lock()
 	defer s.Unlock()
 
-	if s.Prepared[claimUID] == nil {
+	if _, found := s.Prepared[claimUID]; !found {
 		return nil
 	}
 

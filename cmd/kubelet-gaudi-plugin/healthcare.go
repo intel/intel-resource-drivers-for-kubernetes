@@ -225,7 +225,7 @@ func (d *driver) timedHLMLEventCheck(eventSet hlml.EventSet) (bool, []string) {
 func (d *driver) Shutdown(ctx context.Context) error {
 	klog.V(5).Info("Shutting down driver")
 
-	d.plugin.Stop()
+	d.helper.Stop()
 
 	// When health monitoring with HLML was initiated, d.hlmlShutdown will get
 	// context cancel function, which we can call to signal health monitoring

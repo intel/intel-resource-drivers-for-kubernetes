@@ -145,3 +145,18 @@ func NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool string
 
 	return claim
 }
+
+func NewClaimWithAlienDevice(claimNs, claimName, claimUID, requestName, driverName, pool string, allocatedDevices []string) *resourcev1.ResourceClaim {
+	claim := NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, allocatedDevices)
+
+	alienDevice := resourcev1.DeviceRequestAllocationResult{
+		Device:  "numberOne",
+		Request: "complimentaryRequest",
+		Driver:  "NonExistent",
+		Pool:    pool,
+	}
+	allocationDevices := &claim.Status.Allocation.Devices
+	allocationDevices.Results = append(allocationDevices.Results, alienDevice)
+
+	return claim
+}

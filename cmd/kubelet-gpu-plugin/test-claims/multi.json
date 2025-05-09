@@ -1,38 +1,44 @@
 {
-  "uid1": [
-    {
-      "request_names": [
-        "request1"
-      ],
-      "pool_name": "node1",
-      "device_name": "0000-af-00-1-0xabcd",
-      "cdi_device_ids": [
-        "0000-af-00-1-0xabcd"
-      ]
-    }
-  ],
-  "uid2": [
-    {
-      "request_names": [
-        "request1"
-      ],
-      "pool_name": "node1",
-      "device_name": "0000-af-00-2-0xabcd",
-      "cdi_device_ids": [
-        "0000-af-00-2-0xabcd"
-      ]
-    }
-  ],
-  "uid3": [
-    {
-      "request_names": [
-        "request1"
-      ],
-      "pool_name": "node1",
-      "device_name": "0000-af-00-3-0xabcd",
-      "cdi_device_ids": [
-        "0000-af-00-3-0xabcd"
-      ]
-    }
-  ]
+  "uid1": {
+    "Devices": [
+      {
+        "requests": [
+          "request1"
+        ],
+        "poolname": "node1",
+        "devicename": "0000-af-00-1-0xabcd",
+        "cdideviceids": [
+          "0000-af-00-1-0xabcd"
+        ]
+      }
+    ]
+  },
+  "uid2": {
+    "Devices": [
+      {
+        "requests": [
+          "request1"
+        ],
+        "poolname": "node1",
+        "devicename": "0000-af-00-2-0xabcd",
+        "cdideviceids": [
+          "0000-af-00-2-0xabcd"
+        ]
+      }
+    ]
+  },
+  "uid3": {
+    "Devices": [
+      {
+        "requests": [
+          "request1"
+        ],
+        "poolname": "node1",
+        "devicename": "0000-af-00-3-0xabcd",
+        "cdideviceids": [
+          "0000-af-00-3-0xabcd"
+        ]
+      }
+    ]
+  }
 }

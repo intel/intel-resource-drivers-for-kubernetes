@@ -21,12 +21,11 @@ import (
 	"fmt"
 	"path"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	resourceapi "k8s.io/api/resource/v1beta1"
+	"k8s.io/apimachinery/pkg/types"
 	coreclientset "k8s.io/client-go/kubernetes"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
-
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/cdihelpers"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
@@ -35,13 +34,10 @@ import (
 	driverVersion "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/version"
 )
 
-// compile-time test for implementation conformance with the interface.
-var _ drav1.DRAPluginServer = (*driver)(nil)
-
 type driver struct {
 	client coreclientset.Interface
 	state  *helpers.NodeState
-	plugin kubeletplugin.DRAPlugin
+	helper *kubeletplugin.Helper
 	// If HLML monitoring is running - it will need to be stopped.
 	hlmlShutdown context.CancelFunc
 }
@@ -99,21 +95,20 @@ KubeletPluginSocketPath: %v`,
 		pluginSocket,
 		pluginSocket)
 
-	plugin, err := kubeletplugin.Start(
+	helper, err := kubeletplugin.Start(
 		ctx,
-		[]any{driver},
+		driver,
 		kubeletplugin.KubeClient(config.Coreclient),
 		kubeletplugin.NodeName(config.CommonFlags.NodeName),
 		kubeletplugin.DriverName(device.DriverName),
-		kubeletplugin.RegistrarSocketPath(registrarSocket),
-		kubeletplugin.PluginSocketPath(pluginSocket),
-		kubeletplugin.KubeletPluginSocketPath(pluginSocket),
+		kubeletplugin.RegistrarDirectoryPath(config.CommonFlags.KubeletPluginsRegistryDir),
+		kubeletplugin.PluginDataDirectoryPath(config.CommonFlags.KubeletPluginDir),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start kubelet-plugin: %v", err)
 	}
 
-	driver.plugin = plugin
+	driver.helper = helper
 
 	// Init HLML healthcare to get details needed for health monitor.
 	if gaudiFlags.Healthcare {
@@ -137,71 +132,57 @@ KubeletPluginSocketPath: %v`,
 	return driver, nil
 }
 
-func (d *driver) NodePrepareResources(ctx context.Context, req *drav1.NodePrepareResourcesRequest) (*drav1.NodePrepareResourcesResponse, error) {
-	klog.V(5).Infof("NodePrepareResource is called: request: %+v", req)
+func (d *driver) PrepareResourceClaims(ctx context.Context, claims []*resourceapi.ResourceClaim) (map[types.UID]kubeletplugin.PrepareResult, error) {
+	klog.V(5).Infof("NodePrepareResource is called: request: %+v", claims)
 
-	preparedResources := &drav1.NodePrepareResourcesResponse{Claims: map[string]*drav1.NodePrepareResourceResponse{}}
+	response := map[types.UID]kubeletplugin.PrepareResult{}
 
-	for _, claim := range req.Claims {
-		preparedResources.Claims[claim.UID] = d.nodePrepareResource(ctx, claim)
+	for _, claim := range claims {
+		response[claim.UID] = d.prepareResourceClaim(ctx, claim)
 	}
 
-	return preparedResources, nil
+	return response, nil
 }
 
-func (d *driver) nodePrepareResource(ctx context.Context, claim *drav1.Claim) *drav1.NodePrepareResourceResponse {
+func (d *driver) prepareResourceClaim(ctx context.Context, claim *resourceapi.ResourceClaim) kubeletplugin.PrepareResult {
 	klog.V(5).Infof("NodePrepareResource is called: request: %+v", claim)
 
-	if claimPreparation, found := d.state.Prepared[claim.UID]; found {
+	if claimPreparation, found := d.state.Prepared[string(claim.UID)]; found {
 		klog.V(3).Infof("Claim %s was already prepared, nothing to do", claim.UID)
-		return &drav1.NodePrepareResourceResponse{
-			Devices: claimPreparation,
-		}
-	}
-
-	resourceClaim, err := d.client.ResourceV1beta1().ResourceClaims(claim.Namespace).Get(ctx, claim.Name, metav1.GetOptions{})
-	if err != nil {
-		return &drav1.NodePrepareResourceResponse{
-			Error: fmt.Sprintf("could not find ResourceClaim %s in namespace %s: %v", claim.Name, claim.Namespace, err),
-		}
+		return claimPreparation
 	}
 
 	state := nodeState{d.state}
-	if err := state.Prepare(ctx, resourceClaim); err != nil {
-		return &drav1.NodePrepareResourceResponse{
-			Error: err.Error(),
+	if err := state.Prepare(ctx, claim); err != nil {
+		return kubeletplugin.PrepareResult{
+			Err: err,
 		}
 	}
 
-	return &drav1.NodePrepareResourceResponse{Devices: d.state.Prepared[claim.UID]}
+	return d.state.Prepared[string(claim.UID)]
 }
 
-func (d *driver) NodeUnprepareResources(ctx context.Context, req *drav1.NodeUnprepareResourcesRequest) (*drav1.NodeUnprepareResourcesResponse, error) {
-	klog.V(5).Infof("NodeUnprepareResource is called: number of claims: %d", len(req.Claims))
-	unpreparedResources := &drav1.NodeUnprepareResourcesResponse{
-		Claims: map[string]*drav1.NodeUnprepareResourceResponse{},
+func (d *driver) UnprepareResourceClaims(ctx context.Context, claims []kubeletplugin.NamespacedObject) (map[types.UID]error, error) {
+	klog.V(5).Infof("NodeUnprepareResource is called: number of claims: %d", len(claims))
+	response := map[types.UID]error{}
+
+	for _, claim := range claims {
+
+		if err := d.state.Unprepare(ctx, string(claim.UID)); err != nil {
+			response[claim.UID] = fmt.Errorf("error freeing devices: %v", err)
+			continue
+		}
+
+		if err := cdihelpers.DeleteDeviceAndWrite(d.state.CdiCache, string(claim.UID)); err != nil {
+			response[claim.UID] = fmt.Errorf("error deleting CDI device: %v", err)
+			continue
+		}
+
+		klog.V(3).Infof("Freed devices for claim '%v'", claim.UID)
+
 	}
 
-	for _, claim := range req.Claims {
-		unpreparedResources.Claims[claim.UID] = d.nodeUnprepareResource(ctx, claim)
-	}
-
-	return unpreparedResources, nil
-}
-
-func (d *driver) nodeUnprepareResource(ctx context.Context, claim *drav1.Claim) *drav1.NodeUnprepareResourceResponse {
-	klog.V(3).Infof("NodeUnprepareResource is called: claim: %+v", claim)
-
-	if err := d.state.Unprepare(ctx, claim.UID); err != nil {
-		return &drav1.NodeUnprepareResourceResponse{Error: fmt.Sprintf("error freeing devices: %v", err)}
-	}
-
-	if err := cdihelpers.DeleteDeviceAndWrite(d.state.CdiCache, claim.UID); err != nil {
-		return &drav1.NodeUnprepareResourceResponse{Error: fmt.Sprintf("error deleting CDI device: %v", err)}
-	}
-
-	klog.V(3).Infof("Freed devices for claim '%v'", claim.UID)
-	return &drav1.NodeUnprepareResourceResponse{}
+	return response, nil
 }
 
 func (d *driver) PublishResourceSlice(ctx context.Context) error {
@@ -209,7 +190,7 @@ func (d *driver) PublishResourceSlice(ctx context.Context) error {
 	resources := state.GetResources()
 	klog.FromContext(ctx).Info("Publishing resources", "len", len(resources.Pools[state.NodeName].Slices[0].Devices))
 	klog.V(5).Infof("devices: %+v", resources.Pools[state.NodeName].Slices[0].Devices)
-	if err := d.plugin.PublishResources(ctx, resources); err != nil {
+	if err := d.helper.PublishResources(ctx, resources); err != nil {
 		return fmt.Errorf("error publishing resources: %v", err)
 	}
 

@@ -35,28 +35,32 @@ func cmdRun(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	if err := os.MkdirAll(driverPluginPath, 0750); err != nil {
-		return fmt.Errorf("could not create '%s': %v", driverPluginPath, err)
+	if err := os.MkdirAll(kubeletPluginDataDirPath, 0750); err != nil {
+		return fmt.Errorf("could not create '%s': %v", kubeletPluginDataDirPath, err)
+	}
+
+	if err := os.MkdirAll(pluginRegistrationDirPath, 0750); err != nil {
+		return fmt.Errorf("could not create '%s': %v", pluginRegistrationDirPath, err)
 	}
 
 	if d, err = newDriver(ctx); err != nil {
 		return fmt.Errorf("failed to create kubelet plugin driver: %v", err)
 	}
 
-	plugin, err := kubeletplugin.Start(
+	cmd.Flags()
+	helper, err := kubeletplugin.Start(
 		ctx,
-		[]any{d},
+		d,
 		kubeletplugin.KubeClient(d.kubeclient),
 		kubeletplugin.NodeName(d.nodename),
 		kubeletplugin.DriverName(driverName),
-		kubeletplugin.RegistrarSocketPath(pluginRegistrationPath),
-		kubeletplugin.PluginSocketPath(driverPluginSocketPath),
-		kubeletplugin.KubeletPluginSocketPath(driverPluginSocketPath))
+		kubeletplugin.RegistrarDirectoryPath(pluginRegistrationDirPath),
+		kubeletplugin.PluginDataDirectoryPath(kubeletPluginDataDirPath))
 	if err != nil {
 		return fmt.Errorf("failed to start kubelet plugin: %v", err)
 	}
 
-	d.plugin = plugin
+	d.helper = helper
 
 	if err := d.UpdateDeviceResources(ctx); err != nil {
 		return fmt.Errorf("failed to publish resources: %v", err)
@@ -68,7 +72,7 @@ func cmdRun(cmd *cobra.Command, args []string) error {
 	signal.Notify(sigc, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	<-sigc
 
-	plugin.Stop()
+	helper.Stop()
 
 	klog.Infof("DRA kubelet plugin %s done", driverName)
 

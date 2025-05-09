@@ -24,9 +24,9 @@ import (
 	inf "gopkg.in/inf.v0"
 	resourcev1 "k8s.io/api/resource/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
@@ -141,13 +141,12 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		return fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
 	}
 
-	allocatedDevices := []*drav1.Device{}
+	preparedDevices := kubeletplugin.PrepareResult{}
 
 	for _, allocatedDevice := range claim.Status.Allocation.Devices.Results {
 		// ATM the only pool is cluster node's pool: all devices on current node.
 		if allocatedDevice.Driver != device.DriverName || allocatedDevice.Pool != s.NodeName {
-			klog.FromContext(ctx).Info("ignoring claim allocation device", "device pool", allocatedDevice.Pool, "device driver", allocatedDevice.Driver,
-				"expected pool", s.NodeName, "expected driver", device.DriverName)
+			klog.FromContext(ctx).Info("ignoring claim allocation device", "device", allocatedDevice, "expected pool", s.NodeName, "expected driver", device.DriverName)
 			continue
 		}
 
@@ -158,16 +157,16 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 			return fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
 		}
 
-		newDevice := drav1.Device{
-			RequestNames: []string{allocatedDevice.Request},
+		newDevice := kubeletplugin.Device{
+			Requests:     []string{allocatedDevice.Request},
 			PoolName:     allocatedDevice.Pool,
 			DeviceName:   allocatedDevice.Device,
 			CDIDeviceIDs: []string{allocatableDevice.CDIName()},
 		}
-		allocatedDevices = append(allocatedDevices, &newDevice)
+		preparedDevices.Devices = append(preparedDevices.Devices, newDevice)
 	}
 
-	s.Prepared[string(claim.UID)] = allocatedDevices
+	s.Prepared[string(claim.UID)] = preparedDevices
 
 	err := helpers.WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared)
 	if err != nil {

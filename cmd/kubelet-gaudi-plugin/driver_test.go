@@ -26,9 +26,9 @@ import (
 	"testing"
 
 	resourcev1 "k8s.io/api/resource/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	kubefake "k8s.io/client-go/kubernetes/fake"
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
+	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/fakesysfs"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
@@ -85,7 +85,7 @@ func getFakeDriver(testDirs testhelpers.TestDirsType, healthcare bool) (*driver,
 
 	os.Setenv("SYSFS_ROOT", testDirs.SysfsRoot)
 
-	helperDriver, err := newDriver(context.TODO(), config)
+	helperDriver, err := newDriver(context.Background(), config)
 	if err != nil {
 		return nil, err
 	}
@@ -97,12 +97,11 @@ func getFakeDriver(testDirs testhelpers.TestDirsType, healthcare bool) (*driver,
 	return driver, err
 }
 
-func TestGaudiNodePrepareResources(t *testing.T) {
+func TestGaudiPrepareResourceClaims(t *testing.T) {
 	type testCase struct {
 		name                   string
-		claims                 []*resourcev1.ResourceClaim
-		request                *drav1.NodePrepareResourcesRequest
-		expectedResponse       *drav1.NodePrepareResourcesResponse
+		request                []*resourcev1.ResourceClaim
+		expectedResponse       map[types.UID]kubeletplugin.PrepareResult
 		preparedClaims         helpers.ClaimPreparations
 		expectedPreparedClaims helpers.ClaimPreparations
 		noDetectedDevices      bool
@@ -111,83 +110,69 @@ func TestGaudiNodePrepareResources(t *testing.T) {
 	testcases := []testCase{
 		{
 			name: "one Gaudi success",
-			claims: []*resourcev1.ResourceClaim{
+			request: []*resourcev1.ResourceClaim{
 				testhelpers.NewClaim("default", "claim1", "uid1", "request1", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}),
 			},
-			request: &drav1.NodePrepareResourcesRequest{
-				Claims: []*drav1.Claim{{UID: "uid1", Name: "claim1", Namespace: "default"}},
-			},
-			expectedResponse: &drav1.NodePrepareResourcesResponse{
-				Claims: map[string]*drav1.NodePrepareResourceResponse{
-					"uid1": {Devices: []*drav1.Device{{RequestNames: []string{"request1"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid1"}}}},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid1": {
+					Devices: []kubeletplugin.Device{
+						{Requests: []string{"request1"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid1"}},
+					},
 				},
 			},
 			preparedClaims: nil,
 			expectedPreparedClaims: helpers.ClaimPreparations{
-				"uid1": {{RequestNames: []string{"request1"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid1"}}},
+				"uid1": {
+					Devices: []kubeletplugin.Device{
+						{Requests: []string{"request1"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid1"}},
+					},
+				},
 			},
 		},
 		{
 			name: "single Gaudi, already prepared claim",
-			claims: []*resourcev1.ResourceClaim{
+			request: []*resourcev1.ResourceClaim{
 				testhelpers.NewClaim("namespace2", "claim2", "uid2", "request2", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}),
 			},
-			request: &drav1.NodePrepareResourcesRequest{
-				Claims: []*drav1.Claim{{Name: "claim2", Namespace: "namespace2", UID: "uid2"}},
-			},
-			expectedResponse: &drav1.NodePrepareResourcesResponse{
-				Claims: map[string]*drav1.NodePrepareResourceResponse{
-					"uid2": {Devices: []*drav1.Device{{RequestNames: []string{"request2"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid2"}}}},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid2": {
+					Devices: []kubeletplugin.Device{
+						{Requests: []string{"request2"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid2"}},
+					},
 				},
 			},
 			preparedClaims: helpers.ClaimPreparations{
-				"uid2": {{RequestNames: []string{"request2"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid2"}}},
+				"uid2": {
+					Devices: []kubeletplugin.Device{
+						{Requests: []string{"request2"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid2"}},
+					},
+				},
 			},
 			expectedPreparedClaims: helpers.ClaimPreparations{
-				"uid2": {{RequestNames: []string{"request2"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid2"}}},
+				"uid2": {
+					Devices: []kubeletplugin.Device{
+						{Requests: []string{"request2"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid2"}},
+					},
+				},
 			},
 		},
 		{
 			name: "single unavailable device",
-			claims: []*resourcev1.ResourceClaim{
+			request: []*resourcev1.ResourceClaim{
 				testhelpers.NewClaim("namespace3", "claim3", "uid3", "request3", "gaudi.intel.com", "node1", []string{"0000-00-05-0-0x1020"}),
 			},
-			request: &drav1.NodePrepareResourcesRequest{
-				Claims: []*drav1.Claim{{Name: "claim3", Namespace: "namespace3", UID: "uid3"}},
-			},
-			expectedResponse: &drav1.NodePrepareResourcesResponse{
-				Claims: map[string]*drav1.NodePrepareResourceResponse{
-					"uid3": {Error: "could not find allocatable device 0000-00-05-0-0x1020 (pool node1)"},
-				},
-			},
-		},
-		{
-			name: "wrong namespace in claims",
-			claims: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim("wrong-namespace", "claim4", "uid4", "request4", "gaudi.intel.com", "node1", []string{"0000-00-05-0-0x1020"}),
-			},
-			request: &drav1.NodePrepareResourcesRequest{
-				Claims: []*drav1.Claim{{Name: "claim4", Namespace: "namespace4", UID: "uid4"}},
-			},
-			expectedResponse: &drav1.NodePrepareResourcesResponse{
-				Claims: map[string]*drav1.NodePrepareResourceResponse{
-					"uid4": {Error: "could not find ResourceClaim claim4 in namespace namespace4: resourceclaims.resource.k8s.io \"claim4\" not found"},
-				},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid3": {Err: fmt.Errorf("could not find allocatable device 0000-00-05-0-0x1020 (pool node1)")},
 			},
 		},
 		{
 			name:              "no devices detected",
 			noDetectedDevices: true,
-			claims: []*resourcev1.ResourceClaim{
+			request: []*resourcev1.ResourceClaim{
 				testhelpers.NewClaim("default", "claim5", "uid5", "request5", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}),
 			},
-			request: &drav1.NodePrepareResourcesRequest{
-				Claims: []*drav1.Claim{{UID: "uid5", Name: "claim5", Namespace: "default"}},
-			},
-			expectedResponse: &drav1.NodePrepareResourcesResponse{
-				Claims: map[string]*drav1.NodePrepareResourceResponse{
-					"uid5": {Error: "could not find allocatable device 0000-00-02-0-0x1020 (pool node1)"},
-				},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid5": {Err: fmt.Errorf("could not find allocatable device 0000-00-02-0-0x1020 (pool node1)")},
 			},
 		},
 	}
@@ -229,16 +214,7 @@ func TestGaudiNodePrepareResources(t *testing.T) {
 			continue
 		}
 
-		for _, testClaim := range testcase.claims {
-			createdClaim, err := driver.client.ResourceV1beta1().ResourceClaims(testClaim.Namespace).Create(context.TODO(), testClaim, metav1.CreateOptions{})
-			if err != nil {
-				t.Errorf("could not create test claim: %v", err)
-				continue
-			}
-			t.Logf("created test claim: %+v", createdClaim)
-		}
-
-		response, err := driver.NodePrepareResources(context.TODO(), testcase.request)
+		response, err := driver.PrepareResourceClaims(context.Background(), testcase.request)
 		if err != nil {
 			t.Errorf("%v: error %v, expected no error", testcase.name, err)
 			continue
@@ -271,75 +247,53 @@ func TestGaudiNodePrepareResources(t *testing.T) {
 	}
 }
 
-func TestGaudiNodeUnprepareResources(t *testing.T) {
+func TestGaudiUnprepareResourceClaims(t *testing.T) {
 	type testCase struct {
 		name                   string
-		request                *drav1.NodeUnprepareResourcesRequest
-		expectedResponse       *drav1.NodeUnprepareResourcesResponse
+		request                []kubeletplugin.NamespacedObject
+		expectedResponse       map[types.UID]error
 		preparedClaims         helpers.ClaimPreparations
 		expectedPreparedClaims helpers.ClaimPreparations
 	}
 
 	testcases := []testCase{
 		{
-			name: "blank request",
-			request: &drav1.NodeUnprepareResourcesRequest{
-				Claims: []*drav1.Claim{},
-			},
-			expectedResponse: &drav1.NodeUnprepareResourcesResponse{
-				Claims: map[string]*drav1.NodeUnprepareResourceResponse{},
-			},
+			name:                   "blank request",
+			request:                []kubeletplugin.NamespacedObject{},
+			expectedResponse:       map[types.UID]error{},
 			preparedClaims:         helpers.ClaimPreparations{},
 			expectedPreparedClaims: helpers.ClaimPreparations{},
 		},
 		{
-			name: "single claim",
-			request: &drav1.NodeUnprepareResourcesRequest{
-				Claims: []*drav1.Claim{
-					{Name: "claim1", Namespace: "namespace1", UID: "uid1"},
-				},
-			},
-			expectedResponse: &drav1.NodeUnprepareResourcesResponse{
-				Claims: map[string]*drav1.NodeUnprepareResourceResponse{"uid1": {}},
-			},
+			name:             "single claim",
+			request:          []kubeletplugin.NamespacedObject{{UID: "uid1"}},
+			expectedResponse: map[types.UID]error{},
 			preparedClaims: helpers.ClaimPreparations{
-				"uid1": {{RequestNames: []string{"request1"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid1"}}},
+				"uid1": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid1"}}}},
 			},
 			expectedPreparedClaims: helpers.ClaimPreparations{},
 		},
 		{
-			name: "subset of claims",
-			request: &drav1.NodeUnprepareResourcesRequest{
-				Claims: []*drav1.Claim{
-					{Name: "claim2", Namespace: "namespace2", UID: "uid2"},
-				},
-			},
-			expectedResponse: &drav1.NodeUnprepareResourcesResponse{
-				Claims: map[string]*drav1.NodeUnprepareResourceResponse{"uid2": {}},
-			},
+			name:             "subset of claims",
+			request:          []kubeletplugin.NamespacedObject{{UID: "uid2"}},
+			expectedResponse: map[types.UID]error{},
 			preparedClaims: helpers.ClaimPreparations{
-				"uid1": {{RequestNames: []string{"request1"}, PoolName: "node1", DeviceName: "0000-af-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-af-00-0-0x1020", "intel.com/gaudi=uid1"}}},
-				"uid2": {{RequestNames: []string{"request2"}, PoolName: "node1", DeviceName: "0000-b3-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-b3-00-0-0x1020", "intel.com/gaudi=uid2"}}},
+				"uid1": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, PoolName: "node1", DeviceName: "0000-af-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-af-00-0-0x1020", "intel.com/gaudi=uid1"}}}},
+				"uid2": {Devices: []kubeletplugin.Device{{Requests: []string{"request2"}, PoolName: "node1", DeviceName: "0000-b3-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-b3-00-0-0x1020", "intel.com/gaudi=uid2"}}}},
 			},
 			expectedPreparedClaims: helpers.ClaimPreparations{
-				"uid1": {{RequestNames: []string{"request1"}, PoolName: "node1", DeviceName: "0000-af-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-af-00-0-0x1020", "intel.com/gaudi=uid1"}}},
+				"uid1": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, PoolName: "node1", DeviceName: "0000-af-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-af-00-0-0x1020", "intel.com/gaudi=uid1"}}}},
 			},
 		},
 		{
-			name: "non-existent claim success",
-			request: &drav1.NodeUnprepareResourcesRequest{
-				Claims: []*drav1.Claim{
-					{Name: "claim1", Namespace: "namespace1", UID: "uid1"},
-				},
-			},
-			expectedResponse: &drav1.NodeUnprepareResourcesResponse{
-				Claims: map[string]*drav1.NodeUnprepareResourceResponse{"uid1": {}},
-			},
+			name:             "non-existent claim success",
+			request:          []kubeletplugin.NamespacedObject{{UID: "uid1"}},
+			expectedResponse: map[types.UID]error{},
 			preparedClaims: helpers.ClaimPreparations{
-				"uid2": {{RequestNames: []string{"request2"}, PoolName: "node1", DeviceName: "0000-b3-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-b3-00-0-0x1020", "intel.com/gaudi=uid2"}}},
+				"uid2": {Devices: []kubeletplugin.Device{{Requests: []string{"request2"}, PoolName: "node1", DeviceName: "0000-b3-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-b3-00-0-0x1020", "intel.com/gaudi=uid2"}}}},
 			},
 			expectedPreparedClaims: helpers.ClaimPreparations{
-				"uid2": {{RequestNames: []string{"request2"}, PoolName: "node1", DeviceName: "0000-b3-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-b3-00-0-0x1020", "intel.com/gaudi=uid2"}}},
+				"uid2": {Devices: []kubeletplugin.Device{{Requests: []string{"request2"}, PoolName: "node1", DeviceName: "0000-b3-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-b3-00-0-0x1020", "intel.com/gaudi=uid2"}}}},
 			},
 		},
 	}
@@ -379,7 +333,7 @@ func TestGaudiNodeUnprepareResources(t *testing.T) {
 			continue
 		}
 
-		response, err := driver.NodeUnprepareResources(context.TODO(), testcase.request)
+		response, err := driver.UnprepareResourceClaims(context.Background(), testcase.request)
 		if err != nil {
 			t.Errorf("%v: error %v, expected no error", testcase.name, err)
 			continue
@@ -418,7 +372,7 @@ func TestGaudiShutdown(t *testing.T) {
 		t.Fatalf("could not create driver: %v", err)
 	}
 
-	err = driver.Shutdown(context.TODO())
+	err = driver.Shutdown(context.Background())
 	if err != nil {
 		t.Errorf("Shutdown() error = %v, wantErr %v", err, nil)
 	}

@@ -6,6 +6,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 )
 
 func TestGetOrCreatePreparedClaims(t *testing.T) {
@@ -17,11 +19,11 @@ func TestGetOrCreatePreparedClaims(t *testing.T) {
 	}{
 		{
 			name:           "FileExists",
-			initialContent: `{"claim1": [{"device_name": "device1"}]}`,
+			initialContent: `{"claim1": {"devices":[{"devicename": "device1"}]}}`,
 			expectError:    false,
 			expectedClaims: ClaimPreparations{
 				"claim1": {
-					{DeviceName: "device1"},
+					Devices: []kubeletplugin.Device{{DeviceName: "device1"}},
 				},
 			},
 		},
@@ -91,11 +93,11 @@ func TestWritePreparedClaimsToFile(t *testing.T) {
 			name: "ValidClaims",
 			claims: ClaimPreparations{
 				"claim1": {
-					{DeviceName: "device1"},
+					Devices: []kubeletplugin.Device{{DeviceName: "device1"}},
 				},
 			},
 			expectedError:  false,
-			expectedOutput: `{"claim1":[{"device_name":"device1"}]}`,
+			expectedOutput: `{"claim1":{"Devices":[{"DeviceName":"device1","PoolName":"","Requests":null,"CDIDeviceIDs":null}], "Err":null}}`,
 		},
 		{
 			name:           "EmptyClaims",
@@ -156,9 +158,7 @@ func TestUnprepare(t *testing.T) {
 		{
 			name: "Unprepare existing claim",
 			initialPrepared: ClaimPreparations{
-				"claim1": {
-					{DeviceName: "device1"},
-				},
+				"claim1": {Devices: []kubeletplugin.Device{{DeviceName: "device1"}}},
 			},
 			claimUID:         "claim1",
 			expectedPrepared: ClaimPreparations{},
@@ -167,15 +167,11 @@ func TestUnprepare(t *testing.T) {
 		{
 			name: "Unprepare nonexisting claim",
 			initialPrepared: ClaimPreparations{
-				"claim1": {
-					{DeviceName: "device1"},
-				},
+				"claim1": {Devices: []kubeletplugin.Device{{DeviceName: "device1"}}},
 			},
 			claimUID: "claim2",
 			expectedPrepared: ClaimPreparations{
-				"claim1": {
-					{DeviceName: "device1"},
-				},
+				"claim1": {Devices: []kubeletplugin.Device{{DeviceName: "device1"}}},
 			},
 			expectError: false,
 		},
