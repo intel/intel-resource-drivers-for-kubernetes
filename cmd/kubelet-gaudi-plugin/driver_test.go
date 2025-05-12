@@ -25,7 +25,9 @@ import (
 	"reflect"
 	"testing"
 
+	core "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
@@ -66,7 +68,7 @@ func TestGaudiFakeSysfs(t *testing.T) {
 }
 
 func getFakeDriver(testDirs testhelpers.TestDirsType, healthcare bool) (*driver, error) {
-
+	nodeName := "node1"
 	gaudiFlags := GaudiFlags{
 		Healthcare:         healthcare,
 		HealthcareInterval: 1,
@@ -74,7 +76,7 @@ func getFakeDriver(testDirs testhelpers.TestDirsType, healthcare bool) (*driver,
 
 	config := &helpers.Config{
 		CommonFlags: &helpers.Flags{
-			NodeName:                  "node1",
+			NodeName:                  nodeName,
 			CdiRoot:                   testDirs.CdiRoot,
 			KubeletPluginDir:          testDirs.KubeletPluginDir,
 			KubeletPluginsRegistryDir: testDirs.KubeletPluginRegistryDir,
@@ -84,6 +86,12 @@ func getFakeDriver(testDirs testhelpers.TestDirsType, healthcare bool) (*driver,
 	}
 
 	os.Setenv("SYSFS_ROOT", testDirs.SysfsRoot)
+
+	// kubelet-plugin will access node object, it needs to exist.
+	newNode := &core.Node{ObjectMeta: metav1.ObjectMeta{Name: nodeName}}
+	if _, err := config.Coreclient.CoreV1().Nodes().Create(context.TODO(), newNode, metav1.CreateOptions{}); err != nil {
+		return nil, fmt.Errorf("failed creating fake node object: %v", err)
+	}
 
 	helperDriver, err := newDriver(context.Background(), config)
 	if err != nil {

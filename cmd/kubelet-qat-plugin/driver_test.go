@@ -11,7 +11,9 @@ import (
 	"reflect"
 	"testing"
 
+	core "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
@@ -30,6 +32,13 @@ func newFakeDriver(ctx context.Context) (*driver, error) {
 	qatdevices, err := device.New()
 	if err != nil {
 		return nil, err
+	}
+
+	// kubelet-plugin will access node object, it needs to exist.
+	newNode := &core.Node{ObjectMeta: metav1.ObjectMeta{Name: testNodeName}}
+	clientSet := kubefake.NewSimpleClientset()
+	if _, err := clientSet.CoreV1().Nodes().Create(ctx, newNode, metav1.CreateOptions{}); err != nil {
+		return nil, fmt.Errorf("failed creating fake node object: %v", err)
 	}
 
 	d := &driver{
