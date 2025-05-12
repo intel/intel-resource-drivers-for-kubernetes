@@ -239,31 +239,31 @@ func TestPrepareResourceClaims(t *testing.T) {
 		},
 		{
 			name: "single Xe GPU",
-			claims: []*resourcev1.ResourceClaim{
+			request: []*resourceapi.ResourceClaim{
 				testhelpers.NewClaim("namespacexe", "claimxe", "uidxe", "requestxe", "gpu.intel.com", "node1", []string{"0000-00-05-0-0x56c0"}),
 			},
-			request: &drav1.NodePrepareResourcesRequest{
-				Claims: []*drav1.Claim{
-					{UID: "uidxe", Name: "claimxe", Namespace: "namespacexe"},
-				},
-			},
-			expectedResponse: &drav1.NodePrepareResourcesResponse{
-				Claims: map[string]*drav1.NodePrepareResourceResponse{
-					"uidxe": {
-						Devices: []*drav1.Device{
-							{RequestNames: []string{"requestxe"}, PoolName: "node1", DeviceName: "0000-00-05-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0x56c0"}},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uidxe": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"requestxe"},
+							PoolName:     "node1",
+							DeviceName:   "0000-00-05-0-0x56c0",
+							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0x56c0"},
 						},
 					},
 				},
 			},
-			preparedClaims: helpers.ClaimPreparations{},
+			initialPreparedClaims: helpers.ClaimPreparations{},
 			expectedPreparedClaims: helpers.ClaimPreparations{
 				"uidxe": {
-					{
-						RequestNames: []string{"requestxe"},
-						PoolName:     "node1",
-						DeviceName:   "0000-00-05-0-0x56c0",
-						CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0x56c0"},
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"requestxe"},
+							PoolName:     "node1",
+							DeviceName:   "0000-00-05-0-0x56c0",
+							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0x56c0"},
+						},
 					},
 				},
 			},
