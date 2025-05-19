@@ -385,14 +385,8 @@ func (p *PFDevice) getVFs() error {
 		}
 
 		if vf == nil {
-			for _, allocateddevices := range p.AllocatedDevices {
-				for _, d := range allocateddevices {
-					if vfdevice == d.VFDevice {
-						vf = d
-						break
-					}
-				}
-				// already in AllocatedDevices
+			for _, devices := range p.AllocatedDevices {
+				vf = findVFDevice(devices, vfdevice)
 				if vf != nil {
 					break
 				}
@@ -412,6 +406,15 @@ func (p *PFDevice) getVFs() error {
 
 	}
 
+	return nil
+}
+
+func findVFDevice(devices VFDevices, target string) *VFDevice {
+	for _, d := range devices {
+		if d.VFDevice == target {
+			return d
+		}
+	}
 	return nil
 }
 
@@ -515,50 +518,67 @@ func (p *PFDevice) Allocate(deviceUID string, allocatedBy string) (*VFDevice, er
 }
 
 func (q QATDevices) Allocate(requestedDeviceUID string, requestedService Services, requestedBy string) (*VFDevice, bool, error) {
+	if vf := q.checkAlreadyAllocated(requestedDeviceUID, requestedService, requestedBy); vf != nil {
+		return vf, false, nil
+	}
+
+	if vf := q.allocateFromConfigured(requestedDeviceUID, requestedService, requestedBy); vf != nil {
+		return vf, false, nil
+	}
+
+	if vf := q.allocateWithReconfiguration(requestedDeviceUID, requestedService, requestedBy); vf != nil {
+		return vf, true, nil
+	}
+
+	return nil, false, fmt.Errorf("could not allocate device '%s', service '%s' from any device", requestedDeviceUID, requestedService.String())
+}
+
+func (q QATDevices) checkAlreadyAllocated(uid string, service Services, requester string) *VFDevice {
 	for _, pf := range q {
 		// check for already allocated service mapped by request ID
-		if !pf.Services.Supports(requestedService) {
-			klog.V(5).Infof("PFdev '%s' service '%s' does not support service '%s'", pf.Device, pf.Services.String(), requestedService.String())
+		if !pf.Services.Supports(service) {
+			klog.V(5).Infof("PFdev '%s' service '%s' does not support service '%s'", pf.Device, pf.Services.String(), service.String())
 			continue
 		}
-		if allocatedDevices, exists := pf.AllocatedDevices[requestedBy]; exists {
-			for _, vf := range allocatedDevices {
-				if requestedDeviceUID == vf.UID() {
+		if allocated, exists := pf.AllocatedDevices[requester]; exists {
+			for _, vf := range allocated {
+				if uid == vf.UID() {
 					// duplicated request, already allocated
-					return vf, false, nil
+					return vf
 				}
 			}
 		}
 	}
+	return nil
+}
 
+func (q QATDevices) allocateFromConfigured(uid string, service Services, requester string) *VFDevice {
 	for _, pf := range q {
 		// allocate from devices already configured for this service
-		if !pf.Services.Supports(requestedService) {
+		if !pf.Services.Supports(service) {
 			continue
 		}
 		// attempt allocation of requested device
-		if vf, err := pf.Allocate(requestedDeviceUID, requestedBy); err == nil {
-			return vf, false, nil
+		if vf, err := pf.Allocate(uid, requester); err == nil {
+			return vf
 		}
 	}
+	return nil
+}
 
+func (q QATDevices) allocateWithReconfiguration(uid string, service Services, requester string) *VFDevice {
 	for _, pf := range q {
-		// allocate from an unconfigured device
 		if pf.Services != None || !pf.AllowReconfiguration {
 			continue
 		}
-		// attempt allocation of requested device
-		if vf, err := pf.Allocate(requestedDeviceUID, requestedBy); err == nil {
-			// attempt configuration of requested service
-			if err := pf.SetServices([]Services{requestedService}); err != nil {
-				_, _ = pf.free(requestedDeviceUID, requestedBy)
-				continue
+		if vf, err := pf.Allocate(uid, requester); err == nil {
+			if err := pf.SetServices([]Services{service}); err == nil {
+				return vf
 			}
-			return vf, true, nil
+			_, _ = pf.free(uid, requester)
 		}
 	}
-
-	return nil, false, fmt.Errorf("could not allocate device '%s', service '%s' from any device", requestedDeviceUID, requestedService.String())
+	return nil
 }
 
 func (q *QATDevices) Free(requestedDeviceUID string, requestedBy string) (bool, error) {
