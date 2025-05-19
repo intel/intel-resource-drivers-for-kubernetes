@@ -101,6 +101,10 @@ func fakeSysfsPF(deviceUID string, gpu *device.DeviceInfo, numvfs int, i915DevDi
 		return fmt.Errorf("creating fake sysfs, err: %v", writeErr)
 	}
 
+	return createFakeSysfsForVFs(prelimIovDir, gpu)
+}
+
+func createFakeSysfsForVFs(prelimIovDir string, gpu *device.DeviceInfo) error {
 	for drmVFIndex := 1; drmVFIndex <= int(gpu.MaxVFs); drmVFIndex++ {
 		drmVFDir := path.Join(prelimIovDir, fmt.Sprintf("vf%d", drmVFIndex))
 		tileDirs, found := perDeviceIdTilesDirs[gpu.Model]
@@ -121,7 +125,6 @@ func fakeSysfsPF(deviceUID string, gpu *device.DeviceInfo, numvfs int, i915DevDi
 			}
 		}
 	}
-
 	return nil
 }
 
