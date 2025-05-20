@@ -18,12 +18,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"testing"
 	"time"
 
 	hlml "github.com/HabanaAI/gohlml"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/fakehlml"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/fakesysfs"
@@ -102,7 +104,9 @@ func TestGaudiUpdateHealth(t *testing.T) {
 					}
 				}
 			}
+			ensureTaintRulesExist(t, testcase.expectedUnhealthyUIDs, driver)
 		}
+
 		t.Log("shutting down test")
 		// Let health monitoring go routines know they can stop.
 		if err := driver.Shutdown(context.TODO()); err != nil {
@@ -110,6 +114,31 @@ func TestGaudiUpdateHealth(t *testing.T) {
 		}
 		fakehlml.Reset()
 		time.Sleep(2 * time.Second)
+	}
+}
+
+func ensureTaintRulesExist(t *testing.T, uids []string, driver *driver) {
+	taintRules, err := driver.client.ResourceV1alpha3().DeviceTaintRules().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		t.Errorf("unexpected error getting DeviceTaintRules list: %v", err)
+		return
+	}
+	if len(taintRules.Items) != len(uids) {
+		t.Errorf("unexpected number of DeviceTaintRules: %+v. Expected %v", len(taintRules.Items), len(uids))
+		return
+	}
+
+	for _, uid := range uids {
+		expectedTaintRuleName := fmt.Sprintf("%v-%v-%v", device.DriverName, "node1", uid)
+		found := false
+		for _, taintRule := range taintRules.Items {
+			if taintRule.Name == expectedTaintRuleName {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("unexpected DeviceTaintRules: %+v. Could not find rule with name %v", taintRules.Items, expectedTaintRuleName)
+		}
 	}
 }
 

@@ -22,6 +22,8 @@ import (
 	"time"
 
 	hlml "github.com/HabanaAI/gohlml"
+	resourceapi "k8s.io/api/resource/v1alpha3"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
@@ -110,11 +112,51 @@ func (d *driver) updateHealth(ctx context.Context, healthy bool, uid string) {
 		return
 	}
 
+	d.createTaintRuleMaybe(ctx, uid)
+
 	foundDevice.Healthy = healthy
 	// Health is updated from a go routine, nothing we can do when publishing
 	// resource slice fails, so error is ignored.
 	if err := d.PublishResourceSlice(ctx); err != nil {
 		klog.Errorf("could not publish updated resoruce slice: %v", err)
+	}
+}
+
+// createTaintRuleMaybe ensures there is a DeviceTaintRule for the device that
+// became unhealthy.
+func (d *driver) createTaintRuleMaybe(ctx context.Context, uid string) {
+	taintRuleName := fmt.Sprintf("%v-%v-%v", device.DriverName, d.state.NodeName, uid)
+	driverName := device.DriverName
+	// Taint failed device, so it will not be scheduled.
+	devTaintRule := resourceapi.DeviceTaintRule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: taintRuleName,
+		},
+		Spec: resourceapi.DeviceTaintRuleSpec{
+			DeviceSelector: &resourceapi.DeviceTaintSelector{
+				Driver: &driverName,
+				Pool:   &d.state.NodeName,
+				Device: &uid,
+			},
+			Taint: resourceapi.DeviceTaint{
+				Key:    fmt.Sprintf("%s/unhealthy", device.DriverName),
+				Value:  "CriticalError",
+				Effect: resourceapi.DeviceTaintEffectNoExecute,
+			},
+		},
+	}
+
+	// Check if the rule already exists, or new rule creation will fail because of the name conflict.
+	rule, err := d.client.ResourceV1alpha3().DeviceTaintRules().Get(ctx, taintRuleName, metav1.GetOptions{})
+	if err == nil && rule != nil {
+		klog.FromContext(ctx).Info("Found existing DeviceTaintRule", "rule", rule)
+		return
+	}
+
+	klog.FromContext(ctx).Info("creating DeviceTaintRule", "rule", devTaintRule)
+	_, err = d.client.ResourceV1alpha3().DeviceTaintRules().Create(ctx, &devTaintRule, metav1.CreateOptions{})
+	if err != nil {
+		klog.Errorf("failed to create device taint rule: %v", err)
 	}
 }
 
