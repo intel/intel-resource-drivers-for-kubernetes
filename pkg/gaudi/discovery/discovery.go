@@ -52,8 +52,12 @@ func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo
 		return devices
 	}
 
-	deviceIndexes := getAccelIndexes(sysfsAccelDir)
+	return scanDevicesFromDriverDirFiles(driverDirFiles, sysfsDriverDir, getAccelIndexes(sysfsAccelDir), namingStyle)
 
+}
+
+func scanDevicesFromDriverDirFiles(driverDirFiles []os.DirEntry, sysfsDriverDir string, deviceIndexes map[string]gaudiIndexesType, namingStyle string) map[string]*device.DeviceInfo {
+	devices := map[string]*device.DeviceInfo{}
 	for _, pciAddress := range driverDirFiles {
 		devicePCIAddress := pciAddress.Name()
 		// check if file is PCI device

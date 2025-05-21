@@ -220,9 +220,25 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		return fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
 	}
 
-	allocatedDevices := kubeletplugin.PrepareResult{}
+	allocatedDevices, err := s.prepareAllocatedDevices(ctx, claim)
+	if err != nil {
+		return err
+	}
+
+	s.Prepared[string(claim.UID)] = allocatedDevices
+
+	if err = helpers.WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared); err != nil {
+		klog.Errorf("Error writing prepared claims to file: %v", err)
+		return fmt.Errorf("failed to write prepared claims to file: %v", err)
+	}
+
+	klog.V(5).Infof("Created prepared claim %v allocation", claim.UID)
+	return nil
+}
+
+func (s *nodeState) prepareAllocatedDevices(ctx context.Context, claim *resourcev1.ResourceClaim) (allocatedDevices kubeletplugin.PrepareResult, err error) {
+	allocatedDevices = kubeletplugin.PrepareResult{}
 	visibleDevices := device.VisibleDevicesEnvVarName + "="
-	devs := 0
 
 	for _, allocatedDevice := range claim.Status.Allocation.Devices.Results {
 		// ATM the only pool is cluster node's pool: all devices on current node.
@@ -235,7 +251,7 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 
 		allocatableDevice, found := allocatableDevices[allocatedDevice.Device]
 		if !found {
-			return fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
+			return allocatedDevices, fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
 		}
 
 		newDevice := kubeletplugin.Device{
@@ -246,32 +262,22 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		}
 		allocatedDevices.Devices = append(allocatedDevices.Devices, newDevice)
 
-		devs++
-		if devs > 1 {
+		if len(allocatedDevices.Devices) > 1 {
 			visibleDevices += ","
 		}
 		visibleDevices += fmt.Sprintf("%v", allocatableDevice.DeviceIdx)
 	}
 
-	if devs > 0 {
+	if len(allocatedDevices.Devices) > 0 {
 		if err := s.cdiHabanaEnvVar(string(claim.UID), visibleDevices); err != nil {
-			return fmt.Errorf("failed ensuring Habana Runtime specific CDI device: %v", err)
+			return allocatedDevices, fmt.Errorf("failed ensuring Habana Runtime specific CDI device: %v", err)
 		}
 
 		cdiName := cdiparser.QualifiedName(device.CDIVendor, device.CDIClass, string(claim.UID))
 		allocatedDevices.Devices[0].CDIDeviceIDs = append(allocatedDevices.Devices[0].CDIDeviceIDs, cdiName)
 	}
 
-	s.Prepared[string(claim.UID)] = allocatedDevices
-
-	err := helpers.WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared)
-	if err != nil {
-		klog.Errorf("Error writing prepared claims to file: %v", err)
-		return fmt.Errorf("failed to write prepared claims to file: %v", err)
-	}
-
-	klog.V(5).Infof("Created prepared claim %v allocation", claim.UID)
-	return nil
+	return allocatedDevices, nil
 }
 
 func (s *nodeState) AllocatableByPCIAddress(pciAddress string) *device.DeviceInfo {
