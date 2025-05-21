@@ -1,5 +1,5 @@
 apiVersion: v2
-name: intel-qat-resource-driver
+name: intel-qat-resource-driver-chart
 description: A Helm chart for a Dynamic Resource Allocation (DRA) Intel QAT Resource Driver
 
 type: application

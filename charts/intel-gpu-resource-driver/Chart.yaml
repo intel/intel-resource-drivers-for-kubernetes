@@ -1,5 +1,5 @@
 apiVersion: v2
-name: intel-gpu-resource-driver
+name: intel-gpu-resource-driver-chart
 description: A Helm chart for a Dynamic Resource Allocation (DRA) Intel GPU Resource Driver
 
 type: application

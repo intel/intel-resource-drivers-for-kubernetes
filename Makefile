@@ -220,7 +220,6 @@ package-helm-charts: update-dependencies
 			release_version=$$(awk '/^appVersion:/ {print $$2; exit}' $$chart/Chart.yaml); \
 			echo "Packaging $$chart_name with chart version $$chart_version and application version $$release_version"; \
 			helm package $$chart --version $$chart_version --app-version $$release_version --destination .charts; \
-			mv .charts/$$chart_name-$$chart_version.tgz .charts/$$chart_name-$$chart_version-chart.tgz; \
 		fi \
 	done
 
