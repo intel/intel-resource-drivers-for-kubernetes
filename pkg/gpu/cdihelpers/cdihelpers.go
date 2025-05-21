@@ -57,7 +57,7 @@ func SyncDetectedDevicesWithRegistry(cdiCache *cdiapi.Cache, detectedDevices dev
 	if len(vendorSpecs) == 0 {
 		klog.V(5).Infof("No existing specs found for vendor %v, creating new", device.CDIVendor)
 		if err := addNewDevicesToNewRegistry(cdiCache, devicesToAdd); err != nil {
-			klog.V(5).Infof("Failed adding card to cdi registry: %v", err)
+			klog.V(5).Infof("Failed to add card to cdi registry: %v", err)
 			return err
 		}
 		return nil
@@ -115,8 +115,8 @@ func writeUpdatedSpec(cdiCache *cdiapi.Cache, spec *cdiapi.Spec) error {
 	klog.V(5).Infof("Updating spec %v", specName)
 	err := cdiCache.WriteSpec(spec.Spec, specName)
 	if err != nil {
-		klog.Errorf("failed writing CDI spec %v: %v", spec.GetPath(), err)
-		return fmt.Errorf("failed writing CDI spec %v: %v", spec.GetPath(), err)
+		klog.Errorf("failed to write CDI spec %v: %v", spec.GetPath(), err)
+		return fmt.Errorf("failed to write CDI spec %v: %v", spec.GetPath(), err)
 	}
 	return nil
 }
@@ -139,7 +139,7 @@ func addDevicesToExistingSpec(cdiCache *cdiapi.Cache, apispec *cdiapi.Spec, devi
 	err = cdiCache.WriteSpec(apispec.Spec, specName)
 	if err != nil {
 		klog.Errorf("failed to write CDI spec %v: %v", apispec.GetPath(), err)
-		return fmt.Errorf("failed write CDI spec %v: %v", apispec.GetPath(), err)
+		return fmt.Errorf("failed to write CDI spec %v: %v", apispec.GetPath(), err)
 	}
 
 	return nil

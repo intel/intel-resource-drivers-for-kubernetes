@@ -66,7 +66,7 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 	// TODO: should be only create prepared claims, discard old preparations. Do we even need the snapshot?
 	preparedClaims, err := helpers.GetOrCreatePreparedClaims(preparedClaimsFilePath)
 	if err != nil {
-		klog.Errorf("Error getting prepared claims: %v", err)
+		klog.Errorf("failed to get prepared claims: %v", err)
 		return nil, fmt.Errorf("failed to get prepared claims: %v", err)
 	}
 
@@ -228,7 +228,7 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 	s.Prepared[string(claim.UID)] = allocatedDevices
 
 	if err = helpers.WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared); err != nil {
-		klog.Errorf("Error writing prepared claims to file: %v", err)
+		klog.Errorf("failed to write prepared claims to file: %v", err)
 		return fmt.Errorf("failed to write prepared claims to file: %v", err)
 	}
 
@@ -270,7 +270,7 @@ func (s *nodeState) prepareAllocatedDevices(ctx context.Context, claim *resource
 
 	if len(allocatedDevices.Devices) > 0 {
 		if err := s.cdiHabanaEnvVar(string(claim.UID), visibleDevices); err != nil {
-			return allocatedDevices, fmt.Errorf("failed ensuring Habana Runtime specific CDI device: %v", err)
+			return allocatedDevices, fmt.Errorf("failed to ensure Habana Runtime specific CDI device: %v", err)
 		}
 
 		cdiName := cdiparser.QualifiedName(device.CDIVendor, device.CDIClass, string(claim.UID))
