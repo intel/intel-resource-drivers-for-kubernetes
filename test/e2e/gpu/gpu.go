@@ -22,7 +22,14 @@ const (
 	gpuNamespaceYaml              = "deployments/gpu/base/namespace.yaml"
 	gpuDriverYaml                 = "deployments/gpu/base/resource-driver.yaml"
 	gpuResourceClaimTemplateYaml  = "deployments/gpu/examples/resource-claim-template.yaml"
-	gpuSampleAppKustomizationYaml = "deployments/gpu/tests/gpu-sample-code/kustomization.yaml"
+	gpuSampleAppKustomizationYaml = "deployments/gpu/tests/gpu-sample-app/kustomization.yaml"
+)
+
+var (
+	gpuDeviceClassYamlPath           string
+	gpuNamespaceYamlPath             string
+	gpuDriverYamlPath                string
+	gpuResourceClaimTemplateYamlPath string
 )
 
 func init() {
@@ -33,24 +40,18 @@ func describeGpuDraDriver() {
 	f := framework.NewDefaultFramework("gpudra")
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
 
-	gpuDeviceClassYamlPath, errFailedToLocateRepoFile := utils.LocateRepoFile(gpuDeviceClassYaml)
-	if errFailedToLocateRepoFile != nil {
-		framework.Failf("unable to locate %q: %v", gpuDeviceClassYaml, errFailedToLocateRepoFile)
+	filePaths := map[string]*string{
+		gpuDeviceClassYaml:            &gpuDeviceClassYamlPath,
+		gpuNamespaceYaml:              &gpuNamespaceYamlPath,
+		gpuDriverYaml:                 &gpuDriverYamlPath,
+		gpuResourceClaimTemplateYaml:  &gpuResourceClaimTemplateYamlPath,
 	}
-
-	gpuNamespaceYamlPath, errFailedToLocateRepoFile := utils.LocateRepoFile(gpuNamespaceYaml)
-	if errFailedToLocateRepoFile != nil {
-		framework.Failf("unable to locate %q: %v", gpuNamespaceYaml, errFailedToLocateRepoFile)
-	}
-
-	gpuDriverYamlPath, errFailedToLocateRepoFile := utils.LocateRepoFile(gpuDriverYaml)
-	if errFailedToLocateRepoFile != nil {
-		framework.Failf("unable to locate %q: %v", gpuDriverYaml, errFailedToLocateRepoFile)
-	}
-
-	gpuResourceClaimTemplateYamlPath, errFailedToLocateRepoFile := utils.LocateRepoFile(gpuResourceClaimTemplateYaml)
-	if errFailedToLocateRepoFile != nil {
-		framework.Failf("unable to locate %q: %v", gpuResourceClaimTemplateYaml, errFailedToLocateRepoFile)
+	for file, pathVar := range filePaths {
+		locatedPath, err := utils.LocateRepoFile(file)
+		if err != nil {
+			framework.Failf("unable to locate %q: %v", file, err)
+		}
+		*pathVar = locatedPath
 	}
 
 	ginkgo.BeforeEach(func(ctx context.Context) {
