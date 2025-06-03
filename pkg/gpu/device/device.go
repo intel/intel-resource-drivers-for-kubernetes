@@ -146,6 +146,7 @@ type DeviceInfo struct {
 	VFIndex     uint64 `json:"vfindex"`     // 0-based PCI index of the VF on the GPU, DRM indexing starts with 1
 	Provisioned bool   `json:"provisioned"` // true if the SR-IOV VF is configured and enabled
 	Driver      string `json:"driver"`      // i915 | xe
+	PCIRoot     string `json:"pciroot"`     // PCI Root of the device
 }
 
 func (g DeviceInfo) CDIName() string {

@@ -108,6 +108,9 @@ func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDi
 		drmGpuDir := path.Join(sysfsDRMDir, fmt.Sprintf("card%d", cardIdx))
 		newDeviceInfo.MemoryMiB = getLocalMemoryAmountMiB(drmGpuDir)
 
+		link := path.Join(sysfsDriverDir, devicePCIAddress)
+		newDeviceInfo.PCIRoot = helpers.DeterminePCIRoot(link)
+
 		detectSRIOV(newDeviceInfo, sysfsDriverDir, devicePCIAddress, deviceId)
 		devices[determineDeviceName(newDeviceInfo, namingStyle)] = newDeviceInfo
 	}

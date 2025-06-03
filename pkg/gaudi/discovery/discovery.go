@@ -19,7 +19,6 @@ package discovery
 import (
 	"os"
 	"path"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -93,22 +92,8 @@ func scanDevicesFromDriverDirFiles(driverDirFiles []os.DirEntry, sysfsDriverDir 
 		newDeviceInfo.DeviceIdx = deviceIdx.accelIdx
 		newDeviceInfo.ModuleIdx = deviceIdx.moduleIdx
 
-		klog.V(5).Infof("Parsing PCI root complex ID for %v", newDeviceInfo.UID)
 		link := path.Join(sysfsDriverDir, devicePCIAddress)
-		// e.g. /sys/devices/pci0000:16/0000:16:02.0/0000:17:00.0/0000:18:00.0/0000:19:00.0
-		linkTarget, err := filepath.EvalSymlinks(link)
-		if err != nil {
-			klog.Errorf("Could not determine PCI root complex ID from '%v': %v", link, err)
-		} else {
-			klog.V(5).Infof("PCI device location: %v", linkTarget)
-			parts := strings.Split(linkTarget, "/")
-			if len(parts) > 3 && parts[0] == "" && parts[2] == "devices" {
-				newDeviceInfo.PCIRoot = strings.Replace(parts[3], "pci0000:", "", 1)
-			} else {
-				klog.Warningf("could not parse sysfs link target %v: %v", linkTarget, parts)
-			}
-		}
-
+		newDeviceInfo.PCIRoot = helpers.DeterminePCIRoot(link)
 		devices[determineDeviceName(newDeviceInfo, namingStyle)] = newDeviceInfo
 	}
 

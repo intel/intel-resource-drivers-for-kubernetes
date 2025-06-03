@@ -115,6 +115,9 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 					"sriov": {
 						BoolValue: &sriovSupported,
 					},
+					"pciRoot": {
+						StringValue: &gpu.PCIRoot,
+					},
 					"pciId": {
 						StringValue: &gpu.Model,
 					},

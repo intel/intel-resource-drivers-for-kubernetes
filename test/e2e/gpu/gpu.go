@@ -41,10 +41,10 @@ func describeGpuDraDriver() {
 	f.NamespacePodSecurityEnforceLevel = admissionapi.LevelPrivileged
 
 	filePaths := map[string]*string{
-		gpuDeviceClassYaml:            &gpuDeviceClassYamlPath,
-		gpuNamespaceYaml:              &gpuNamespaceYamlPath,
-		gpuDriverYaml:                 &gpuDriverYamlPath,
-		gpuResourceClaimTemplateYaml:  &gpuResourceClaimTemplateYamlPath,
+		gpuDeviceClassYaml:           &gpuDeviceClassYamlPath,
+		gpuNamespaceYaml:             &gpuNamespaceYamlPath,
+		gpuDriverYaml:                &gpuDriverYamlPath,
+		gpuResourceClaimTemplateYaml: &gpuResourceClaimTemplateYamlPath,
 	}
 	for file, pathVar := range filePaths {
 		locatedPath, err := utils.LocateRepoFile(file)
@@ -74,7 +74,7 @@ func describeGpuDraDriver() {
 		ginkgo.It("deploys a GPU sample application pod", func(ctx context.Context) {
 			gpuSampleAppKustomizeDir, err := utils.LocateRepoFile(gpuSampleAppKustomizationYaml)
 			if err != nil {
-    			framework.Failf("unable to locate %q: %v", gpuSampleAppKustomizationYaml, err)
+				framework.Failf("unable to locate %q: %v", gpuSampleAppKustomizationYaml, err)
 			}
 			e2ekubectl.RunKubectlOrDie(gpuNamespace, "apply", "-k", filepath.Dir(gpuSampleAppKustomizeDir))
 
