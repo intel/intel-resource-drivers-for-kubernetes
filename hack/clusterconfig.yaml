@@ -13,13 +13,15 @@ timeouts:
   tlsBootstrap: 5m0s
   upgradeManifests: 5m0s
 ---
+kind: ClusterConfiguration
+kubernetesVersion: v1.33.0
+apiVersion: kubeadm.k8s.io/v1beta4
 apiServer:
   extraArgs:
   - name: feature-gates
     value: DynamicResourceAllocation=true,DRADeviceTaints=true,DRAAdminAccess=true,DRAPrioritizedList=true,DRAPartitionableDevices=true,DRAResourceClaimDeviceStatus=true
   - name: runtime-config
     value: resource.k8s.io/v1beta1=true,resource.k8s.io/v1alpha3=true
-apiVersion: kubeadm.k8s.io/v1beta4
 caCertificateValidityPeriod: 87600h0m0s
 certificateValidityPeriod: 8760h0m0s
 certificatesDir: /etc/kubernetes/pki
@@ -33,8 +35,6 @@ etcd:
   local:
     dataDir: /var/lib/etcd
 imageRepository: registry.k8s.io
-kind: ClusterConfiguration
-kubernetesVersion: v1.33.0
 networking:
   dnsDomain: cluster.local
   serviceSubnet: 10.96.0.0/16
@@ -43,3 +43,8 @@ scheduler:
   extraArgs:
   - name: feature-gates
     value: DynamicResourceAllocation=true,DRADeviceTaints=true,DRAAdminAccess=true,DRAPrioritizedList=true,DRAPartitionableDevices=true
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+featureGates:
+  DynamicResourceAllocation: true
