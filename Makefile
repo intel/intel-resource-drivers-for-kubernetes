@@ -92,7 +92,7 @@ branch-build:
 	git checkout $$current
 
 .PHONY: containers-build
-containers-build: gpu-container-build gaudi-container-build
+containers-build: gpu-container-build gaudi-container-build qat-container-build
 
 .PHONY: container-local
 container-local: container-build
@@ -103,7 +103,7 @@ container-local: container-build
 	rm /tmp/temp_image.tar
 
 .PHONY: containers-push
-containers-push: containers-build gpu-container-push gaudi-container-push
+containers-push: containers-build gpu-container-push gaudi-container-push qat-container-push
 
 .PHONY: clean cleanall
 clean:
