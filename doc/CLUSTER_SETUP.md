@@ -31,12 +31,12 @@ To create a minikube cluster with DRA, use the command (change the K8s version i
 minikube start \
 --feature-gates=DynamicResourceAllocation=true \
 --extra-config=apiserver.feature-gates=DynamicResourceAllocation=true \
---extra-config=apiserver.runtime-config=resource.k8s.io/v1beta1=true \
+--extra-config=apiserver.runtime-config=resource.k8s.io/v1beta1=true,resource.k8s.io/v1alpha3=true \
 --extra-config=scheduler.feature-gates=DynamicResourceAllocation=true \
 --extra-config=controller-manager.feature-gates=DynamicResourceAllocation=true \
 --extra-config=kubelet.feature-gates=DynamicResourceAllocation=true \
 --container-runtime=containerd \
---kubernetes-version=1.32.0
+--kubernetes-version=1.33.0
 ```
 
 Minikube will start its own Containerd inside the minikube docker container, where CDI needs to be

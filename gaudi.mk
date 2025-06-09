@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-GAUDI_VERSION ?= v0.4.1
+GAUDI_VERSION ?= v0.5.0
 GAUDI_IMAGE_NAME ?= intel-gaudi-resource-driver
 GAUDI_IMAGE_VERSION ?= $(GAUDI_VERSION)
 GAUDI_IMAGE_TAG ?= $(REGISTRY)/$(GAUDI_IMAGE_NAME):$(GAUDI_IMAGE_VERSION)
