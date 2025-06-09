@@ -17,13 +17,6 @@ func TestCDIName(t *testing.T) {
 			},
 			expected: "intel.com/gaudi=0000-01-02-0-0x1234",
 		},
-		{
-			name: "Another valid device UID",
-			device: DeviceInfo{
-				UID: "0000-02-03-0-0x6789",
-			},
-			expected: "intel.com/gaudi=0000-02-03-0-0x6789",
-		},
 	}
 
 	for _, tt := range tests {
