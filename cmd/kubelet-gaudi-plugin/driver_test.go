@@ -252,6 +252,10 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 				testcase.name, string(preparedClaimsJSON), string(expectedPreparedClaimsJSON),
 			)
 		}
+
+		if err := driver.Shutdown(context.TODO()); err != nil {
+			t.Errorf("Shutdown() error = %v, wantErr %v", err, nil)
+		}
 	}
 }
 
@@ -366,22 +370,9 @@ func TestGaudiUnprepareResourceClaims(t *testing.T) {
 			)
 			break
 		}
-	}
-}
 
-func TestGaudiShutdown(t *testing.T) {
-	testDirs, err := testhelpers.NewTestDirs(device.DriverName)
-	if err != nil {
-		t.Fatalf("could not create fake system dirs: %v", err)
-	}
-
-	driver, err := getFakeDriver(testDirs, NoHealthcare)
-	if err != nil {
-		t.Fatalf("could not create driver: %v", err)
-	}
-
-	err = driver.Shutdown(context.Background())
-	if err != nil {
-		t.Errorf("Shutdown() error = %v, wantErr %v", err, nil)
+		if err := driver.Shutdown(context.TODO()); err != nil {
+			t.Errorf("Shutdown() error = %v, wantErr %v", err, nil)
+		}
 	}
 }
