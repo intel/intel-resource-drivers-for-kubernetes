@@ -19,7 +19,7 @@ spec:
       serviceAccountName: intel-gaudi-resource-driver-service-account
       containers:
       - name: kubelet-plugin
-        image: intel/intel-gaudi-resource-driver:v0.3.0
+        image: intel/intel-gaudi-resource-driver:latest
         imagePullPolicy: IfNotPresent
         command: ["/kubelet-gaudi-plugin", "-m"]
         env:

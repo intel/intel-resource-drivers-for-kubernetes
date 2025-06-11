@@ -5,4 +5,4 @@ resources:
 
 images:
   - name: intel/intel-gpu-resource-driver
-    newTag: v0.7.0
+    newTag: v0.8.0

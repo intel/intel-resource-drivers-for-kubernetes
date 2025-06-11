@@ -19,7 +19,7 @@ spec:
       - name: kubelet-plugin
         image: {{ include "intel-gaudi-resource-driver.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command: ["/kubelet-gaudi-plugin"]
+        command: ["/kubelet-gaudi-plugin", "-m"]
         env:
         - name: NODE_NAME
           valueFrom:

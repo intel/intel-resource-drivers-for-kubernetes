@@ -5,4 +5,4 @@ resources:
 
 images:
   - name: intel/intel-gaudi-resource-driver
-    newTag: v0.3.0
+    newTag: v0.4.0

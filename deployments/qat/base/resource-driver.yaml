@@ -18,7 +18,7 @@ spec:
       serviceAccountName: intel-qat-resource-driver-service-account
       containers:
       - name: kubelet-plugin
-        image: intel/intel-qat-resource-driver:v0.1.0
+        image: intel/intel-qat-resource-driver:latest
         imagePullPolicy: IfNotPresent
         command: ["/kubelet-qat-plugin"]
         env:
