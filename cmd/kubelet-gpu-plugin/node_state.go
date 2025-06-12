@@ -112,6 +112,12 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 					"family": {
 						StringValue: &gpu.FamilyName,
 					},
+					"pci-device-id": {
+						StringValue: &gpu.Model,
+					},
+					"pci-device-address": {
+						StringValue: &gpu.PCIAddress,
+					},
 				},
 				Capacity: map[resourcev1.QualifiedName]resourcev1.DeviceCapacity{
 					"memory":     {Value: resource.MustParse(fmt.Sprintf("%vMi", gpu.MemoryMiB))},
