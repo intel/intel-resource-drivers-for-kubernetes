@@ -78,6 +78,10 @@ var ModelDetails = map[string]map[string]string{
 		"model":  "A580",
 		"family": "Arc",
 	},
+	"0x56b1": {
+		"model":  "A40/A50",
+		"family": "Arc Pro",
+	},
 	"0x56c0": {
 		"model":  "Flex 170",
 		"family": "Data Center Flex",
@@ -113,6 +117,10 @@ var ModelDetails = map[string]map[string]string{
 	"0x0bdb": {
 		"model":  "Max 1100",
 		"family": "Data Center Max",
+	},
+	"0xa7a0": {
+		"model":  "Raptor Lake-P",
+		"family": "Iris Xe",
 	},
 }
 
