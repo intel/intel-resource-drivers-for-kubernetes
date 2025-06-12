@@ -112,10 +112,10 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 					"family": {
 						StringValue: &gpu.FamilyName,
 					},
-					"pci-device-id": {
+					"pciId": {
 						StringValue: &gpu.Model,
 					},
-					"pci-device-address": {
+					"pciAddress": {
 						StringValue: &gpu.PCIAddress,
 					},
 				},
