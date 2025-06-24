@@ -1,6 +1,5 @@
 # Default values for intel-qat-resource-driver.
 nameOverride: ""
-namespaceOverride: "intel-qat-resource-driver"
 fullnameOverride: ""
 selectorLabelsOverride: {}
 
@@ -9,12 +8,12 @@ image:
   repository: intel
   name: intel-qat-resource-driver
   pullPolicy: IfNotPresent
-  tag: "v0.2.0"
+  tag: "v0.3.0"
 
 serviceAccount:
   create: true
   annotations: {}
-  name: "intel-qat-resource-driver-service-account"
+  name: ""
   automount: true
 
 kubeletPlugin:
@@ -35,6 +34,10 @@ kubeletPlugin:
       operator: "Exists"
       effect: "NoSchedule"
   affinity: {}
+
+cdi:
+  staticPath: /etc/cdi
+  dynamicPath: /var/run/cdi
 
 nfd:
   enabled: false # change to true to install NFD to the cluster

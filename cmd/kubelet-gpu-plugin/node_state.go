@@ -25,8 +25,8 @@ import (
 	resourcev1 "k8s.io/api/resource/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
+	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
@@ -92,16 +92,13 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 	return state.NodeState, nil
 }
 
-func (s *nodeState) GetResources() kubeletplugin.Resources {
+func (s *nodeState) GetResources() resourceslice.DriverResources {
 	devices := []resourcev1.Device{}
 
-	allocatableDevices, ok := s.Allocatable.(map[string]*device.DeviceInfo)
-	if !ok {
-		klog.Error("unexpected type for state.Allocatable")
-		return kubeletplugin.Resources{Devices: nil}
-	}
+	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
 
 	for gpuUID, gpu := range allocatableDevices {
+		sriovSupported := gpu.MaxVFs > 0
 		newDevice := resourcev1.Device{
 			Name: gpuUID,
 			Basic: &resourcev1.BasicDevice{
@@ -111,6 +108,15 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 					},
 					"family": {
 						StringValue: &gpu.FamilyName,
+					},
+					"driver": {
+						StringValue: &gpu.Driver,
+					},
+					"sriov": {
+						BoolValue: &sriovSupported,
+					},
+					"pciRoot": {
+						StringValue: &gpu.PCIRoot,
 					},
 					"pciId": {
 						StringValue: &gpu.Model,
@@ -129,7 +135,8 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 		devices = append(devices, newDevice)
 	}
 
-	return kubeletplugin.Resources{Devices: devices}
+	return resourceslice.DriverResources{Pools: map[string]resourceslice.Pool{
+		s.NodeName: {Slices: []resourceslice.Slice{{Devices: devices}}}}}
 }
 
 func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim) error {
@@ -137,36 +144,32 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		return fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
 	}
 
-	allocatedDevices := []*drav1.Device{}
+	preparedDevices := kubeletplugin.PrepareResult{}
 
 	for _, allocatedDevice := range claim.Status.Allocation.Devices.Results {
 		// ATM the only pool is cluster node's pool: all devices on current node.
 		if allocatedDevice.Driver != device.DriverName || allocatedDevice.Pool != s.NodeName {
-			klog.FromContext(ctx).Info("ignoring claim allocation device", "device pool", allocatedDevice.Pool, "device driver", allocatedDevice.Driver,
-				"expected pool", s.NodeName, "expected driver", device.DriverName)
+			klog.FromContext(ctx).Info("ignoring claim allocation device", "device", allocatedDevice, "expected pool", s.NodeName, "expected driver", device.DriverName)
 			continue
 		}
 
-		allocatableDevices, ok := s.Allocatable.(map[string]*device.DeviceInfo)
-		if !ok {
-			return fmt.Errorf("unexpected type for state.Allocatable")
-		}
+		allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
 
 		allocatableDevice, found := allocatableDevices[allocatedDevice.Device]
 		if !found {
 			return fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
 		}
 
-		newDevice := drav1.Device{
-			RequestNames: []string{allocatedDevice.Request},
+		newDevice := kubeletplugin.Device{
+			Requests:     []string{allocatedDevice.Request},
 			PoolName:     allocatedDevice.Pool,
 			DeviceName:   allocatedDevice.Device,
 			CDIDeviceIDs: []string{allocatableDevice.CDIName()},
 		}
-		allocatedDevices = append(allocatedDevices, &newDevice)
+		preparedDevices.Devices = append(preparedDevices.Devices, newDevice)
 	}
 
-	s.Prepared[string(claim.UID)] = allocatedDevices
+	s.Prepared[string(claim.UID)] = preparedDevices
 
 	err := helpers.WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared)
 	if err != nil {

@@ -20,10 +20,6 @@ intel-qat-resource-driver
 {{- end -}}
 {{- end }}
 
-{{- define "intel-qat-resource-driver.namespace" -}}
-{{- default .Release.Namespace .Values.namespaceOverride }}
-{{- end }}
-
 {{/* Labels for templates */}}
 {{- define "intel-qat-resource-driver.labels" -}}
 helm.sh/chart: {{ include "intel-qat-resource-driver.chart" . }}

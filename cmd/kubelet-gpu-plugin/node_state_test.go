@@ -22,6 +22,8 @@ import (
 	"strings"
 	"testing"
 
+	"k8s.io/dynamic-resource-allocation/kubeletplugin"
+
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
@@ -64,10 +66,11 @@ func errorCheck(t *testing.T, name, substr string, err error) {
 }
 
 // TestPreparedClaimsFiles checks prepared claims JSON read & write helpers.
+// nolint:cyclop
 func TestPreparedClaimsFiles(t *testing.T) {
 	type testOp struct {
 		// if non-empty, op1 writes to given file, op2 reads file & compares against
-		claims *helpers.ClaimPreparations
+		claims helpers.ClaimPreparations
 		file   string // otherwise, if non-empty, op1 reads, op2 writes to given file
 		err    string // part of error message, if any
 	}
@@ -88,9 +91,9 @@ func TestPreparedClaimsFiles(t *testing.T) {
 	missingPath := "non/existing/file"
 
 	multiClaim := helpers.ClaimPreparations{
-		"uid1": {{RequestNames: []string{"request1"}, DeviceName: "0000-af-00-1-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-1-0xabcd"}}},
-		"uid2": {{RequestNames: []string{"request1"}, DeviceName: "0000-af-00-2-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-2-0xabcd"}}},
-		"uid3": {{RequestNames: []string{"request1"}, DeviceName: "0000-af-00-3-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-3-0xabcd"}}},
+		"uid1": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, DeviceName: "0000-af-00-1-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-1-0xabcd"}}}},
+		"uid2": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, DeviceName: "0000-af-00-2-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-2-0xabcd"}}}},
+		"uid3": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, DeviceName: "0000-af-00-3-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-3-0xabcd"}}}},
 	}
 
 	testcases := []testCase{
@@ -109,7 +112,7 @@ func TestPreparedClaimsFiles(t *testing.T) {
 				nil, "", "",
 			},
 			testOp{
-				&helpers.ClaimPreparations{}, missingPath, "no such file",
+				helpers.ClaimPreparations{}, missingPath, "no such file",
 			},
 		},
 		{
@@ -127,16 +130,16 @@ func TestPreparedClaimsFiles(t *testing.T) {
 				nil, claimDir + "empty.json", "",
 			},
 			testOp{
-				&helpers.ClaimPreparations{}, "", "",
+				helpers.ClaimPreparations{}, "", "",
 			},
 		},
 		{
 			"empty write & read OK",
 			testOp{
-				&helpers.ClaimPreparations{}, tmpClaim, "",
+				helpers.ClaimPreparations{}, tmpClaim, "",
 			},
 			testOp{
-				&helpers.ClaimPreparations{}, tmpClaim, "",
+				helpers.ClaimPreparations{}, tmpClaim, "",
 			},
 		},
 		{
@@ -145,16 +148,16 @@ func TestPreparedClaimsFiles(t *testing.T) {
 				nil, claimDir + "multi.json", "",
 			},
 			testOp{
-				&multiClaim, "", "",
+				multiClaim, "", "",
 			},
 		},
 		{
 			"multi-claim write & read OK",
 			testOp{
-				&multiClaim, tmpClaim, "",
+				multiClaim, tmpClaim, "",
 			},
 			testOp{
-				&multiClaim, tmpClaim, "",
+				multiClaim, tmpClaim, "",
 			},
 		},
 	}
@@ -170,7 +173,7 @@ func TestPreparedClaimsFiles(t *testing.T) {
 			if test.op1.file != test.op2.file {
 				t.Errorf("=> different files for round-trip check: '%s' vs. '%s'", test.op1.file, test.op2.file)
 			}
-			err = helpers.WritePreparedClaimsToFile(test.op1.file, *test.op1.claims)
+			err = helpers.WritePreparedClaimsToFile(test.op1.file, test.op1.claims)
 			errorCheck(t, "writing claims", test.op1.err, err)
 			claims, err = helpers.ReadPreparedClaimsFromFile(test.op2.file)
 			errorCheck(t, "reading claims", test.op2.err, err)
@@ -183,18 +186,18 @@ func TestPreparedClaimsFiles(t *testing.T) {
 		}
 
 		if content && test.op2.claims != nil {
-			if !reflect.DeepEqual(claims, *test.op2.claims) {
+			if !reflect.DeepEqual(claims, test.op2.claims) {
 				t.Error("unexpected claims")
-				for claimUID, claimDevices := range *test.op2.claims {
+				for claimUID, claimPreparation := range test.op2.claims {
 					t.Logf("expected %v:", claimUID)
-					for _, device := range claimDevices {
-						t.Logf("    %+v", *device)
+					for _, device := range claimPreparation.Devices {
+						t.Logf("    %+v", device)
 					}
 				}
-				for claimUID, claimDevices := range claims {
+				for claimUID, claimPreparation := range claims {
 					t.Logf("found %v:", claimUID)
-					for _, device := range claimDevices {
-						t.Logf("    %+v", *device)
+					for _, device := range claimPreparation.Devices {
+						t.Logf("    %+v", device)
 					}
 				}
 			} else {

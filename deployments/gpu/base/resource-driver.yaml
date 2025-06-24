@@ -19,8 +19,7 @@ spec:
       serviceAccountName: intel-gpu-resource-driver-service-account
       containers:
       - name: kubelet-plugin
-        #image: intel/intel-gpu-resource-driver:v0.7.0-rc0
-        image: ger-is-registry.caas.intel.com/dgpu-orchestration/intel-gpu-resource-driver:v0.7.0-rc0
+        image: intel/intel-gpu-resource-driver:latest
         imagePullPolicy: IfNotPresent
         command: ["/kubelet-gpu-plugin"]
         env:

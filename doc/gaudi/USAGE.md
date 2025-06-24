@@ -1,6 +1,6 @@
 ## Requirements
 
-- Kubernetes 1.31+, with `DynamicResourceAllocation` feature-flag enabled, and [other cluster parameters](../../hack/clusterconfig.yaml)
+- Kubernetes 1.33+, with `DynamicResourceAllocation` feature-flag enabled, and [other cluster parameters](../../hack/clusterconfig.yaml)
 - Container runtime needs to support CDI:
   - CRI-O v1.23.0 or newer
   - Containerd v1.7 or newer
@@ -25,7 +25,7 @@ To restrict the deployment to Gaudi-enabled nodes, follow these steps:
 Follow [Node Feature Discovery](https://github.com/kubernetes-sigs/node-feature-discovery) documentation to install and configure NFD in your cluster.
 
 ```bash
-kubectl apply -k "https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.17.1"
+kubectl apply -k "https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.17.3"
 ```
 
 2. Apply NFD Rules:
@@ -82,19 +82,25 @@ spec:
   devices:
   - basic:
       attributes:
+        healthy:
+          bool: true
         model:
           string: Gaudi2
-    name: 0000-a0-00-0-0x1020
+        pciRoot:
+          string: "40"
+        serial:
+          string: AN01234567
+    name: 0000-43-00-0-0x1020
   - basic:
       attributes:
+        healthy:
+          bool: true
         model:
           string: Gaudi2
-    name: 0000-b0-00-0-0x1020
-  - basic:
-      attributes:
-        model:
-          string: Gaudi2
-    name: 0000-c0-00-0-0x1020
+        pciRoot:
+          string: "40"
+        serial:
+          string: AN12345678
   driver: gaudi.intel.com
   nodeName: rpl-s
   pool:
@@ -265,3 +271,26 @@ Unlike with normal Gaudi ResourceClaims:
 * Monitor deployment gets access to all Gaudi devices on a node
 * `adminAccess` ResourceClaim allocations are not counted by scheduler as consumed resource, and can be allocated to workloads
 
+## Health monitoring support
+
+Starting from v0.3.0 Gaudi DRA driver supports health monitoring with `-m` command-line parameter (enabled in default deployment configuration) through HLML library. When Gaudi accelerator becomes unhealthy, the ResourceSlice is updated and respective device's `healthy` field changed to false.
+
+In K8s v1.32 DeviceClass can be changed to only allow allocation of healthy devices to workloads:
+```shell
+kubectl edit deviceclass/gaudi.intel.com
+```
+add one more selector:
+```YAML
+  - cel:
+      expression: device.attributes["gaudi.intel.com"].healthy == true
+```
+This approach, however, does not allow influencing the Pods that are / were using Gaudi accelerator when its health status changes.
+
+In K8s v1.33 [DeviceTaintRule](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/#device-taints-and-tolerations) concept was introduced that allows scheduler to handle ResourceSlice devices similarly to how K8s Node Taints and Tolerations allow.
+
+Starting from v0.4.0 Gaudi DRA driver leverages DeviceTaintRules if Gaudi accelerator health degrades. DeviceTaintRule created as a result of degraded health has "NoSchedule" effect, which implies "NoExecute" and results in Pod eviction for devices with degraded health. Workloads that need to access tainted devices need to have [taint toleration in ResourceClaim](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/#device-taints-and-tolerations).
+
+### Helm Chart
+
+The [Intel Gaudi Resource Driver Helm Chart](../../charts/intel-gaudi-resource-driver) is published
+as a package to GitHub OCI registry, and can be installed directly with Helm.

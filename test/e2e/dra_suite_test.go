@@ -16,6 +16,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 
+	_ "github.com/intel/intel-resource-drivers-for-kubernetes/test/e2e/gpu"
 	_ "github.com/intel/intel-resource-drivers-for-kubernetes/test/e2e/qat"
 )
 

@@ -51,6 +51,25 @@ func main() {
 	}
 }
 
+// handleDevices handles the devices based on the provided arguments.
+func handleDevices(args []string, cdiCache *cdiapi.Cache, namingStyle string, dryRun bool) error {
+	for _, argx := range args {
+		switch strings.ToLower(argx) {
+		case "gpu":
+			if err := handleGPUDevices(cdiCache, namingStyle, dryRun); err != nil {
+				return err
+			}
+		case "gaudi":
+			if err := handleGaudiDevices(cdiCache, namingStyle, dryRun); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported device type: %s", argx)
+		}
+	}
+	return nil
+}
+
 func cobraRunFunc(cmd *cobra.Command, args []string) error {
 	cdiDir := cmd.Flag("cdi-dir").Value.String()
 	namingStyle := cmd.Flag("naming").Value.String()
@@ -66,22 +85,10 @@ func cobraRunFunc(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	dryRun := false
-	if cmd.Flag("dry-run").Value.String() == "true" {
-		dryRun = true
-	}
+	dryRun := cmd.Flag("dry-run").Value.String() == "true"
 
-	for _, argx := range args {
-		switch strings.ToLower(argx) {
-		case "gpu":
-			if err := handleGPUDevices(cdiCache, namingStyle, dryRun); err != nil {
-				return err
-			}
-		case "gaudi":
-			if err := handleGaudiDevices(cdiCache, namingStyle, dryRun); err != nil {
-				return err
-			}
-		}
+	if err := handleDevices(args, cdiCache, namingStyle, dryRun); err != nil {
+		return err
 	}
 
 	if dryRun {

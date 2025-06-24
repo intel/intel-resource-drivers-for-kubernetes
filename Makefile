@@ -200,6 +200,34 @@ test-image: vendor
 test-image-push: test-image
 	$(DOCKER) push "$(TEST_IMAGE)"
 
+.PHONY: update-dependencies package-helm-charts push-helm-charts
+update-dependencies:
+	@helm repo add nfd https://kubernetes-sigs.github.io/node-feature-discovery/charts || true
+	@helm repo update
+	@set -x; for chart in charts/*; do \
+		if [ -d "$$chart" ]; then \
+			echo "Updating dependencies for $$chart"; \
+			helm dependency update $$chart; \
+			helm dependency build $$chart; \
+		fi \
+	done
+
+package-helm-charts: update-dependencies
+	@set -x; for chart in charts/*; do \
+		if [ -d "$$chart" ]; then \
+			chart_name=$$(basename $$chart); \
+			chart_version=$$(awk '/^version:/ {print $$2; exit}' $$chart/Chart.yaml); \
+			release_version=$$(awk '/^appVersion:/ {print $$2; exit}' $$chart/Chart.yaml); \
+			echo "Packaging $$chart_name with chart version $$chart_version and application version $$release_version"; \
+			helm package $$chart --version $$chart_version --app-version $$release_version --destination .charts; \
+		fi \
+	done
+
+push-helm-charts: package-helm-charts
+	@for tgz in .charts/*.tgz; do \
+		helm push $$tgz oci://${RELEASE_REGISTRY}; \
+	done
+
 .PHONY: test html-coverage test-containerized
 COVERAGE_FILE := coverage.out
 # Gaudi tests expect fake HLML library to be present at /usr/lib/habanalabs/libhlml.so
@@ -230,17 +258,17 @@ $(COVERAGE_FILE): $(shell find cmd pkg -name '*.go')
 
 .PHONY: gpu-coverage gaudi-coverage qat-coverage cdispecsgen-coverage excluded-coverage
 
-gpu-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gaudi-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gaudi|pkg/fakesysfs|plugintesthelpers"
+gpu-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gaudi-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gaudi|pkg/fakesysfs|plugintesthelpers|fake_hlml|version"
 gpu-coverage: excluded-coverage
 # See: https://www.gnu.org/software/make/manual/html_node/Target_002dspecific.html
 
-gaudi-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gpu-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gpu|pkg/fakesysfs|plugintesthelpers"
+gaudi-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gpu-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gpu|pkg/fakesysfs|plugintesthelpers|version"
 gaudi-coverage: excluded-coverage
 
-qat-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gpu-plugin|kubelet-gaudi-plugin|pkg/gpu|pkg/gaudi|pkg/fakesysfs|plugintesthelpers"
+qat-coverage: COVERAGE_EXCLUDE="cdi-specs-generator|device-faker|kubelet-gpu-plugin|kubelet-gaudi-plugin|pkg/gpu|pkg/gaudi|pkg/fakesysfs|plugintesthelpers|fake_hlml|version"
 qat-coverage: excluded-coverage
 
-cdispecsgen-coverage: COVERAGE_EXCLUDE="device-faker|kubelet-gpu-plugin|kubelet-gaudi-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gpu|pkg/gaudi|pkg/fakesysfs|plugintesthelpers"
+cdispecsgen-coverage: COVERAGE_EXCLUDE="device-faker|kubelet-gpu-plugin|kubelet-gaudi-plugin|kubelet-qat-plugin|qat-showdevice|pkg/qat|pkg/gpu|pkg/gaudi|pkg/fakesysfs|plugintesthelpers|fake_hlml|version"
 cdispecsgen-coverage: excluded-coverage
 
 COVERAGE_EXCLUDE ?= "$^"

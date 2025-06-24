@@ -19,9 +19,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	hlml "github.com/HabanaAI/gohlml"
+	resourceapi "k8s.io/api/resource/v1alpha3"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
@@ -110,11 +114,51 @@ func (d *driver) updateHealth(ctx context.Context, healthy bool, uid string) {
 		return
 	}
 
+	d.createTaintRuleMaybe(ctx, uid)
+
 	foundDevice.Healthy = healthy
 	// Health is updated from a go routine, nothing we can do when publishing
 	// resource slice fails, so error is ignored.
 	if err := d.PublishResourceSlice(ctx); err != nil {
 		klog.Errorf("could not publish updated resoruce slice: %v", err)
+	}
+}
+
+// createTaintRuleMaybe ensures there is a DeviceTaintRule for the device that
+// became unhealthy.
+func (d *driver) createTaintRuleMaybe(ctx context.Context, uid string) {
+	taintRuleName := fmt.Sprintf("%v-%v-%v", device.DriverName, d.state.NodeName, uid)
+	driverName := device.DriverName
+	// Taint failed device, so it will not be scheduled.
+	devTaintRule := resourceapi.DeviceTaintRule{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: taintRuleName,
+		},
+		Spec: resourceapi.DeviceTaintRuleSpec{
+			DeviceSelector: &resourceapi.DeviceTaintSelector{
+				Driver: &driverName,
+				Pool:   &d.state.NodeName,
+				Device: &uid,
+			},
+			Taint: resourceapi.DeviceTaint{
+				Key:    fmt.Sprintf("%s/unhealthy", device.DriverName),
+				Value:  "CriticalError",
+				Effect: resourceapi.DeviceTaintEffectNoExecute,
+			},
+		},
+	}
+
+	// Check if the rule already exists, or new rule creation will fail because of the name conflict.
+	rule, err := d.client.ResourceV1alpha3().DeviceTaintRules().Get(ctx, taintRuleName, metav1.GetOptions{})
+	if err == nil && rule != nil {
+		klog.FromContext(ctx).Info("Found existing DeviceTaintRule", "rule", rule)
+		return
+	}
+
+	klog.FromContext(ctx).Info("creating DeviceTaintRule", "rule", devTaintRule)
+	_, err = d.client.ResourceV1alpha3().DeviceTaintRules().Create(ctx, &devTaintRule, metav1.CreateOptions{})
+	if err != nil {
+		klog.Errorf("failed to create device taint rule: %v", err)
 	}
 }
 
@@ -156,6 +200,19 @@ func (d *driver) watchCriticalHLMLEvents(ctx context.Context, intervalSeconds in
 	}
 }
 
+// getUIDsOfDevicesWithHandleError returns the UIDs of devices for which getting a handle by serial has failed.
+func getUIDsOfDevicesWithHandleError(allocatable map[string]*device.DeviceInfo) (uids []string) {
+	for _, device := range allocatable {
+		if _, err := hlml.DeviceHandleBySerial(device.Serial); err != nil {
+			klog.Errorf("critical: could not get device %v handle by serial, marking unhealthy", device.UID)
+			uids = append(uids, device.UID)
+
+			return uids
+		}
+	}
+	return []string{}
+}
+
 // timedHLMLEventCheck returns true if any device is unhealthy, and list of UIDs of unhealthy devices.
 func (d *driver) timedHLMLEventCheck(eventSet hlml.EventSet) (bool, []string) {
 	uids := []string{}
@@ -166,14 +223,8 @@ func (d *driver) timedHLMLEventCheck(eventSet hlml.EventSet) (bool, []string) {
 	if err != nil {
 		klog.Errorf("HLML WaitForEvent failed: %v", err)
 
-		for _, device := range allocatable {
-			if _, err := hlml.DeviceHandleBySerial(device.Serial); err != nil {
-				klog.Errorf("critical: could not get device %v handle by serial, marking unhealthy", device.UID)
-				uids = append(uids, device.UID)
-				updateHealth = true
-			}
-		}
-
+		uids = getUIDsOfDevicesWithHandleError(allocatable)
+		updateHealth = len(uids) > 0
 		time.Sleep(2 * time.Second)
 		return updateHealth, uids
 	}
@@ -189,20 +240,14 @@ func (d *driver) timedHLMLEventCheck(eventSet hlml.EventSet) (bool, []string) {
 	if err != nil {
 		klog.Error("critical: could not get device handle by serial. All devices will go unhealthy", "event", e.Etype)
 		// All devices are unhealthy
-		for _, d := range allocatable {
-			uids = append(uids, d.UID)
-		}
-		return true, uids
+		return true, slices.Collect(maps.Keys(allocatable))
 	}
 
 	serial, err := dev.SerialNumber()
 	if err != nil || len(serial) == 0 {
 		klog.Error("critical: could not get serial. All devices will go unhealthy", "event", e.Etype)
 		// All devices are unhealthy
-		for _, d := range allocatable {
-			uids = append(uids, d.UID)
-		}
-		return true, uids
+		return true, slices.Collect(maps.Keys(allocatable))
 	}
 
 	for deviceUID, d := range allocatable {
@@ -215,9 +260,7 @@ func (d *driver) timedHLMLEventCheck(eventSet hlml.EventSet) (bool, []string) {
 
 	// This should be theoretically impossible since we signed up only for devices that we know about.
 	klog.Error("critical: could not find event device serial in Allocatable. All devices will go unhealthy", "event", e.Etype)
-	for _, d := range allocatable {
-		uids = append(uids, d.UID)
-	}
+	uids = slices.Collect(maps.Keys(allocatable))
 
 	return true, uids
 }
@@ -225,7 +268,7 @@ func (d *driver) timedHLMLEventCheck(eventSet hlml.EventSet) (bool, []string) {
 func (d *driver) Shutdown(ctx context.Context) error {
 	klog.V(5).Info("Shutting down driver")
 
-	d.plugin.Stop()
+	d.helper.Stop()
 
 	// When health monitoring with HLML was initiated, d.hlmlShutdown will get
 	// context cancel function, which we can call to signal health monitoring

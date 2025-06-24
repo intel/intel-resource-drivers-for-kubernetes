@@ -1,28 +1,30 @@
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+nodeRegistration:
+  criSocket: unix:///var/run/containerd/containerd.sock
+  imagePullPolicy: IfNotPresent
+---
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
+kubernetesVersion: v1.33.0
 apiServer:
   extraArgs:
-    feature-gates: "DynamicResourceAllocation=true"
-    runtime-config: "resource.k8s.io/v1beta1=true"
+  - name: feature-gates
+    value: DynamicResourceAllocation=true,DRADeviceTaints=true,DRAAdminAccess=true,DRAPrioritizedList=true,DRAPartitionableDevices=true,DRAResourceClaimDeviceStatus=true
+  - name: runtime-config
+    value: resource.k8s.io/v1beta1=true,resource.k8s.io/v1alpha3=true
+clusterName: kubernetes
 controllerManager:
   extraArgs:
-    feature-gates: "DynamicResourceAllocation=true"
+  - name: feature-gates
+    value: DynamicResourceAllocation=true,DRADeviceTaints=true
+imageRepository: registry.k8s.io
 scheduler:
   extraArgs:
-    "feature-gates": "DynamicResourceAllocation=true"
+  - name: feature-gates
+    value: DynamicResourceAllocation=true,DRADeviceTaints=true,DRAAdminAccess=true,DRAPrioritizedList=true,DRAPartitionableDevices=true
 ---
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
-featureGates:
-  DynamicResourceAllocation: true
----
-apiVersion: kubeadm.k8s.io/v1beta3
-kind: InitConfiguration
-nodeRegistration:
-  criSocket: "unix:///var/run/crio/crio.sock"
-  #criSocket: "unix:///var/run/containerd/containerd.sock"
----
-apiVersion: kubeproxy.config.k8s.io/v1alpha1
-kind: KubeProxyConfiguration
 featureGates:
   DynamicResourceAllocation: true

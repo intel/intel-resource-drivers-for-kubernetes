@@ -1,6 +1,5 @@
 # Default values for intel-gaudi-resource-driver.
 nameOverride: ""
-namespaceOverride: "intel-gaudi-resource-driver"
 fullnameOverride: ""
 selectorLabelsOverride: {}
 
@@ -9,12 +8,12 @@ image:
   repository: intel
   name: intel-gaudi-resource-driver
   pullPolicy: IfNotPresent
-  tag: "v0.3.0"
+  tag: "v0.5.0"
 
 serviceAccount:
   create: true
   annotations: {}
-  name: intel-gaudi-resource-driver-service-account
+  name: ""
   automount: true
 
 kubeletPlugin:
@@ -36,6 +35,10 @@ kubeletPlugin:
       operator: "Exists"
       effect: "NoSchedule"
   affinity: {}
+
+cdi:
+  staticPath: /etc/cdi
+  dynamicPath: /var/run/cdi
 
 nfd:
   enabled: false # change to true to install NFD to the cluster

@@ -24,8 +24,8 @@ import (
 
 	resourcev1 "k8s.io/api/resource/v1beta1"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
+	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdiparser "tags.cncf.io/container-device-interface/pkg/parser"
 	cdiSpecs "tags.cncf.io/container-device-interface/specs-go"
@@ -34,8 +34,6 @@ import (
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
-
-type ClaimPreparations map[string][]*drav1.Device
 
 type nodeState struct {
 	*helpers.NodeState
@@ -68,7 +66,7 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 	// TODO: should be only create prepared claims, discard old preparations. Do we even need the snapshot?
 	preparedClaims, err := helpers.GetOrCreatePreparedClaims(preparedClaimsFilePath)
 	if err != nil {
-		klog.Errorf("Error getting prepared claims: %v", err)
+		klog.Errorf("failed to get prepared claims: %v", err)
 		return nil, fmt.Errorf("failed to get prepared claims: %v", err)
 	}
 
@@ -104,7 +102,7 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 	return state.NodeState, nil
 }
 
-func (s *nodeState) GetResources() kubeletplugin.Resources {
+func (s *nodeState) GetResources() resourceslice.DriverResources {
 	s.Lock()
 	defer s.Unlock()
 
@@ -135,7 +133,15 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 		devices = append(devices, newDevice)
 	}
 
-	return kubeletplugin.Resources{Devices: devices}
+	driverResource := resourceslice.DriverResources{
+		Pools: map[string]resourceslice.Pool{
+			s.NodeName: {
+				Slices: []resourceslice.Slice{{
+					Devices: devices,
+				}}}},
+	}
+
+	return driverResource
 }
 
 // cdiHabanaEnvVar ensures there is a CDI device with name == claimUID, that has
@@ -143,7 +149,7 @@ func (s *nodeState) GetResources() kubeletplugin.Resources {
 func (s *nodeState) cdiHabanaEnvVar(claimUID string, visibleDevices string) error {
 	cdidev := s.CdiCache.GetDevice(claimUID)
 	if cdidev != nil { // overwrite the contents
-		cdidev.Device.ContainerEdits = cdiSpecs.ContainerEdits{
+		cdidev.ContainerEdits = cdiSpecs.ContainerEdits{
 			Env: []string{visibleDevices},
 		}
 
@@ -214,14 +220,30 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		return fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
 	}
 
-	allocatedDevices := []*drav1.Device{}
+	allocatedDevices, err := s.prepareAllocatedDevices(ctx, claim)
+	if err != nil {
+		return err
+	}
+
+	s.Prepared[string(claim.UID)] = allocatedDevices
+
+	if err = helpers.WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared); err != nil {
+		klog.Errorf("failed to write prepared claims to file: %v", err)
+		return fmt.Errorf("failed to write prepared claims to file: %v", err)
+	}
+
+	klog.V(5).Infof("Created prepared claim %v allocation", claim.UID)
+	return nil
+}
+
+func (s *nodeState) prepareAllocatedDevices(ctx context.Context, claim *resourcev1.ResourceClaim) (allocatedDevices kubeletplugin.PrepareResult, err error) {
+	allocatedDevices = kubeletplugin.PrepareResult{}
 	visibleDevices := device.VisibleDevicesEnvVarName + "="
-	devs := 0
 
 	for _, allocatedDevice := range claim.Status.Allocation.Devices.Results {
 		// ATM the only pool is cluster node's pool: all devices on current node.
 		if allocatedDevice.Driver != device.DriverName || allocatedDevice.Pool != s.NodeName {
-			klog.FromContext(ctx).Info("ignoring claim allocation device", allocatedDevice)
+			klog.Infof("ignoring claim allocation device %+v", allocatedDevice)
 			continue
 		}
 
@@ -229,43 +251,33 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 
 		allocatableDevice, found := allocatableDevices[allocatedDevice.Device]
 		if !found {
-			return fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
+			return allocatedDevices, fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
 		}
 
-		newDevice := drav1.Device{
-			RequestNames: []string{allocatedDevice.Request},
+		newDevice := kubeletplugin.Device{
+			Requests:     []string{allocatedDevice.Request},
 			PoolName:     allocatedDevice.Pool,
 			DeviceName:   allocatedDevice.Device,
 			CDIDeviceIDs: []string{allocatableDevice.CDIName()},
 		}
-		allocatedDevices = append(allocatedDevices, &newDevice)
+		allocatedDevices.Devices = append(allocatedDevices.Devices, newDevice)
 
-		devs++
-		if devs > 1 {
+		if len(allocatedDevices.Devices) > 1 {
 			visibleDevices += ","
 		}
 		visibleDevices += fmt.Sprintf("%v", allocatableDevice.DeviceIdx)
 	}
 
-	if devs > 0 {
+	if len(allocatedDevices.Devices) > 0 {
 		if err := s.cdiHabanaEnvVar(string(claim.UID), visibleDevices); err != nil {
-			return fmt.Errorf("failed ensuring Habana Runtime specific CDI device: %v", err)
+			return allocatedDevices, fmt.Errorf("failed to ensure Habana Runtime specific CDI device: %v", err)
 		}
 
 		cdiName := cdiparser.QualifiedName(device.CDIVendor, device.CDIClass, string(claim.UID))
-		allocatedDevices[0].CDIDeviceIDs = append(allocatedDevices[0].CDIDeviceIDs, cdiName)
+		allocatedDevices.Devices[0].CDIDeviceIDs = append(allocatedDevices.Devices[0].CDIDeviceIDs, cdiName)
 	}
 
-	s.Prepared[string(claim.UID)] = allocatedDevices
-
-	err := helpers.WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared)
-	if err != nil {
-		klog.Errorf("Error writing prepared claims to file: %v", err)
-		return fmt.Errorf("failed to write prepared claims to file: %v", err)
-	}
-
-	klog.V(5).Infof("Created prepared claim %v allocation", claim.UID)
-	return nil
+	return allocatedDevices, nil
 }
 
 func (s *nodeState) AllocatableByPCIAddress(pciAddress string) *device.DeviceInfo {

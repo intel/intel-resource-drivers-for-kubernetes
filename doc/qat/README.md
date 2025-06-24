@@ -31,7 +31,8 @@ Supported Kubernetes versions are listed below:
 | Branch            | Kubernetes branch/version       | Status      | DRA                            |
 |:------------------|:--------------------------------|:------------|:-------------------------------|
 | v0.1.0            | Kubernetes v1.31                | unsupported | Structured Parameters          |
-| v0.2.0            | Kubernetes v1.32+               | supported   | Structured Parameters          |
+| v0.2.0            | Kubernetes v1.32+               | unsupported | Structured Parameters          |
+| v0.3.0            | Kubernetes v1.32+               | supported   | Structured Parameters          |
 
 ## QAT service configuration
 

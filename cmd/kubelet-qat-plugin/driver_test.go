@@ -7,13 +7,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 
+	core "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	kubefake "k8s.io/client-go/kubernetes/fake"
-	drav1 "k8s.io/kubelet/pkg/apis/dra/v1beta1"
+	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/fakesysfs"
 	helpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
@@ -31,6 +34,13 @@ func newFakeDriver(ctx context.Context) (*driver, error) {
 		return nil, err
 	}
 
+	// kubelet-plugin will access node object, it needs to exist.
+	newNode := &core.Node{ObjectMeta: metav1.ObjectMeta{Name: testNodeName}}
+	clientSet := kubefake.NewSimpleClientset()
+	if _, err := clientSet.CoreV1().Nodes().Create(ctx, newNode, metav1.CreateOptions{}); err != nil {
+		return nil, fmt.Errorf("failed creating fake node object: %v", err)
+	}
+
 	d := &driver{
 		kubeclient: kubefake.NewSimpleClientset(),
 		nodename:   testNodeName,
@@ -44,9 +54,8 @@ func newFakeDriver(ctx context.Context) (*driver, error) {
 func TestDriver(t *testing.T) {
 	type testCase struct {
 		name             string
-		claims           []*resourcev1.ResourceClaim
-		request          *drav1.NodePrepareResourcesRequest
-		expectedResponse *drav1.NodePrepareResourcesResponse
+		request          []*resourcev1.ResourceClaim
+		expectedResponse map[types.UID]kubeletplugin.PrepareResult
 	}
 
 	setupdevices := fakesysfs.QATDevices{
@@ -77,61 +86,52 @@ func TestDriver(t *testing.T) {
 	testcases := []testCase{
 		{
 			name: "QAT allocate device",
-			claims: []*resourcev1.ResourceClaim{
+			request: []*resourcev1.ResourceClaim{
 				helpers.NewClaim(testNameSpace, "claim1", "uid1", "request1", "qat.intel.com", testNodeName, []string{"qatvf-0000-aa-00-1"}),
 			},
-			request: &drav1.NodePrepareResourcesRequest{
-				Claims: []*drav1.Claim{{UID: "uid1", Name: "claim1", Namespace: testNameSpace}},
-			},
-			expectedResponse: &drav1.NodePrepareResourcesResponse{
-				Claims: map[string]*drav1.NodePrepareResourceResponse{
-					"uid1": {Devices: []*drav1.Device{
-						{RequestNames: []string{"request1"}, PoolName: testNodeName, DeviceName: "qatvf-0000-aa-00-1", CDIDeviceIDs: []string{"intel.com/qat=qatvf-0000-aa-00-1", "intel.com/qat=qatvf-vfio"}}}},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid1": {
+					Devices: []kubeletplugin.Device{
+						{Requests: []string{"request1"}, PoolName: testNodeName, DeviceName: "qatvf-0000-aa-00-1", CDIDeviceIDs: []string{"intel.com/qat=qatvf-0000-aa-00-1", "intel.com/qat=qatvf-vfio"}},
+					},
 				},
 			},
 		},
 		{
 			name: "QAT reallocate same device and same claim UID",
-			claims: []*resourcev1.ResourceClaim{
+			request: []*resourcev1.ResourceClaim{
 				helpers.NewClaim(testNameSpace, "claim-a", "uid1", "request1", "qat.intel.com", testNodeName, []string{"qatvf-0000-aa-00-1"}),
 			},
-			request: &drav1.NodePrepareResourcesRequest{
-				Claims: []*drav1.Claim{{UID: "uid1", Name: "claim1", Namespace: testNameSpace}},
-			},
-			expectedResponse: &drav1.NodePrepareResourcesResponse{
-				Claims: map[string]*drav1.NodePrepareResourceResponse{
-					"uid1": {Devices: []*drav1.Device{
-						{RequestNames: []string{"request1"}, PoolName: testNodeName, DeviceName: "qatvf-0000-aa-00-1", CDIDeviceIDs: []string{"intel.com/qat=qatvf-0000-aa-00-1", "intel.com/qat=qatvf-vfio"}}}},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid1": {
+					Devices: []kubeletplugin.Device{
+						{Requests: []string{"request1"}, PoolName: testNodeName, DeviceName: "qatvf-0000-aa-00-1", CDIDeviceIDs: []string{"intel.com/qat=qatvf-0000-aa-00-1", "intel.com/qat=qatvf-vfio"}},
+					},
 				},
 			},
 		},
 		{
 			name: "QAT device already allocated",
-			claims: []*resourcev1.ResourceClaim{
+			request: []*resourcev1.ResourceClaim{
 				helpers.NewClaim(testNameSpace, "claim2", "uid2", "request1", "qat.intel.com", testNodeName, []string{"qatvf-0000-aa-00-1"}),
 			},
-			request: &drav1.NodePrepareResourcesRequest{
-				Claims: []*drav1.Claim{{UID: "uid2", Name: "claim2", Namespace: testNameSpace}},
-			},
-			expectedResponse: &drav1.NodePrepareResourcesResponse{
-				Claims: map[string]*drav1.NodePrepareResourceResponse{
-					"uid2": {Error: "could not allocate device 'qatvf-0000-aa-00-1', service '' from any device"},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid2": {
+					Err: fmt.Errorf("could not allocate device 'qatvf-0000-aa-00-1', service '' from any device"),
 				},
 			},
 		},
 		{
 			name: "QAT two devices",
-			claims: []*resourcev1.ResourceClaim{
+			request: []*resourcev1.ResourceClaim{
 				helpers.NewClaim(testNameSpace, "claim3", "uid1", "request3", "qat.intel.com", testNodeName, []string{"qatvf-0000-aa-00-3", "qatvf-0000-bb-00-1"}),
 			},
-			request: &drav1.NodePrepareResourcesRequest{
-				Claims: []*drav1.Claim{{UID: "uid1", Name: "claim3", Namespace: testNameSpace}},
-			},
-			expectedResponse: &drav1.NodePrepareResourcesResponse{
-				Claims: map[string]*drav1.NodePrepareResourceResponse{
-					"uid1": {Devices: []*drav1.Device{
-						{RequestNames: []string{"request3"}, PoolName: testNodeName, DeviceName: "qatvf-0000-aa-00-3", CDIDeviceIDs: []string{"intel.com/qat=qatvf-0000-aa-00-3", "intel.com/qat=qatvf-vfio"}},
-						{RequestNames: []string{"request3"}, PoolName: testNodeName, DeviceName: "qatvf-0000-bb-00-1", CDIDeviceIDs: []string{"intel.com/qat=qatvf-0000-bb-00-1", "intel.com/qat=qatvf-vfio"}}}},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid1": {
+					Devices: []kubeletplugin.Device{
+						{Requests: []string{"request3"}, PoolName: testNodeName, DeviceName: "qatvf-0000-aa-00-3", CDIDeviceIDs: []string{"intel.com/qat=qatvf-0000-aa-00-3", "intel.com/qat=qatvf-vfio"}},
+						{Requests: []string{"request3"}, PoolName: testNodeName, DeviceName: "qatvf-0000-bb-00-1", CDIDeviceIDs: []string{"intel.com/qat=qatvf-0000-bb-00-1", "intel.com/qat=qatvf-vfio"}},
+					},
 				},
 			},
 		},
@@ -140,16 +140,7 @@ func TestDriver(t *testing.T) {
 	for _, testcase := range testcases {
 		t.Log(testcase.name)
 
-		for _, testClaim := range testcase.claims {
-			createdClaim, err := driver.kubeclient.ResourceV1beta1().ResourceClaims(testClaim.Namespace).Create(context.TODO(), testClaim, metav1.CreateOptions{})
-			if err != nil {
-				t.Errorf("could not create test claim: %v", err)
-				continue
-			}
-			t.Logf("created test claim: %+v", createdClaim)
-		}
-
-		response, err := driver.NodePrepareResources(context.TODO(), testcase.request)
+		response, err := driver.PrepareResourceClaims(context.TODO(), testcase.request)
 		if err != nil {
 			t.Errorf("%v: error %v, expected no error", testcase.name, err)
 			continue

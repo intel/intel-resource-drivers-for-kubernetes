@@ -111,7 +111,7 @@ func updateDevicesInSpecsAndWrite(cdCache *cdiapi.Cache, devicesToAdd device.Dev
 			}
 		}
 
-		vendorSpec.Spec.Devices = filteredDevices
+		vendorSpec.Devices = filteredDevices
 		specName := path.Base(vendorSpec.GetPath())
 		klog.V(5).Infof("Updating spec %v", specName)
 		if err := writeSpec(cdCache, vendorSpec.Spec, specName); err != nil {
@@ -129,7 +129,7 @@ func AddDeviceToAnySpec(cdiCache *cdiapi.Cache, vendor string, newDevice cdiSpec
 	}
 
 	cdiSpec := vendorSpecs[0]
-	cdiSpec.Spec.Devices = append(cdiSpec.Spec.Devices, newDevice)
+	cdiSpec.Devices = append(cdiSpec.Devices, newDevice)
 	specName := path.Base(cdiSpec.GetPath())
 
 	return writeSpec(cdiCache, cdiSpec.Spec, specName)
