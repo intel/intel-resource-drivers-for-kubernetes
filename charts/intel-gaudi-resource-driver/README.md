@@ -11,9 +11,9 @@ More info: [Intel Resource Drivers for Kubernetes](https://github.com/intel/inte
 
 ```console
 helm install \
-    --namespace intel-gaudi-resource-driver
+    --namespace intel-gaudi-resource-driver \
     --create-namespace \
-    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver-chart \
+    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver-chart
 ```
 
 > [!NOTE]
@@ -24,7 +24,7 @@ helm install \
 kubectl create namespace intel-gaudi-resource-driver
 kubectl label --overwrite namespace intel-gaudi-resource-driver pod-security.kubernetes.io/enforce=privileged
 helm install \
-    --namespace "intel-gaudi-resource-driver" \
+    --namespace intel-gaudi-resource-driver \
     intel-gaudi-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver-chart
 ```
 
