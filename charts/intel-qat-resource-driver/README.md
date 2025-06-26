@@ -13,7 +13,7 @@ More info: [Intel Resource Drivers for Kubernetes](https://github.com/intel/inte
 helm install \
     --namespace intel-qat-resource-driver \
     --create-namespace \
-    intel-qat-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/     intel-qat-resource-driver \
+    intel-qat-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-qat-resource-driver
 ```
 
 > [!NOTE]
