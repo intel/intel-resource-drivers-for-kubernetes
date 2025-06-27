@@ -279,7 +279,7 @@ func TestGaudiUnprepareResourceClaims(t *testing.T) {
 		{
 			name:             "single claim",
 			request:          []kubeletplugin.NamespacedObject{{UID: "uid1"}},
-			expectedResponse: map[types.UID]error{},
+			expectedResponse: map[types.UID]error{"uid1": nil},
 			preparedClaims: helpers.ClaimPreparations{
 				"uid1": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-00-02-0-0x1020", "intel.com/gaudi=uid1"}}}},
 			},
@@ -288,7 +288,7 @@ func TestGaudiUnprepareResourceClaims(t *testing.T) {
 		{
 			name:             "subset of claims",
 			request:          []kubeletplugin.NamespacedObject{{UID: "uid2"}},
-			expectedResponse: map[types.UID]error{},
+			expectedResponse: map[types.UID]error{"uid2": nil},
 			preparedClaims: helpers.ClaimPreparations{
 				"uid1": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, PoolName: "node1", DeviceName: "0000-af-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-af-00-0-0x1020", "intel.com/gaudi=uid1"}}}},
 				"uid2": {Devices: []kubeletplugin.Device{{Requests: []string{"request2"}, PoolName: "node1", DeviceName: "0000-b3-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-b3-00-0-0x1020", "intel.com/gaudi=uid2"}}}},
@@ -300,7 +300,7 @@ func TestGaudiUnprepareResourceClaims(t *testing.T) {
 		{
 			name:             "non-existent claim success",
 			request:          []kubeletplugin.NamespacedObject{{UID: "uid1"}},
-			expectedResponse: map[types.UID]error{},
+			expectedResponse: map[types.UID]error{"uid1": nil},
 			preparedClaims: helpers.ClaimPreparations{
 				"uid2": {Devices: []kubeletplugin.Device{{Requests: []string{"request2"}, PoolName: "node1", DeviceName: "0000-b3-00-0-0x1020", CDIDeviceIDs: []string{"intel.com/gaudi=0000-b3-00-0-0x1020", "intel.com/gaudi=uid2"}}}},
 			},
