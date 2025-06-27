@@ -24,7 +24,7 @@ version = 2
   each with 64 SR-IOV VFs = 640 VFs on the same node).
 - v0.6.0 only supports K8s v1.31 which does not have partitionable devices support,
   therefore this release does not support dynamic GPU SR-IOV configuration.
-- v0.6.0 does not support classic DRA and only relies on Structured Parameters DRA
+- v0.6.0+ do not support classic DRA and only relies on Structured Parameters DRA
 
 ## Deploy resource-driver
 

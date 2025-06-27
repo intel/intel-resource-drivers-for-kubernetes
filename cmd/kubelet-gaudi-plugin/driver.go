@@ -178,6 +178,7 @@ func (d *driver) UnprepareResourceClaims(ctx context.Context, claims []kubeletpl
 			continue
 		}
 
+		response[claim.UID] = nil
 		klog.V(3).Infof("Freed devices for claim '%v'", claim.UID)
 
 	}
