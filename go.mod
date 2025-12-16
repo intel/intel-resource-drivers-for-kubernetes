@@ -16,7 +16,7 @@ require (
 	k8s.io/component-base v0.34.0
 	k8s.io/dynamic-resource-allocation v0.34.0
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/kubernetes v1.34.0
+	k8s.io/kubernetes v1.34.2
 	k8s.io/pod-security-admission v0.34.0
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
 	tags.cncf.io/container-device-interface v1.0.1
