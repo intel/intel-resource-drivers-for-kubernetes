@@ -1,0 +1,33 @@
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: memory-selector-claim
+  namespace: intel-gpu-resource-driver
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.intel.com
+          selectors:
+          - cel:
+              expression: device.capacity["gpu.intel.com"].memory.compareTo(quantity("1Gi")) >= 0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: memory-selector-test
+  namespace: intel-gpu-resource-driver
+spec:
+  restartPolicy: Never
+  containers:
+  - name: with-resource
+    image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+    command: ["sh", "-c", "echo 'Testing GPU memory capacity selector' && ls -la /dev/dri/ && CARD_COUNT=$(ls -1 /dev/dri/card* 2>/dev/null | wc -l) && RENDER_COUNT=$(ls -1 /dev/dri/renderD[12][0-9][0-9] 2>/dev/null | wc -l) && echo \"Found $CARD_COUNT card device(s) and $RENDER_COUNT render device(s)\" && test $CARD_COUNT -eq 1 && test $RENDER_COUNT -eq 1 && echo 'SUCCESS: GPU allocated'"]
+    resources:
+      claims:
+      - name: resource
+  resourceClaims:
+  - name: resource
+    resourceClaimTemplateName: memory-selector-claim
