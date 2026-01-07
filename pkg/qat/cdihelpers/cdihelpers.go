@@ -18,11 +18,10 @@ package cdihelpers
 
 import (
 	"fmt"
-	"path"
 
 	"k8s.io/klog/v2"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
-	cdispecs "tags.cncf.io/container-device-interface/specs-go"
+	cdiSpecs "tags.cncf.io/container-device-interface/specs-go"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/qat/device"
 )
@@ -37,100 +36,83 @@ func getQatSpecs(cdiCache *cdiapi.Cache) []*cdiapi.Spec {
 	return qatSpecs
 }
 
-func SyncDevices(cdiCache *cdiapi.Cache, vfdevices device.VFDevices) error {
-	klog.V(5).Info("Syncing CDI devices")
-
-	vfspec := &cdispecs.Spec{
-		Kind: device.CDIKind,
-	}
-	vfspecname := cdiapi.GenerateSpecName(device.CDIVendor, device.CDIClass)
-
-	for _, vendorspec := range getQatSpecs(cdiCache) {
-		vendorspecname := path.Base(vendorspec.GetPath())
-
-		name := vfspecname + path.Ext(vendorspecname)
-		if name == vendorspecname {
-			klog.V(5).Infof("Adding rest of the devices to '%s'", name)
-			vfspec = vendorspec.Spec
-		}
-
-		vendorspecupdate := false
-		vendorspecdevices := []cdispecs.Device{}
-
-		for _, vendordevice := range vendorspec.Devices {
-			if _, exists := vfdevices[vendordevice.Name]; exists {
-				klog.V(5).Infof("Vendor spec %s contains device name %s", vendorspecname, vendordevice.Name)
-
-				delete(vfdevices, vendordevice.Name)
-				vendorspecdevices = append(vendorspecdevices, vendordevice)
-			} else {
-				klog.Warningf("CDI device '%s' in spec file '%s' does not exist", vendordevice.Name, vendorspecname)
-				vendorspecupdate = true
-			}
-		}
-		if vendorspecupdate {
-			vendorspec.Devices = vendorspecdevices
-
-			if len(vendorspec.Devices) == 0 {
-				klog.V(5).Infof("No devices in spec %v, deleting it", vendorspecname)
-				if err := cdiCache.RemoveSpec(vendorspecname); err != nil {
-					klog.Errorf("failed to remove empty CDI spec %v: %v", vendorspecname, err)
-				}
-				continue
-			}
-
-			// Update spec file that has a nonexistent device.
-			klog.Infof("Updating spec file %s with existing devices", path.Base(vendorspec.GetPath()))
-			if err := cdiCache.WriteSpec(vendorspec.Spec, vendorspecname); err != nil {
-				klog.Errorf("Failed to update existing CDI spec file %s: %v", vendorspecname, err)
-			}
+// AddDetectedDevicesToCDIRegistry adds detected devices into cdi registry after
+// deleting old specs.
+func AddDetectedDevicesToCDIRegistry(cdiCache *cdiapi.Cache, vfDevices device.VFDevices) error {
+	qatSpecs := getQatSpecs(cdiCache)
+	// delete all existing QAT specs.
+	for _, spec := range qatSpecs {
+		if err := cdiCache.RemoveSpec(spec.GetPath()); err != nil {
+			return fmt.Errorf("failed to remove old CDI spec %v: %v", spec, err)
 		}
 	}
 
-	if len(vfdevices) > 0 {
-		return appendDevices(cdiCache, vfspec, vfdevices, vfspecname)
+	if err := addDevicesToNewSpec(cdiCache, vfDevices); err != nil {
+		return fmt.Errorf("failed adding devices to new CDI spec: %v", err)
 	}
 
 	return nil
 }
 
-func addDeviceSpec(spec *cdispecs.Spec, vfdevices device.VFDevices) error {
+// addDevicesToNewSpec creates new CDI spec, adds devices to it and calls writeSpec.
+// Old specs are expected to be deleted before writing new spec.
+func addDevicesToNewSpec(cdiCache *cdiapi.Cache, devices device.VFDevices) error {
+	klog.V(5).Infof("Adding %v devices to new spec", len(devices))
 
-	for _, vf := range vfdevices {
-		cdidevice := cdispecs.Device{
+	spec := &cdiSpecs.Spec{
+		Kind: device.CDIKind,
+	}
+
+	specName, err := cdiapi.GenerateNameForSpec(spec)
+	if err != nil {
+		return fmt.Errorf("failed to generate name for cdi device spec: %+v", err)
+	}
+	klog.V(5).Infof("New name for new CDI spec: %v", specName)
+
+	return addDevicesToSpecAndWrite(cdiCache, devices, spec, specName)
+}
+
+func addDevicesToSpecAndWrite(cdiCache *cdiapi.Cache, vfDevices device.VFDevices, spec *cdiSpecs.Spec, specName string) error {
+	for _, vf := range vfDevices {
+		// primary / control node (for modesetting)
+		newDevice := cdiSpecs.Device{
 			Name: vf.UID(),
-			ContainerEdits: cdispecs.ContainerEdits{
-				DeviceNodes: []*cdispecs.DeviceNode{
+			ContainerEdits: cdiSpecs.ContainerEdits{
+				DeviceNodes: []*cdiSpecs.DeviceNode{
 					{Path: vf.DeviceNode(), Type: "c"},
 				},
 			},
 		}
-		spec.Devices = append(spec.Devices, cdidevice)
+		spec.Devices = append(spec.Devices, newDevice)
+	}
 
-		klog.V(5).Infof("Added device %s name %s", cdidevice.ContainerEdits.DeviceNodes[0].Path, cdidevice.Name)
+	if err := writeSpec(cdiCache, spec, specName); err != nil {
+		return fmt.Errorf("failed to save new CDI spec %v: %v", specName, err)
 	}
 	return nil
 }
 
-func appendDevices(cdiCache *cdiapi.Cache, spec *cdispecs.Spec, vfdevices device.VFDevices, name string) error {
-
-	klog.V(5).Info("Append CDI devices")
-
-	if err := addDeviceSpec(spec, vfdevices); err != nil {
-		return err
-	}
-
-	version, err := cdiapi.MinimumRequiredVersion(spec)
+// writeSpec sets latest cdiVersion for spec and writes it.
+func writeSpec(cdiCache *cdiapi.Cache, spec *cdiSpecs.Spec, specName string) error {
+	cdiVersion, err := cdiapi.MinimumRequiredVersion(spec)
 	if err != nil {
-		return fmt.Errorf("minimum CDI spec version not found: %v", err)
+		return fmt.Errorf("failed to get minimum required CDI spec version: %v", err)
 	}
-	spec.Version = version
+	spec.Version = cdiVersion
 
-	err = cdiCache.WriteSpec(spec, name)
+	if len(spec.Devices) == 0 {
+		klog.V(5).Infof("No devices in spec %v, deleting it", specName)
+		if err := cdiCache.RemoveSpec(specName); err != nil {
+			return fmt.Errorf("failed to remove empty CDI spec %v: %v", specName, err)
+		}
+		return nil
+	}
+
+	klog.V(5).Infof("Writing spec %v", specName)
+	err = cdiCache.WriteSpec(spec, specName)
 	if err != nil {
-		return fmt.Errorf("failed to write CDI spec %s: %v", name, err)
+		return fmt.Errorf("failed to write CDI spec %v: %v", specName, err)
 	}
 
-	klog.Infof("CDI %s: Kind %s, Version %v", name, spec.Kind, spec.Version)
 	return nil
 }

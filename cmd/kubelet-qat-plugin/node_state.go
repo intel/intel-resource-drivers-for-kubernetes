@@ -48,7 +48,7 @@ func newNodeState(detectedDevices device.VFDevices, cdiRoot string, preparedClai
 
 	cdiCache := cdiapi.GetDefaultCache()
 
-	if err := cdihelpers.SyncDevices(cdiCache, detectedDevices); err != nil {
+	if err := cdihelpers.AddDetectedDevicesToCDIRegistry(cdiCache, detectedDevices); err != nil {
 		return nil, fmt.Errorf("cannot sync CDI devices: %v", err)
 	}
 

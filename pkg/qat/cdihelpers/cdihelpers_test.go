@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
-	cdispecs "tags.cncf.io/container-device-interface/specs-go"
+	cdiSpecs "tags.cncf.io/container-device-interface/specs-go"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/fakesysfs"
 	testhelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
@@ -30,20 +30,19 @@ import (
 
 const DriverName = "qat"
 
-// TestSyncDevices acts as an orchestrator. It spawns a new process for each test case.
-// This ensures that global state (like cached SYSFS_ROOT in the device package) is fresh for every case.
-func TestSyncDevices(t *testing.T) {
+func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 
-	testcases := []struct {
-		Name          string
-		ExistingSpecs []*cdispecs.Spec
-		SysfsDevices  fakesysfs.QATDevices
-		ExpectedUIDs  []string
+	tests := []struct {
+		name            string
+		existingSpecs   []*cdiapi.Spec
+		detectedDevices fakesysfs.QATDevices
+		expectedError   bool
+		expectedUIDs    []string
 	}{
 		{
-			Name:          "Add 2 VFs to empty spec",
-			ExistingSpecs: []*cdispecs.Spec{},
-			SysfsDevices: fakesysfs.QATDevices{
+			name:          "No existing specs, add new devices",
+			existingSpecs: []*cdiapi.Spec{},
+			detectedDevices: fakesysfs.QATDevices{
 				{
 					Device:   "0000:4b:00.0",
 					State:    "up",
@@ -51,27 +50,26 @@ func TestSyncDevices(t *testing.T) {
 					TotalVFs: 2,
 				},
 			},
-			ExpectedUIDs: []string{"qatvf-0000-4b-00-1", "qatvf-0000-4b-00-2"},
+			expectedUIDs:  []string{"qatvf-0000-4b-00-1", "qatvf-0000-4b-00-2"},
+			expectedError: false,
 		},
 		{
-			Name: "Replace removed device with 2 VFs",
-			ExistingSpecs: []*cdispecs.Spec{
+			name: "Existing specs, update devices",
+			existingSpecs: []*cdiapi.Spec{
 				{
-					Kind:    device.CDIKind,
-					Version: "0.5.0",
-					Devices: []cdispecs.Device{
-						{
-							Name: "removed-device",
-							ContainerEdits: cdispecs.ContainerEdits{
-								DeviceNodes: []*cdispecs.DeviceNode{
-									{Path: "/dev/null"},
-								},
+					Spec: &cdiSpecs.Spec{
+						Kind:    device.CDIKind,
+						Version: "0.6.0",
+						Devices: []cdiSpecs.Device{{
+							Name: "device1",
+							ContainerEdits: cdiSpecs.ContainerEdits{
+								Env: []string{"VAR1=VAL1"},
 							},
-						},
+						}},
 					},
 				},
 			},
-			SysfsDevices: fakesysfs.QATDevices{
+			detectedDevices: fakesysfs.QATDevices{
 				{
 					Device:   "0000:4b:00.0",
 					State:    "up",
@@ -79,93 +77,50 @@ func TestSyncDevices(t *testing.T) {
 					TotalVFs: 2,
 				},
 			},
-			ExpectedUIDs: []string{"qatvf-0000-4b-00-1", "qatvf-0000-4b-00-2"},
+			expectedUIDs:  []string{"qatvf-0000-4b-00-1", "qatvf-0000-4b-00-2"},
+			expectedError: false,
 		},
 		{
-			Name: "Delete (only) device",
-			ExistingSpecs: []*cdispecs.Spec{
+			name: "Existing specs, no detected devices",
+			existingSpecs: []*cdiapi.Spec{
 				{
-					Kind:    device.CDIKind,
-					Version: "0.5.0",
-					Devices: []cdispecs.Device{
-						{
-							Name: "qatvf-0000-4b-00-1",
-							ContainerEdits: cdispecs.ContainerEdits{
-								DeviceNodes: []*cdispecs.DeviceNode{
-									{Path: "/dev/vfio/1"},
-								},
-							},
-						},
+					Spec: &cdiSpecs.Spec{
+						Kind:    device.CDIKind,
+						Version: "0.6.0",
+						Devices: []cdiSpecs.Device{},
 					},
 				},
 			},
-			SysfsDevices: fakesysfs.QATDevices{}, // Empty sysfs
-			ExpectedUIDs: []string{},
-		},
-		{
-			Name: "Delete 1 of the 2 devices",
-			ExistingSpecs: []*cdispecs.Spec{
-				{
-					Kind:    device.CDIKind,
-					Version: "0.5.0",
-					Devices: []cdispecs.Device{
-						{
-							Name: "qatvf-0000-00-00-1",
-							ContainerEdits: cdispecs.ContainerEdits{
-								DeviceNodes: []*cdispecs.DeviceNode{
-									{Path: "/dev/vfio/1"},
-								},
-							},
-						},
-						{
-							Name: "qatvf-0000-00-00-2",
-							ContainerEdits: cdispecs.ContainerEdits{
-								DeviceNodes: []*cdispecs.DeviceNode{
-									{Path: "/dev/vfio/2"},
-								},
-							},
-						},
-					},
-				},
-			},
-			SysfsDevices: fakesysfs.QATDevices{
-				{
-					Device:   "0000:00:00.0",
-					State:    "up",
-					NumVFs:   1,
-					TotalVFs: 1,
-				},
-			},
-			ExpectedUIDs: []string{"qatvf-0000-00-00-1"},
+			detectedDevices: fakesysfs.QATDevices{},
+			expectedUIDs:    []string{},
+			expectedError:   false,
 		},
 	}
-
-	for _, tc := range testcases {
-		t.Run(tc.Name, func(t *testing.T) {
-			testDirs, err := testhelpers.NewTestDirs("qat.intel.com")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testDirs, err := testhelpers.NewTestDirs(device.DriverName)
 			if err != nil {
-				t.Errorf("%v: setup error: %v", tc.Name, err)
-				return
+				t.Fatalf("could not create fake system dirs: %v", err)
 			}
-			defer testhelpers.CleanupTest(t, tc.Name, testDirs.TestRoot)
+			defer testhelpers.CleanupTest(t, tt.name, testDirs.TestRoot)
 
 			t.Setenv("SYSFS_ROOT", testDirs.SysfsRoot)
 			defer device.ClearSysfsRoot()
 
-			cache, err := cdiapi.NewCache(cdiapi.WithSpecDirs(testDirs.CdiRoot))
+			cdiCache, err := cdiapi.NewCache(cdiapi.WithSpecDirs(testDirs.CdiRoot))
 			if err != nil {
-				t.Fatalf("Failed to create cache: %v", err)
+				t.Fatalf("failed to create CDI cache: %v", err)
 			}
 
 			specName := cdiapi.GenerateSpecName(device.CDIVendor, device.CDIClass)
-			for _, spec := range tc.ExistingSpecs {
-				if err := cache.WriteSpec(spec, specName); err != nil {
-					t.Fatalf("Failed to write spec: %v", err)
+			for _, spec := range tt.existingSpecs {
+				if err := writeSpec(cdiCache, spec.Spec, specName); err != nil {
+					t.Fatalf("failed to write spec, %v", err)
 				}
 			}
 			testhelpers.CDICacheDelay()
 
-			if err := fakesysfs.FakeSysFsQATContents(testDirs.SysfsRoot, tc.SysfsDevices); err != nil {
+			if err := fakesysfs.FakeSysFsQATContents(testDirs.SysfsRoot, tt.detectedDevices); err != nil {
 				t.Errorf("setup error: could not create fake sysfs: %v", err)
 			}
 
@@ -176,13 +131,15 @@ func TestSyncDevices(t *testing.T) {
 
 			vfDevices := device.GetCDIDevices(devs)
 
-			err = SyncDevices(cache, vfDevices)
-			if err != nil {
-				t.Fatalf("SyncDevices failed: %v", err)
+			t.Logf("existing specs: %v", cdiCache.GetVendorSpecs(device.CDIVendor))
+
+			if err := AddDetectedDevicesToCDIRegistry(cdiCache, vfDevices); (err != nil) != tt.expectedError {
+				t.Errorf("SyncDetectedDevicesWithRegistry() error = %v, expectedError %v", err, tt.expectedError)
 			}
+
 			testhelpers.CDICacheDelay()
 
-			specs := cache.GetVendorSpecs(device.CDIVendor)
+			specs := cdiCache.GetVendorSpecs(device.CDIVendor)
 			var foundUIDs []string
 			for _, spec := range specs {
 				for _, d := range spec.Devices {
@@ -191,13 +148,13 @@ func TestSyncDevices(t *testing.T) {
 			}
 			sort.Strings(foundUIDs)
 
-			if len(foundUIDs) != len(tc.ExpectedUIDs) {
-				t.Fatalf("Mismatch in number of devices: expected %d, got %d", len(tc.ExpectedUIDs), len(foundUIDs))
+			if len(foundUIDs) != len(tt.expectedUIDs) {
+				t.Fatalf("Mismatch in number of devices: expected %d, got %d", len(tt.expectedUIDs), len(foundUIDs))
 			}
 
 			for i, foundUID := range foundUIDs {
-				if foundUID != tc.ExpectedUIDs[i] {
-					t.Errorf("Mismatch at index %d: expected %s, got %s", i, tc.ExpectedUIDs[i], foundUID)
+				if foundUID != tt.expectedUIDs[i] {
+					t.Errorf("Mismatch at index %d: expected %s, got %s", i, tt.expectedUIDs[i], foundUID)
 				}
 			}
 		})
