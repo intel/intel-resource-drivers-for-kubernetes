@@ -27,6 +27,7 @@ import (
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 
+	"k8s.io/dynamic-resource-allocation/deviceattribute"
 	"k8s.io/klog/v2"
 )
 
@@ -97,9 +98,15 @@ func scanDevicesFromDriverDirFiles(driverDirFiles []os.DirEntry, sysfsDriverDir 
 			Model:      deviceId,
 			DeviceIdx:  deviceIdx,
 			ModuleIdx:  moduleIdx,
-			PCIRoot:    helpers.DeterminePCIRoot(driverDeviceDir),
 			UVerbsIdx:  uverbsIdx,
 		}
+		pciRootAttribute, err := deviceattribute.GetPCIeRootAttributeByPCIBusID(devicePCIAddress)
+		if err != nil {
+			klog.Warningf("could not detect PCI root complex for %v: %v", devicePCIAddress, err)
+		} else {
+			newDeviceInfo.PCIRoot = *pciRootAttribute.Value.StringValue
+		}
+
 		// Set user-friendly ModelName field.
 		newDeviceInfo.SetModelName()
 

@@ -26,6 +26,7 @@ import (
 	inf "gopkg.in/inf.v0"
 	resourcev1 "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/dynamic-resource-allocation/deviceattribute"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
@@ -129,6 +130,9 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 				},
 				"healthy": {
 					BoolValue: &gpu.Healthy,
+				},
+				deviceattribute.StandardDeviceAttributePCIeRoot: {
+					StringValue: &gpu.PCIRoot,
 				},
 			},
 			Capacity: map[resourcev1.QualifiedName]resourcev1.DeviceCapacity{
