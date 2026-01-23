@@ -24,6 +24,7 @@ import (
 	"time"
 
 	resourcev1 "k8s.io/api/resource/v1"
+	"k8s.io/dynamic-resource-allocation/deviceattribute"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
@@ -114,11 +115,23 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 				"model": {
 					StringValue: &gaudi.ModelName,
 				},
-				"pciRoot": {
+				deviceattribute.StandardDeviceAttributePCIeRoot: {
 					StringValue: &gaudi.PCIRoot,
 				},
 			},
 		}
+
+		// pciRoot Device.DeviceAttribute is deprecated: will be removed in 1.0.0 release, use resource.kubernetes.io/pcieRoot'.
+		// For backwards compatibility, strip domain, only bus was in the value.
+		if len(gaudi.PCIRoot) > 0 {
+			parts := strings.Split(gaudi.PCIRoot, ":")
+			if len(parts) == 2 {
+				newDevice.Attributes["pciRoot"] = resourcev1.DeviceAttribute{
+					StringValue: &parts[1],
+				}
+			}
+		}
+
 		devices = append(devices, newDevice)
 	}
 

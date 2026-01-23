@@ -40,7 +40,6 @@ import (
 
 func TestGaudiFakeSysfs(t *testing.T) {
 	testDirs, err := testhelpers.NewTestDirs(device.DriverName)
-	defer testhelpers.CleanupTest(t, "TestGaudiFakeSysfs", testDirs.TestRoot)
 	if err != nil {
 		t.Errorf("could not create fake system dirs: %v", err)
 		return
@@ -51,7 +50,12 @@ func TestGaudiFakeSysfs(t *testing.T) {
 		testDirs.SysfsRoot,
 		testDirs.DevfsRoot,
 		device.DevicesInfo{
-			"0000-0f-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:0f:00.0", DeviceIdx: 0, UID: "0000-0f-00-0-0x1020", PCIRoot: "01"},
+			"0000-0f-00-0-0x1020": {
+				Model:      "0x1020",
+				PCIAddress: "0000:0f:00.0",
+				DeviceIdx:  0,
+				UID:        "0000-0f-00-0-0x1020",
+				PCIRoot:    "pci0000:01"},
 		},
 		false,
 	); err != nil {
@@ -188,9 +192,9 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 		}
 
 		fakeGaudis := device.DevicesInfo{
-			"0000-00-02-0-0x1020": {Model: "0x1020", DeviceIdx: 0, PCIAddress: "0000:00:02.0", UID: "0000-00-02-0-0x1020", PCIRoot: "01"},
-			"0000-00-03-0-0x1020": {Model: "0x1020", DeviceIdx: 1, PCIAddress: "0000:00:03.0", UID: "0000-00-03-0-0x1020", PCIRoot: "01"},
-			"0000-00-04-0-0x1020": {Model: "0x1020", DeviceIdx: 2, PCIAddress: "0000:00:04.0", UID: "0000-00-04-0-0x1020", PCIRoot: "02"},
+			"0000-00-02-0-0x1020": {Model: "0x1020", DeviceIdx: 0, PCIAddress: "0000:00:02.0", UID: "0000-00-02-0-0x1020", PCIRoot: "pci0000:01"},
+			"0000-00-03-0-0x1020": {Model: "0x1020", DeviceIdx: 1, PCIAddress: "0000:00:03.0", UID: "0000-00-03-0-0x1020", PCIRoot: "pci0000:01"},
+			"0000-00-04-0-0x1020": {Model: "0x1020", DeviceIdx: 2, PCIAddress: "0000:00:04.0", UID: "0000-00-04-0-0x1020", PCIRoot: "pci0000:02"},
 		}
 
 		if testcase.noDetectedDevices {
@@ -317,8 +321,8 @@ func TestGaudiUnprepareResourceClaims(t *testing.T) {
 			testDirs.SysfsRoot,
 			testDirs.DevfsRoot,
 			device.DevicesInfo{
-				"0000-b3-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:b3:00.0", DeviceIdx: 0, UID: "0000-b3-00-0-0x1020", PCIRoot: "01"},
-				"0000-af-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:af:00.0", DeviceIdx: 1, UID: "0000-af-00-0-0x1020", PCIRoot: "01"},
+				"0000-b3-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:b3:00.0", DeviceIdx: 0, UID: "0000-b3-00-0-0x1020", PCIRoot: "pci0000:01"},
+				"0000-af-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:af:00.0", DeviceIdx: 1, UID: "0000-af-00-0-0x1020", PCIRoot: "pci0000:01"},
 			},
 			false,
 		); err != nil {

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -84,4 +85,38 @@ func createDevice(filepath string, real bool) error {
 	devid := int(unix.Mkdev(uint32(devNullMajor), uint32(devNullMinor)))
 
 	return unix.Mknod(filepath, mode, devid)
+}
+
+func fakePCIDeviceSymlink(sysfsRoot, pciRoot, pciAddress string) error {
+	// To not edit all DeviceInfo in all the tests.
+	if len(pciRoot) == 0 {
+		pciRoot = "pci0000:00"
+	}
+
+	bdfRegexp := regexp.MustCompile(`^([0-9a-f]{4}):([0-9a-f]{2}):([0-9a-f]{2})\.([0-9a-f]{1})$`)
+	if !bdfRegexp.MatchString(pciAddress) {
+		return fmt.Errorf("invalid PCI address format: %s", pciAddress)
+	}
+
+	pciRootRegexp := regexp.MustCompile(`^pci([0-9a-f]{4}):([0-9a-f]{2})$`)
+	if !pciRootRegexp.MatchString(pciRoot) {
+		return fmt.Errorf("invalid PCI root format: %s", pciRoot)
+	}
+
+	sysfsPCIDevices := path.Join(sysfsRoot, "bus/pci/devices")
+	sysfsDevices := path.Join(sysfsRoot, "devices", pciRoot, pciAddress)
+	// e.g. /sys/bus/pci/devices/0000:00:1f.0 -> /sys/devices/pci0000:01/...<intermediate PCI devices>.../0000:00:1f.0
+	linkSrc := path.Join(sysfsPCIDevices, pciAddress)
+	linkDst := fmt.Sprintf("../../../devices/%v/%v", pciRoot, pciAddress)
+	if err := os.MkdirAll(sysfsPCIDevices, 0750); err != nil {
+		return fmt.Errorf("creating fake sysfs, err: %v", err)
+	}
+	if err := os.MkdirAll(sysfsDevices, 0750); err != nil {
+		return fmt.Errorf("creating fake sysfs, err: %v", err)
+	}
+	if err := os.Symlink(linkDst, linkSrc); err != nil {
+		return fmt.Errorf("creating PCI device PCI root symlink, err: %v", err)
+	}
+
+	return nil
 }

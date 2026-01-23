@@ -73,7 +73,7 @@ func setupPCIDevice(sysfsRoot string, gaudi *device.DeviceInfo) error {
 	// /sys/devices/<pciRoot>/<pciAddress>/
 	// e.g.
 	// /sys/devices/pci0000:15/0000:19:00.0/
-	pciDevDir := path.Join(sysfsRoot, fmt.Sprintf("devices/pci0000:%s", gaudi.PCIRoot), gaudi.PCIAddress)
+	pciDevDir := path.Join(sysfsRoot, fmt.Sprintf("devices/%s", gaudi.PCIRoot), gaudi.PCIAddress)
 
 	// /sys/devices/<pciRoot>/<pciAddress>/accel/accel0/
 	pciDevAccelDir := path.Join(pciDevDir, "accel", fmt.Sprintf("accel%d", gaudi.DeviceIdx))
@@ -98,9 +98,13 @@ func setupPCIDevice(sysfsRoot string, gaudi *device.DeviceInfo) error {
 
 	// driver -> /sys/bus/pci/drivers/habanalabs
 	// relative from /sys/devices/pci0000:15/0000:19:00.0/.
-	symlinkSource := path.Join(pciDevDir, "driver")
-	if err := os.Symlink("../../../bus/pci/drivers/habanalabs", symlinkSource); err != nil {
+	driverDeviceLinkSource := path.Join(pciDevDir, "driver")
+	if err := os.Symlink("../../../bus/pci/drivers/habanalabs", driverDeviceLinkSource); err != nil {
 		return fmt.Errorf("creating PCI device driver symlink: %v", err)
+	}
+
+	if err := fakePCIDeviceSymlink(sysfsRoot, gaudi.PCIRoot, gaudi.PCIAddress); err != nil {
+		return fmt.Errorf("creating PCI device symlink: %v", err)
 	}
 
 	return nil
@@ -115,7 +119,7 @@ func setupPCIDriverDirs(sysfsRoot string, gaudi *device.DeviceInfo) error {
 	// <pci_addr> -> /sys/devices/<pciRoot>/<pciAddress>/
 	// relative from /sys/bus/pci/drivers/habanalabs/.
 	symlinkSource := path.Join(pciDriverDir, gaudi.PCIAddress)
-	if err := os.Symlink(fmt.Sprintf("../../../../devices/pci0000:%s/%s", gaudi.PCIRoot, gaudi.PCIAddress), symlinkSource); err != nil {
+	if err := os.Symlink(fmt.Sprintf("../../../../devices/%s/%s", gaudi.PCIRoot, gaudi.PCIAddress), symlinkSource); err != nil {
 		return fmt.Errorf("creating PCI driver device symlink: %v", err)
 	}
 
@@ -138,7 +142,7 @@ func setupAccelClassLinks(sysfsRoot string, gaudi *device.DeviceInfo) error {
 	// accelX -> /sys/devices/<pciRoot>/<pciAddress>
 	// relative from /sys/class/accel/.
 	accelLinkSource := path.Join(sysfsAccelClassDir, deviceName)
-	if err := os.Symlink(fmt.Sprintf("../../devices/pci0000:%s/%s", gaudi.PCIRoot, gaudi.PCIAddress), accelLinkSource); err != nil {
+	if err := os.Symlink(fmt.Sprintf("../../devices/%s/%s", gaudi.PCIRoot, gaudi.PCIAddress), accelLinkSource); err != nil {
 		return fmt.Errorf("creating accel class device symlink: %v", err)
 	}
 

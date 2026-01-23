@@ -101,7 +101,14 @@ func TestGetAccelIndex(t *testing.T) {
 				testDirs.SysfsRoot,
 				testDirs.DevfsRoot,
 				device.DevicesInfo{
-					"0000-0f-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:0f:00.0", DeviceIdx: 1, ModuleIdx: 0, UID: "0000-0f-00-0-0x1020", PCIRoot: "01"},
+					"0000-0f-00-0-0x1020": {
+						Model:      "0x1020",
+						PCIAddress: "0000:0f:00.0",
+						PCIRoot:    "pci0000:00",
+						DeviceIdx:  1,
+						ModuleIdx:  0,
+						UID:        "0000-0f-00-0-0x1020",
+					},
 				},
 				false); err != nil {
 				t.Fatalf("%v: could not setup fake sysfs for test: %v", tt.name, err)
@@ -131,7 +138,7 @@ func TestDiscoverDevices(t *testing.T) {
 			DeviceIdx:  0,
 			ModuleIdx:  0,
 			UID:        "0000-0f-00-0-0x1020",
-			PCIRoot:    "01",
+			PCIRoot:    "pci0000:01",
 			UVerbsIdx:  1024, // device.UverbsMissingIdx
 		},
 	}

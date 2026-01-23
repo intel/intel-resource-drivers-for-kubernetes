@@ -25,8 +25,6 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/dynamic-resource-allocation/deviceattribute"
-
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/goxpusmi"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/drm"
@@ -130,13 +128,13 @@ func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDi
 		newDeviceInfo.RenderdIdx = renderdIdx
 		newDeviceInfo.MemoryMiB = getLocalMemoryAmountMiB(devicePCIAddress)
 
-		pciRootAttribute, err := deviceattribute.GetPCIeRootAttributeByPCIBusID(devicePCIAddress)
+		linkSource := path.Join(sysfsDriverDir, devicePCIAddress)
+		pciRoot, err := helpers.DeterminePCIRoot(linkSource)
 		if err != nil {
 			klog.Warningf("could not detect PCI root complex for %v: %v", devicePCIAddress, err)
 		} else {
-			newDeviceInfo.PCIRoot = *pciRootAttribute.Value.StringValue
+			newDeviceInfo.PCIRoot = pciRoot
 		}
-		newDeviceInfo.PCIRoot = *pciRootAttribute.Value.StringValue
 
 		detectSRIOV(newDeviceInfo, sysfsDriverDir, devicePCIAddress, deviceId)
 		devices[determineDeviceName(newDeviceInfo, namingStyle)] = newDeviceInfo

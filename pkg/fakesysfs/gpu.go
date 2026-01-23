@@ -208,11 +208,15 @@ func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.Devices
 		}
 
 		if writeErr := helpers.WriteFile(path.Join(driverDeviceDir, "device"), gpu.Model); writeErr != nil {
-			return fmt.Errorf("creating fake sysfs, err: %v", writeErr)
+			return fmt.Errorf("creating fake sysfs driver device contents, err: %v", writeErr)
+		}
+
+		if err := fakePCIDeviceSymlink(sysfsRoot, gpu.PCIRoot, gpu.PCIAddress); err != nil {
+			return fmt.Errorf("creating fake sysfs PCI devices tree, err: %v", err)
 		}
 
 		if err := fakeGpuDRI(sysfsRoot, devfsRoot, gpu, driverDeviceDir, realDevices); err != nil {
-			return err
+			return fmt.Errorf("creating fake sysfs DRI devices, err: %v", err)
 		}
 
 		if writeErr := helpers.WriteFile(path.Join(pciDriverDir, "bind"), ""); writeErr != nil {
