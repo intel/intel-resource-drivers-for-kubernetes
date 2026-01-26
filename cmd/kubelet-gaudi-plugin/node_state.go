@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2025-2026, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -116,6 +116,12 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 				},
 				deviceattribute.StandardDeviceAttributePCIeRoot: {
 					StringValue: &gaudi.PCIRoot,
+				},
+				"serial": {
+					StringValue: &gaudi.Serial,
+				},
+				"healthy": {
+					BoolValue: &gaudi.Healthy,
 				},
 			},
 		}

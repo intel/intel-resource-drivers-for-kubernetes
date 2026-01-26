@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2025-2026, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,14 +27,25 @@ import (
 )
 
 type GaudiFlags struct {
-	GaudiHookPath string
-	GaudinetPath  string
+	GaudiHookPath      string
+	GaudinetPath       string
+	Healthcare         bool
+	HealthcareInterval int
 }
+
+const (
+	HealthCareFlagDefault         = false
+	HealthcareIntervalFlagMin     = 1
+	HealthcareIntervalFlagMax     = 3600
+	HealthcareIntervalFlagDefault = 5
+)
 
 func main() {
 	gaudiFlags := GaudiFlags{
-		GaudiHookPath: gaudi.DefaultHabanaHookPath,
-		GaudinetPath:  gaudi.DefaultGaudinetPath,
+		GaudiHookPath:      gaudi.DefaultHabanaHookPath,
+		GaudinetPath:       gaudi.DefaultGaudinetPath,
+		Healthcare:         HealthCareFlagDefault,
+		HealthcareInterval: HealthcareIntervalFlagDefault,
 	}
 	cliFlags := []cli.Flag{
 		&cli.StringFlag{
@@ -52,6 +63,22 @@ func main() {
 			Value:       gaudi.DefaultGaudinetPath,
 			Destination: &gaudiFlags.GaudinetPath,
 			EnvVars:     []string{"GAUDINET_PATH"},
+		},
+		&cli.BoolFlag{
+			Name:        "health-monitoring",
+			Aliases:     []string{"m"},
+			Usage:       "Actively monitor device health and update ResourceSlice. Requires privileges.",
+			Value:       HealthCareFlagDefault,
+			Destination: &gaudiFlags.Healthcare,
+			EnvVars:     []string{"HEALTH_MONITORING"},
+		},
+		&cli.IntFlag{
+			Name:        "health-interval",
+			Aliases:     []string{"i"},
+			Usage:       fmt.Sprintf("Number of seconds between health-monitoring checks [%v ~ %v]", HealthcareIntervalFlagMin, HealthcareIntervalFlagMax),
+			Value:       HealthcareIntervalFlagDefault,
+			Destination: &gaudiFlags.HealthcareInterval,
+			EnvVars:     []string{"HEALTH_INTERVAL"},
 		},
 	}
 

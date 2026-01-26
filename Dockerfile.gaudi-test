@@ -11,12 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-FROM golang:1.24.2@sha256:b51b7beeabe2e2d8438ba4295c59d584049873a480ba0e7b56d80db74b3e3a3a AS go
+
+# 1. Build fake libhlml for Gaudi tests
+FROM golang:1.24.2@sha256:b51b7beeabe2e2d8438ba4295c59d584049873a480ba0e7b56d80db74b3e3a3a AS build
+WORKDIR /build
+COPY . .
+
+RUN cd hack/fake_libhlml && \
+make clean && make
 
 FROM ubuntu:24.04@sha256:80dd3c3b9c6cecb9f1667e9290b3bc61b78c2678c02cbdae5f0fea92cc6734ab AS ubuntu
 ARG UID=1000
 ARG GID=1000
-COPY --from=go --chown=${UID}:${GID} /usr/local/go /home/ubuntu/go
+# add fake hlml shared library for Gaudi tests
+COPY --from=build /build/hack/fake_libhlml/fake_libhlml.so /usr/lib/habanalabs/libhlml.so
+COPY --from=build --chown=${UID}:${GID} /usr/local/go /home/ubuntu/go
 
 # add xpu-smi shared library for GPU tests and other dependencies
 RUN \

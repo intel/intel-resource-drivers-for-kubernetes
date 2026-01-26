@@ -140,6 +140,7 @@ func TestDiscoverDevices(t *testing.T) {
 			UID:        "0000-0f-00-0-0x1020",
 			PCIRoot:    "pci0000:01",
 			UVerbsIdx:  1024, // device.UverbsMissingIdx
+			Healthy:    true,
 		},
 	}
 
@@ -152,10 +153,22 @@ func TestDiscoverDevices(t *testing.T) {
 	}{
 		{
 			name: "single device",
-			setupFunc: func(sysfsRoot, pciAddr string) error {
+			setupFunc: func(sysfsRoot, devfsRoot string) error {
 				return nil
 			},
-			expected:   testDevicesInfo,
+			expected: map[string]*device.DeviceInfo{
+				"0000-0f-00-0-0x1020": {
+					Model:      "0x1020",
+					PCIAddress: "0000:0f:00.0",
+					DeviceIdx:  0,
+					ModuleIdx:  0,
+					UID:        "0000-0f-00-0-0x1020",
+					Healthy:    true,
+					UVerbsIdx:  1024,
+					PCIRoot:    "pci0000:01",
+					ModelName:  "Gaudi2",
+				},
+			},
 			shouldFail: false,
 		},
 		{
@@ -179,16 +192,16 @@ func TestDiscoverDevices(t *testing.T) {
 		},
 		{
 			name: "missing module_id file",
-			setupFunc: func(sysfsroot, pciAddress string) error {
-				return os.Remove(path.Join(sysfsroot, "bus/pci/drivers/habanalabs", pciAddress, "module_id"))
+			setupFunc: func(sysfsRoot, pciAddress string) error {
+				return os.Remove(path.Join(sysfsRoot, "bus/pci/drivers/habanalabs", pciAddress, "module_id"))
 			},
 			expected:   map[string]*device.DeviceInfo{},
 			shouldFail: true,
 		},
 		{
 			name: "invalid module_id index",
-			setupFunc: func(sysfsroot, pciAddress string) error {
-				return helpers.WriteFile(path.Join(sysfsroot, "bus/pci/drivers/habanalabs", pciAddress, "module_id"), "X")
+			setupFunc: func(sysfsRoot, pciAddress string) error {
+				return helpers.WriteFile(path.Join(sysfsRoot, "bus/pci/drivers/habanalabs", pciAddress, "module_id"), "X")
 			},
 			expected:   map[string]*device.DeviceInfo{},
 			shouldFail: true,

@@ -21,7 +21,7 @@ func (d *driver) startHealthMonitor(ctx context.Context, gpuFlags *GPUFlags) {
 
 	for {
 		select {
-		// Listen to original ctx, when driver is shutting down, stop health watcher.
+		// Listen to original ctx, when driver is shutting down, stop HLML watcher.
 		case <-goxpusmiCtx.Done():
 			stopMonitor()
 			return

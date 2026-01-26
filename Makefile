@@ -119,11 +119,14 @@ container-local: container-build
 .PHONY: containers-push
 containers-push: containers-build gpu-container-push gaudi-container-push qat-container-push
 
-.PHONY: clean cleanall
+.PHONY: clean cleanall clean-coverage
 clean:
 	rm -rf bin/*
-cleanall: clean
-	rm -rf vendor/* bin/*
+cleanall: clean clean-coverage
+	rm -rf vendor/* bin/* ./cmd/kubelet-gaudi-plugin/vendor/*
+
+clean-coverage:
+	rm -rf *-coverage.out coverage.html coverage.out ./cmd/kubelet-gaudi-plugin/vendor
 
 .PHONY: rm-clientsets
 rm-clientsets: rm-gpu-clientset rm-gaudi-clientset
@@ -137,11 +140,12 @@ generate-clientsets: generate-gpu-clientset generate-gaudi-clientset
 .PHONY: vendor
 vendor:
 	go mod vendor
+	cd ./cmd/kubelet-gaudi-plugin && go mod vendor
 
 .PHONY: update-vendor
 update-vendor:
-	go mod tidy
-	go mod vendor
+	go mod tidy && go mod vendor
+	cd ./cmd/kubelet-gaudi-plugin && go mod tidy && go mod vendor
 
 .PHONY: clean-licenses
 clean-licenses:
@@ -151,15 +155,11 @@ clean-licenses:
 licenses: clean-licenses
 	GO111MODULE=on go run github.com/google/go-licenses@$(GOLICENSES_VERSION) \
 	save \
-	"./cmd/kubelet-gaudi-plugin" \
 	"./cmd/kubelet-gpu-plugin" \
 	"./cmd/kubelet-qat-plugin" \
 	"./cmd/cdi-specs-generator" \
 	"./cmd/device-faker" \
 	"./cmd/qat-showdevice" \
-	"./pkg/gaudi/cdihelpers" \
-	"./pkg/gaudi/device" \
-	"./pkg/gaudi/discovery" \
 	"./pkg/gpu/cdihelpers" \
 	"./pkg/gpu/device" \
 	"./pkg/gpu/discovery" \
@@ -171,6 +171,11 @@ licenses: clean-licenses
 	"./pkg/version" \
 	 --save_path licenses
 
+.PHONY: gaudi-licenses
+gaudi-licenses: clean-licenses
+	cd ./cmd/kubelet-gaudi-plugin && \
+	GO111MODULE=on go run github.com/google/go-licenses@$(GOLICENSES_VERSION) \
+	save "." --save_path $(CURDIR)/licenses
 
 # linting targets for Go and other code
 .PHONY: lint format cilint vet shellcheck yamllint lint-containerized
@@ -215,7 +220,7 @@ yamllint:
 
 .PHONE: test-image test-image-push
 test-image: vendor
-	@echo "Building container image for tests with user $(shell id -u):$(shell id -g)"
+	@echo "Building container image with fake HLML for Gaudi tests with user $(shell id -u):$(shell id -g)"
 	$(DOCKER) build \
 	--build-arg UID=$(shell id -u) \
 	--build-arg GID=$(shell id -g) \
@@ -258,6 +263,8 @@ push-helm-charts: package-helm-charts
 
 .PHONY: test html-coverage test-containerized
 COVERAGE_FILE := coverage.out
+# Gaudi tests expect fake HLML library to be present at /usr/lib/habanalabs/libhlml.so
+# Dependency comes from gohlml package hardcoded LD_LIBRARY_PATH pointing to it.
 test: vendor
 ifeq ("$(container)","yes")
 		@echo setting safe directory
@@ -297,12 +304,17 @@ qat-coverage.out: $(shell find cmd/kubelet-qat-plugin cmd/qat-showdevice pkg/qat
 	go test -v -coverprofile=$@ $(shell go list ./cmd/kubelet-qat-plugin/... ./cmd/qat-showdevice/... ./pkg/qat/... ./pkg/helpers/...)
 
 # gaudi coverage
-gaudi-coverage.out: $(shell find cmd/kubelet-gaudi-plugin pkg/gaudi pkg/helpers -name '*.go')
-	go test -v -coverprofile=$@ $(shell go list ./cmd/kubelet-gaudi-plugin/... ./pkg/gaudi/... ./pkg/helpers/...)
+gaudi-coverage.out: $(shell find cmd/kubelet-gaudi-plugin pkg/gaudi pkg/helpers -path ./cmd/kubelet-gaudi-plugin/vendor -prune -name '*.go')
+	cd cmd/kubelet-gaudi-plugin && go test -v -coverprofile=$(CURDIR)/$@ \
+		$(shell cd cmd/kubelet-gaudi-plugin && go list ./... ../../pkg/gaudi/... ../../pkg/helpers/...)
 
 # cdi-specs-generator coverage
 cdispecsgen-coverage.out: $(shell find cmd/cdi-specs-generator pkg/gpu pkg/gaudi pkg/helpers -name '*.go')
 	go test -v -coverprofile=$@ $(shell go list ./cmd/cdi-specs-generator/... ./pkg/gpu/... ./pkg/gaudi/... ./pkg/helpers/...)
+
+.PHONY: gaudi-coverage
+gaudi-coverage: clean-coverage vendor copytests gaudi-coverage.out
+	cd cmd/kubelet-gaudi-plugin && go tool cover -func=$(CURDIR)/$@.out
 
 .PHONY: %-coverage
 %-coverage: %-coverage.out

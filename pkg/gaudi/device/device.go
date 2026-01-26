@@ -90,6 +90,8 @@ type DeviceInfo struct {
 	ModuleIdx  uint64 `json:"moduleidx"`  // OAM slot number, needed for Habana Runtime to set networking
 	PCIRoot    string `json:"pciroot"`    // PCI Root complex ID
 	UVerbsIdx  uint64 `json:"uverbsidx"`  // InfiniBand device uverbs ID
+	Serial     string `json:"serial"`     // Serial number obtained through HLML library
+	Healthy    bool   `json:"healthy"`    // True if device is usable, false otherwise
 }
 
 func (g DeviceInfo) CDIName() string {

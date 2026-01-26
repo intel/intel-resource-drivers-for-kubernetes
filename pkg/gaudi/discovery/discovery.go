@@ -98,6 +98,7 @@ func scanDevicesFromDriverDirFiles(driverDirFiles []os.DirEntry, sysfsDriverDir 
 			DeviceIdx:  deviceIdx,
 			ModuleIdx:  moduleIdx,
 			UVerbsIdx:  uverbsIdx,
+			Healthy:    true,
 		}
 
 		linkSource := path.Join(sysfsDriverDir, devicePCIAddress)

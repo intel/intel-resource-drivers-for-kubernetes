@@ -28,6 +28,10 @@ See [details](../../charts/intel-gaudi-resource-driver/README.md) in the chart d
 kubectl apply -k deployments/gaudi/
 ```
 
+**Note:** Health monitoring functionality (with the -m flag) is enabled by default.
+Since this is the only reason for using a `privileged` container, it is recommended to set `privileged: false`
+when the functionality is disabled, for security reasons. This will be improved in the future.
+
 By default, the kubelet-plugin is deployed on _all_ nodes in the cluster, as no nodeSelector is defined.
 To restrict the deployment to Gaudi-enabled nodes, follow these steps:
 
@@ -95,6 +99,8 @@ spec:
   devices:
   - basic:
       attributes:
+        healthy:
+          bool: true
         model:
           string: Gaudi2
         pciRoot:
@@ -104,6 +110,8 @@ spec:
     name: 0000-43-00-0-0x1020
   - basic:
       attributes:
+        healthy:
+          bool: true
         model:
           string: Gaudi2
         pciRoot:
@@ -312,7 +320,32 @@ Unlike with normal Gaudi ResourceClaims:
 
 ## Health monitoring support
 
-Health monitoring is temporary removed from DRA Gaudi driver v0.6.0.
+Starting from v0.7.0 Gaudi DRA driver supports health monitoring with `-m` command-line parameter (enabled 
+in default deployment configuration) through HLML library. When Gaudi accelerator becomes unhealthy, the 
+DeviceTaintRule is created (to evict current workloads and prevent this device from being allocated), and
+respective device's `healthy` field in ResourceSlice is changed to false.
+
+### Backwards compatibility
+
+In K8s v1.32 DeviceClass can be changed to only allow allocation of healthy devices to workloads:
+```shell
+kubectl edit deviceclass/gaudi.intel.com
+```
+add one more selector:
+```YAML
+  - cel:
+      expression: device.attributes["gaudi.intel.com"].healthy == true
+```
+This approach, however, does not allow influencing the Pods that are / were using Gaudi accelerator when its health status changes.
+
+### K8s v1.33+
+
+In K8s v1.33 [DeviceTaintRule](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/#device-taints-and-tolerations) concept was introduced that allows scheduler to handle ResourceSlice devices similarly to how K8s Node Taints and Tolerations allow.
+
+Starting from v0.7.0 Gaudi DRA driver leverages DeviceTaintRules if Gaudi accelerator health degrades.  
+DeviceTaintRule created as a result of degraded health has "NoSchedule" effect, which implies "NoExecute" 
+and results in Pod eviction for devices with degraded health. Workloads that need to access tainted devices  
+need to have [taint toleration in ResourceClaim](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/#device-taints-and-tolerations).
 
 ## Known issues
 

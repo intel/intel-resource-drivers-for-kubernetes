@@ -2,6 +2,8 @@ module github.com/intel/intel-resource-drivers-for-kubernetes
 
 go 1.24.2
 
+replace github.com/intel/intel-resource-drivers-for-kubernetes/cmd/kubelet-gaudi-plugin => ./cmd/kubelet-gaudi-plugin
+
 require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/onsi/ginkgo/v2 v2.21.0

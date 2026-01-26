@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2025-2026, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +38,11 @@ import (
 	testhelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
 )
 
+const (
+	NoHealthcare   = false
+	WithHealthcare = true
+)
+
 func TestGaudiFakeSysfs(t *testing.T) {
 	testDirs, err := testhelpers.NewTestDirs(device.DriverName)
 	if err != nil {
@@ -68,8 +73,15 @@ func TestGaudiFakeSysfs(t *testing.T) {
 	}
 }
 
-func getFakeDriver(testDirs testhelpers.TestDirsType) (*driver, error) {
+func getFakeDriver(testDirs testhelpers.TestDirsType, healthcare bool) (*driver, error) {
 	nodeName := "node1"
+	gaudiFlags := GaudiFlags{
+		Healthcare:         healthcare,
+		HealthcareInterval: 1,
+		GaudiHookPath:      path.Join(testDirs.TestRoot, "hookbin"),
+		GaudinetPath:       path.Join(testDirs.TestRoot, "gaudinet"),
+	}
+
 	config := &helpers.Config{
 		CommonFlags: &helpers.Flags{
 			NodeName:                  nodeName,
@@ -78,7 +90,7 @@ func getFakeDriver(testDirs testhelpers.TestDirsType) (*driver, error) {
 			KubeletPluginsRegistryDir: testDirs.KubeletPluginRegistryDir,
 		},
 		Coreclient:  kubefake.NewSimpleClientset(),
-		DriverFlags: &GaudiFlags{GaudiHookPath: path.Join(testDirs.TestRoot, "hookbin"), GaudinetPath: path.Join(testDirs.TestRoot, "gaudinet")},
+		DriverFlags: &gaudiFlags,
 	}
 
 	os.Setenv("SYSFS_ROOT", testDirs.SysfsRoot)
@@ -212,7 +224,7 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 			continue
 		}
 
-		driver, driverErr := getFakeDriver(testDirs)
+		driver, driverErr := getFakeDriver(testDirs, NoHealthcare)
 		if driverErr != nil {
 			t.Errorf("could not create kubelet-plugin: %v\n", driverErr)
 			continue
@@ -336,7 +348,7 @@ func TestGaudiUnprepareResourceClaims(t *testing.T) {
 			continue
 		}
 
-		driver, driverErr := getFakeDriver(testDirs)
+		driver, driverErr := getFakeDriver(testDirs, NoHealthcare)
 		if driverErr != nil {
 			t.Errorf("could not create kubelet-plugin: %v\n", driverErr)
 			continue
