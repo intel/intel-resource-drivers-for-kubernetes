@@ -89,6 +89,7 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 	klog.V(5).Infof("Prepared claims: %v", driver.state)
 
 	// Initialize XPU SMI library.
+	klog.V(5).Info("Initializing xpu-smi")
 	xpusmiInitErr := goxpusmi.Initialize()
 	if xpusmiInitErr != nil {
 		klog.Errorf("failed to initialize xpu-smi: %v, ignoring device details", xpusmiInitErr)

@@ -71,7 +71,6 @@ func DiscoverDevices(sysfsDir, namingStyle string, verbose bool, withXpuSmi bool
 }
 
 func populateXpuDeviceDetails(verbose bool) {
-	klog.V(5).Info("Initializing xpu-smi")
 	var err error
 
 	klog.V(5).Info("Querying xpu-smi for devices information")
