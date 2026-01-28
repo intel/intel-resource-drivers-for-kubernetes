@@ -37,7 +37,7 @@ func (d *driver) updateHealth(ctx context.Context, healthStatusUpdates HealthSta
 	//nolint:forcetypeassert // We want the code to panic if our assumption turns out to be wrong.
 	allocatable := d.state.Allocatable.(map[string]*device.DeviceInfo)
 	for deviceUID, healthStatus := range healthStatusUpdates {
-		klog.Infof("Updating info for device %v to status=%v", deviceUID, healthStatus)
+		klog.V(5).Infof("Updating info for device %v to status=%v", deviceUID, healthStatus)
 		foundDevice, found := allocatable[deviceUID]
 		if !found {
 			klog.Errorf("could not find allocatable device with UID %v", deviceUID)
@@ -45,16 +45,21 @@ func (d *driver) updateHealth(ctx context.Context, healthStatusUpdates HealthSta
 		}
 
 		// Determine overall health: healthy unless any status is CRITICAL.
-		isHealthy := true
+		foundDevice.Health = device.HealthHealthy
 		if foundDevice.HealthStatus == nil {
 			foundDevice.HealthStatus = make(map[string]string)
 		}
-		for healthType, status := range healthStatusUpdates[deviceUID] {
+		for healthType, status := range healthStatus {
 			foundDevice.HealthStatus[healthType] = status
-			health := d.state.StatusHealth(status)
-			isHealthy = isHealthy && health
 		}
-		foundDevice.Healthy = isHealthy
+
+		for _, status := range foundDevice.HealthStatus {
+			if !d.state.StatusHealth(status) {
+				foundDevice.Health = device.HealthUnhealthy
+				break
+			}
+		}
+		klog.V(5).Infof("Updated health status for devices: %v to %v", deviceUID, foundDevice.HealthStatus)
 	}
 	// Health is updated from a go routine, nothing we can do when publishing
 	// resource slice fails, so error is only logged.

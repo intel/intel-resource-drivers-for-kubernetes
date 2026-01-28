@@ -101,7 +101,7 @@ func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDi
 			CardIdx:    0,
 			RenderdIdx: 0,
 			Driver:     driverName,
-			Healthy:    true, // presume healthy until proven otherwise
+			Health:     device.HealthHealthy, // Presume healthy until proven otherwise. If healthcare is disabled, after discovery the driver will set this to HealthUnknown.
 		}
 
 		sysfsDeviceDir := path.Join(sysfsDriverDir, devicePCIAddress)

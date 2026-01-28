@@ -52,6 +52,10 @@ const (
 	DefaultNamingStyle = "machine"
 	GpuDeviceType      = "gpu"
 	VfDeviceType       = "vf"
+
+	HealthUnknown   = "Unknown"
+	HealthHealthy   = "Healthy"
+	HealthUnhealthy = "Unhealthy"
 )
 
 // VfAttributeFiles is a list of filenames that needs to be configured for a VF
@@ -145,7 +149,7 @@ type DeviceInfo struct {
 	Provisioned  bool              `json:"provisioned"`  // true if the SR-IOV VF is configured and enabled
 	Driver       string            `json:"driver"`       // i915 | xe
 	PCIRoot      string            `json:"pciroot"`      // PCI Root of the device
-	Healthy      bool              `json:"healthy"`      // Health status of the device
+	Health       string            `json:"health"`       // Overall health status of the device. One of: Unknown, Healthy, Unhealthy.
 	HealthStatus map[string]string `json:"healthstatus"` // Detailed per-category health status information
 }
 

@@ -36,7 +36,7 @@ func TestStartHealthMonitor(t *testing.T) {
 	//nolint:forcetypeassert // We want the code to panic if our assumption turns out to be wrong.
 	allocatable := drv.state.Allocatable.(map[string]*gpudevice.DeviceInfo)
 	dev := allocatable["0000-00-02-0-0x56c0"]
-	dev.Healthy = true
+	dev.Health = gpudevice.HealthHealthy
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -80,7 +80,7 @@ func TestUpdateHealth(t *testing.T) {
 	//nolint:forcetypeassert // We want the code to panic if our assumption turns out to be wrong.
 	allocatable := drv.state.Allocatable.(map[string]*gpudevice.DeviceInfo)
 	dev := allocatable["0000-00-02-0-0x56c0"]
-	dev.Healthy = true
+	dev.Health = gpudevice.HealthHealthy
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -89,7 +89,7 @@ func TestUpdateHealth(t *testing.T) {
 		name                string
 		ignoreHealthWarning bool
 		updates             HealthStatusUpdates
-		expectHealthy       bool
+		expectHealth        string
 		expectStatuses      map[string]string
 		expectPanic         bool
 	}{
@@ -105,7 +105,7 @@ func TestUpdateHealth(t *testing.T) {
 					"Frequency":     "OK",
 				},
 			},
-			expectHealthy: true,
+			expectHealth: gpudevice.HealthHealthy,
 			expectStatuses: map[string]string{
 				"CoreThermal":   "OK",
 				"MemoryThermal": "OK",
@@ -123,7 +123,7 @@ func TestUpdateHealth(t *testing.T) {
 					"CoreThermal": "Unknown",
 				},
 			},
-			expectHealthy: dev.Healthy,
+			expectHealth: gpudevice.HealthHealthy,
 			expectStatuses: map[string]string{
 				"CoreThermal": "Unknown",
 			},
@@ -136,7 +136,7 @@ func TestUpdateHealth(t *testing.T) {
 					"CoreThermal": "Critical",
 				},
 			},
-			expectHealthy: false,
+			expectHealth: gpudevice.HealthUnhealthy,
 			expectStatuses: map[string]string{
 				"CoreThermal": "Critical",
 			},
@@ -149,7 +149,7 @@ func TestUpdateHealth(t *testing.T) {
 					"CoreThermal": "Warning",
 				},
 			},
-			expectHealthy: dev.Healthy,
+			expectHealth: dev.Health,
 			expectStatuses: map[string]string{
 				"CoreThermal": "Warning",
 			},
@@ -162,7 +162,7 @@ func TestUpdateHealth(t *testing.T) {
 					"CoreThermal": "Warning",
 				},
 			},
-			expectHealthy: false,
+			expectHealth: gpudevice.HealthUnhealthy,
 			expectStatuses: map[string]string{
 				"CoreThermal": "Warning",
 			},
@@ -175,7 +175,7 @@ func TestUpdateHealth(t *testing.T) {
 					"CoreThermal": "Unexpected",
 				},
 			},
-			expectHealthy: dev.Healthy,
+			expectHealth: dev.Health,
 			expectStatuses: map[string]string{
 				"CoreThermal": "Warning",
 			},
@@ -203,7 +203,7 @@ func TestUpdateHealth(t *testing.T) {
 			}
 
 			// Reset device to healthy state before each test
-			dev.Healthy = true
+			dev.Health = gpudevice.HealthHealthy
 
 			// Set the driver's ignoreHealthWarning setting
 			drv.state.ignoreHealthWarning = tt.ignoreHealthWarning
@@ -215,8 +215,8 @@ func TestUpdateHealth(t *testing.T) {
 				return
 			}
 
-			if dev.Healthy != tt.expectHealthy {
-				t.Fatalf("expected device healthy=%v, got %v", tt.expectHealthy, dev.Healthy)
+			if dev.Health != tt.expectHealth {
+				t.Fatalf("expected device health=%v, got %v", tt.expectHealth, dev.Health)
 			}
 
 			for status, expected := range tt.expectStatuses {
@@ -259,39 +259,39 @@ func TestUpdateHealth_MultipleDevices(t *testing.T) {
 
 	tests := []struct {
 		name                string
-		initialHealthy      bool
+		initialHealth       string
 		ignoreHealthWarning bool
 		updates             HealthStatusUpdates
-		expectHealthyDev1   bool
+		expectHealthDev1    string
 		expectStatusesDev1  map[string]string
-		expectHealthyDev2   bool
+		expectHealthDev2    string
 		expectStatusesDev2  map[string]string
 	}{
 		{
 			name:                "Isolated failure: one unhealthy device disables only that device",
-			initialHealthy:      true,
+			initialHealth:       gpudevice.HealthHealthy,
 			ignoreHealthWarning: false,
 			updates: HealthStatusUpdates{
 				"0000-00-03-0-0x56c1": {
 					"CoreThermal": "Critical",
 				},
 			},
-			expectHealthyDev1:  true,
+			expectHealthDev1:   gpudevice.HealthHealthy,
 			expectStatusesDev1: map[string]string{},
-			expectHealthyDev2:  false,
+			expectHealthDev2:   gpudevice.HealthUnhealthy,
 			expectStatusesDev2: map[string]string{"CoreThermal": "Critical"},
 		},
 		{
 			name:                "Partial recovery: only one device becomes healthy while the other stays unhealthy",
-			initialHealthy:      false,
+			initialHealth:       gpudevice.HealthUnhealthy,
 			ignoreHealthWarning: false,
 			updates: HealthStatusUpdates{
 				"0000-00-03-0-0x56c1": {
 					"CoreThermal": "OK",
 				},
 			},
-			expectHealthyDev1:  false,
-			expectHealthyDev2:  true,
+			expectHealthDev1:   gpudevice.HealthUnhealthy,
+			expectHealthDev2:   gpudevice.HealthHealthy,
 			expectStatusesDev2: map[string]string{"CoreThermal": "OK"},
 		},
 	}
@@ -300,16 +300,16 @@ func TestUpdateHealth_MultipleDevices(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			// Reset device to healthy state before each test
-			dev1.Healthy = tt.initialHealthy
-			dev2.Healthy = tt.initialHealthy
+			dev1.Health = tt.initialHealth
+			dev2.Health = tt.initialHealth
 
 			// Set the driver's ignoreHealthWarning setting
 			drv.state.ignoreHealthWarning = tt.ignoreHealthWarning
 
 			drv.updateHealth(ctx, tt.updates)
 
-			if dev1.Healthy != tt.expectHealthyDev1 {
-				t.Fatalf("expected device1 healthy=%v, got %v", tt.expectHealthyDev1, dev1.Healthy)
+			if dev1.Health != tt.expectHealthDev1 {
+				t.Fatalf("expected device1 health=%v, got %v", tt.expectHealthDev1, dev1.Health)
 			}
 
 			for status, expected := range tt.expectStatusesDev1 {
@@ -318,8 +318,8 @@ func TestUpdateHealth_MultipleDevices(t *testing.T) {
 				}
 			}
 
-			if dev2.Healthy != tt.expectHealthyDev2 {
-				t.Fatalf("expected device2 healthy=%v, got %v", tt.expectHealthyDev2, dev2.Healthy)
+			if dev2.Health != tt.expectHealthDev2 {
+				t.Fatalf("expected device2 health=%v, got %v", tt.expectHealthDev2, dev2.Health)
 			}
 
 			for status, expected := range tt.expectStatusesDev2 {

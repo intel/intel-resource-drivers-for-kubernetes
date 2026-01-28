@@ -126,8 +126,8 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 				"pciAddress": {
 					StringValue: &gpu.PCIAddress,
 				},
-				"healthy": {
-					BoolValue: &gpu.Healthy,
+				"health": {
+					StringValue: &gpu.Health,
 				},
 				deviceattribute.StandardDeviceAttributePCIeRoot: {
 					StringValue: &gpu.PCIRoot,
@@ -155,7 +155,7 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 
 		// FIXME: TODO: K8s 1.33-1.34 only supports plain taint without description.
 		// See https://github.com/kubernetes/enhancements/issues/5055 .
-		if !gpu.Healthy {
+		if gpu.Health == device.HealthUnhealthy {
 			// e.g. HealthIssues-memorytemperature_coretemperature:NoExecute
 			// The format will change in K8s 1.35+.
 			unhealthyTypes := []string{}

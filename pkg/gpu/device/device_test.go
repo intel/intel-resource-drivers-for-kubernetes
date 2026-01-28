@@ -42,8 +42,8 @@ func TestDevicesInfoDeepCopy(t *testing.T) {
 			UID:          "0000-01-02-0-0x1234",
 			PCIAddress:   "0000:01:02.0",
 			DeviceType:   "GPU",
+			Health:       HealthHealthy,
 			HealthStatus: map[string]string{"CoreThermal": "OK"},
-			Healthy:      true,
 		},
 	}
 
