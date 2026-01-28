@@ -1,0 +1,45 @@
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: rdma-net
+spec:
+  selectors:
+    - cel:
+        expression: device.driver == "dra.net"
+    - cel:
+        expression: device.attributes["dra.rdma"].bool == true
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: intel-gpu-dranet-rdma
+spec:
+  spec:
+    devices:
+      requests:
+      - name: nic
+        exactly:
+          # this device class has to be created manually
+          deviceClassName: rdma-net
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.intel.com
+      constraints:
+      - matchAttribute: "resource.kubernetes.io/pcieRoot"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-inline-claim
+spec:
+  restartPolicy: Never
+  containers:
+  - name: with-resource
+    image: ubuntu:24.04
+    command: ["sh", "-c", "ls -lR /dev/ && sleep 3600"]
+    resources:
+      claims:
+      - name: resource
+  resourceClaims:
+  - name: resource
+    resourceClaimTemplateName: intel-gpu-dranet-rdma
