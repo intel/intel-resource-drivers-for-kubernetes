@@ -47,7 +47,16 @@ func (d *driver) updateHealth(ctx context.Context, healthStatusUpdates HealthSta
 		// Determine overall health: healthy unless any status is CRITICAL.
 		foundDevice.Health = device.HealthHealthy
 		if foundDevice.HealthStatus == nil {
-			foundDevice.HealthStatus = make(map[string]string)
+			// As xpu-smi initializes all health statuses to healthy,
+			// we do the same here to have synchronized values.
+			foundDevice.HealthStatus = map[string]string{
+				"CoreThermal":   "OK",
+				"MemoryThermal": "OK",
+				"Power":         "OK",
+				"Memory":        "OK",
+				"FabricPort":    "OK",
+				"Frequency":     "OK",
+			}
 		}
 		for healthType, status := range healthStatus {
 			foundDevice.HealthStatus[healthType] = status
