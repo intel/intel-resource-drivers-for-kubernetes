@@ -30,6 +30,7 @@ import (
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
@@ -199,6 +200,9 @@ func (s *nodeState) StatusHealth(status string) (health bool) {
 }
 
 func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim) error {
+	s.Lock()
+	defer s.Unlock()
+
 	if claim.Status.Allocation == nil {
 		return fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
 	}
@@ -210,6 +214,13 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		if allocatedDevice.Driver != device.DriverName || allocatedDevice.Pool != s.NodeName {
 			klog.FromContext(ctx).Info("ignoring claim allocation device", "device", allocatedDevice, "expected pool", s.NodeName, "expected driver", device.DriverName)
 			continue
+		}
+
+		adminAccess := ptr.Deref(allocatedDevice.AdminAccess, false)
+		if !adminAccess && s.isDeviceUsedExclusivelyAlready(allocatedDevice.Device, allocatedDevice.Pool, string(claim.UID)) {
+			return fmt.Errorf(
+				"device %v (pool %v) is already allocated to another claim and cannot be prepared without adminAccess flag",
+				allocatedDevice.Device, allocatedDevice.Pool)
 		}
 
 		allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
@@ -238,4 +249,26 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 
 	klog.V(5).Infof("Created prepared claim %v allocation", claim.UID)
 	return nil
+}
+
+// isDeviceUsedExclusivelyAlready returns true if the device is already in use in some other claim and
+// adminAccess flag is not set.
+// TODO: FIXME: shareID needs to be checked as well but it is not in kubeletplugin.PrepareResult,
+// and therefore it is not currently stored in cached preparedClaims file or in s.Prepared.
+func (s *nodeState) isDeviceUsedExclusivelyAlready(deviceName, poolName, claimUID string) bool {
+	for preparedClaimUID, claim := range s.Prepared {
+		// Ignore currently processed claim if it was prepared before.
+		if preparedClaimUID == claimUID {
+			continue
+		}
+
+		for _, preparedDevice := range claim.Devices {
+			if preparedDevice.DeviceName == deviceName && preparedDevice.PoolName == poolName {
+				// TODO: FIXME: check for shareID when consumableCapacity is supported.
+				return true
+			}
+		}
+	}
+
+	return false
 }

@@ -87,7 +87,7 @@ func TestPrepareUnprepareResourceClaims(t *testing.T) {
 		{
 			name: "one QAT success then unprepare",
 			request: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim(testNameSpace, "claim1", "uid1", "request1", "qat.intel.com", testNodeName, []string{"qatvf-0000-aa-00-1"}),
+				testhelpers.NewClaim(testNameSpace, "claim1", "uid1", "request1", "qat.intel.com", testNodeName, []string{"qatvf-0000-aa-00-1"}, false),
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid1": {
@@ -111,7 +111,7 @@ func TestPrepareUnprepareResourceClaims(t *testing.T) {
 		{
 			name: "single QAT already prepared (file) then unprepare unknown",
 			request: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim("namespace2", "claim2", "uid2", "request2", "qat.intel.com", "node1", []string{"qatvf-0000-aa-00-1"}),
+				testhelpers.NewClaim("namespace2", "claim2", "uid2", "request2", "qat.intel.com", "node1", []string{"qatvf-0000-aa-00-1"}, false),
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid2": {
@@ -151,7 +151,7 @@ func TestPrepareUnprepareResourceClaims(t *testing.T) {
 		{
 			name: "single unavailable device (no prepare, unprepare noop)",
 			request: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim(testNameSpace, "claim3", "uid3", "request3", "qat.intel.com", testNodeName, []string{"qatvf-xxxx-xx-xx-x"}),
+				testhelpers.NewClaim(testNameSpace, "claim3", "uid3", "request3", "qat.intel.com", testNodeName, []string{"qatvf-xxxx-xx-xx-x"}, false),
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid3": {Err: fmt.Errorf("error preparing devices for claim uid3: could not find allocatable device qatvf-xxxx-xx-xx-x (pool %v)", testNodeName)},
