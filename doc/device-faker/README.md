@@ -15,16 +15,16 @@ hardware.
 ## [device-faker overlay](../../deployments/gpu/overlays/device-faker/)
 
 All supported accelerators have a kustomization overlay in `deployments` directory,
-with device-faker sidecar container to provide fake sysfs, devfs.
+with `device-faker` sidecar container to provide fake sysfs and devfs.
 
-To quickly deploy DRA driver into a cluster without accelerators:
+To quickly deploy DRA driver with faked devices' presence:
 ```shell
 kubectl apply -k deployments/gpu/overlay/device-faker
 ```
 
 > [!IMPORTANT]
-> device-faker container image for the sidecar container is not yet published to ghcr.io,
-> therefore one has to build it locally before deploying the device-faker overlay.
+> `device-faker` container image for the sidecar container is not yet published to ghcr.io,
+> therefore one has to build it locally before deploying the `device-faker` overlay.
 
 ## Parameters
 
