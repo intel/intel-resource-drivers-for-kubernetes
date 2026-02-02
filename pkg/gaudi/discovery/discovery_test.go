@@ -144,10 +144,11 @@ func TestDiscoverDevices(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		setupFunc  func(string, string) error
-		expected   map[string]*device.DeviceInfo
-		shouldFail bool
+		name        string
+		setupFunc   func(string, string) error
+		cleanupFunc func(string) error
+		expected    map[string]*device.DeviceInfo
+		shouldFail  bool
 	}{
 		{
 			name: "single device",
@@ -169,6 +170,9 @@ func TestDiscoverDevices(t *testing.T) {
 			name: "sysfsDir exist, but not readable",
 			setupFunc: func(sysfsRoot, pciAddress string) error {
 				return os.Chmod(sysfsRoot, 0200)
+			},
+			cleanupFunc: func(sysfsRoot string) error {
+				return os.Chmod(sysfsRoot, 0777)
 			},
 			expected:   map[string]*device.DeviceInfo{},
 			shouldFail: true,
@@ -232,6 +236,13 @@ func TestDiscoverDevices(t *testing.T) {
 			result := DiscoverDevices(testDirs.SysfsRoot, device.DefaultNamingStyle)
 			if !tt.shouldFail && !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("expected %+v, got %+v", tt.expected["0000-0f-00-0-0x1020"], result["0000-0f-00-0-0x1020"])
+			}
+
+			// Run cleanup function if provided
+			if tt.cleanupFunc != nil {
+				if err := tt.cleanupFunc(testDirs.SysfsRoot); err != nil {
+					t.Errorf("Could not properly cleanup %v: %v", tt.name, err)
+				}
 			}
 		})
 	}
