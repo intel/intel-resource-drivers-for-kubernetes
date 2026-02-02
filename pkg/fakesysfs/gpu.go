@@ -199,20 +199,27 @@ func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.Devices
 		if gpu.PCIAddress == "" {
 			gpu.PCIAddress, _ = helpers.PciInfoFromDeviceUID(gpu.UID)
 		}
+		if gpu.PCIRoot == "" {
+			gpu.PCIRoot = "pci0000:00"
+		}
+		if err := fakePCIDeviceSymlink(sysfsRoot, gpu.PCIRoot, gpu.PCIAddress); err != nil {
+			return fmt.Errorf("creating fake sysfs PCI devices symlinks, err: %v", err)
+		}
 
 		// driver setup
 		pciDriverDir := path.Join(sysfsRoot, "bus/pci/drivers", gpu.Driver)
 		driverDeviceDir := path.Join(pciDriverDir, gpu.PCIAddress)
-		if err := os.MkdirAll(driverDeviceDir, 0750); err != nil {
-			return fmt.Errorf("creating fake sysfs, err: %v", err)
+		if err := os.MkdirAll(pciDriverDir, 0750); err != nil {
+			return fmt.Errorf("creating fake sysfs PCI driver dir, err: %v", err)
+		}
+
+		linkDst := fmt.Sprintf("../../../../devices/%v/%v", gpu.PCIRoot, gpu.PCIAddress)
+		if err := os.Symlink(linkDst, driverDeviceDir); err != nil {
+			return fmt.Errorf("creating fake sysfs PCI driver device symlink to PCI device, err: %v", err)
 		}
 
 		if writeErr := helpers.WriteFile(path.Join(driverDeviceDir, "device"), gpu.Model); writeErr != nil {
 			return fmt.Errorf("creating fake sysfs driver device contents, err: %v", writeErr)
-		}
-
-		if err := fakePCIDeviceSymlink(sysfsRoot, gpu.PCIRoot, gpu.PCIAddress); err != nil {
-			return fmt.Errorf("creating fake sysfs PCI devices tree, err: %v", err)
 		}
 
 		if err := fakeGpuDRI(sysfsRoot, devfsRoot, gpu, driverDeviceDir, realDevices); err != nil {

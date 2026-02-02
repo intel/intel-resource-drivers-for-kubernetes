@@ -69,6 +69,7 @@ func TestDiscoverDevices(t *testing.T) {
 					ModelName:  "Flex 170",
 					FamilyName: "Data Center Flex",
 					PCIAddress: "0000:0f:00.0",
+					PCIRoot:    "pci0000:00",
 					// TODO: FIXME: fake xpu-smi
 					MemoryMiB:  0,
 					DeviceType: "gpu",
@@ -82,6 +83,7 @@ func TestDiscoverDevices(t *testing.T) {
 				},
 			},
 		},
+
 		{
 			name: "with 1 vf",
 			setupFunc: func(sysfsRoot, devfsRoot string, driver string) error {
@@ -134,6 +136,7 @@ func TestDiscoverDevices(t *testing.T) {
 					ModelName:  "Flex 170",
 					FamilyName: "Data Center Flex",
 					PCIAddress: "0000:0f:00.0",
+					PCIRoot:    "pci0000:00",
 					// TODO: FIXME: fake xpu-smi
 					MemoryMiB:  0,
 					DeviceType: "gpu",
@@ -150,6 +153,7 @@ func TestDiscoverDevices(t *testing.T) {
 					ModelName:  "Flex 170",
 					FamilyName: "Data Center Flex",
 					PCIAddress: "0000:0f:00.1",
+					PCIRoot:    "pci0000:00",
 					// TODO: FIXME: fake xpu-smi
 					MemoryMiB:  0,
 					DeviceType: "vf",
@@ -194,6 +198,7 @@ func TestDiscoverDevices(t *testing.T) {
 					ModelName:  "Flex 170",
 					FamilyName: "Data Center Flex",
 					PCIAddress: "0000:0f:00.0",
+					PCIRoot:    "pci0000:00",
 					// TODO: FIXME: fake xpu-smi
 					MemoryMiB:  0,
 					DeviceType: "gpu",
@@ -224,6 +229,7 @@ func TestDiscoverDevices(t *testing.T) {
 					ModelName:  "Flex 170",
 					FamilyName: "Data Center Flex",
 					PCIAddress: "0000:0f:00.0",
+					PCIRoot:    "pci0000:00",
 					// TODO: FIXME: fake xpu-smi
 					MemoryMiB:  0,
 					DeviceType: "gpu",
@@ -280,6 +286,7 @@ func TestDiscoverDevices(t *testing.T) {
 					ModelName:  "Flex 170",
 					FamilyName: "Data Center Flex",
 					PCIAddress: "0000:0f:00.0",
+					PCIRoot:    "pci0000:00",
 					MemoryMiB:  0,
 					DeviceType: "gpu",
 					CardIdx:    0,
@@ -309,6 +316,7 @@ func TestDiscoverDevices(t *testing.T) {
 					ModelName:  "Flex 170",
 					FamilyName: "Data Center Flex",
 					PCIAddress: "0000:0f:00.0",
+					PCIRoot:    "pci0000:00",
 					MemoryMiB:  0,
 					DeviceType: "gpu",
 					CardIdx:    0,
@@ -331,6 +339,7 @@ func TestDiscoverDevices(t *testing.T) {
 					ModelName:  "Flex 170",
 					FamilyName: "Data Center Flex",
 					PCIAddress: "0000:0f:00.0",
+					PCIRoot:    "pci0000:00",
 					// TODO: FIXME: fake xpu-smi
 					MemoryMiB:  0,
 					DeviceType: "gpu",
