@@ -17,7 +17,7 @@ hardware.
 All supported accelerators have a kustomization overlay in `deployments` directory,
 with `device-faker` sidecar container to provide fake sysfs and devfs.
 
-To quickly deploy DRA driver with faked devices' presence:
+To deploy DRA driver with faked devices:
 ```shell
 kubectl apply -k deployments/gpu/overlay/device-faker
 ```
