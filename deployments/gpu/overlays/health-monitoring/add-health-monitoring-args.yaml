@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: intel-gpu-resource-driver-kubelet-plugin
+  namespace: intel-gpu-resource-driver
+spec:
+  template:
+    spec:
+      containers:
+      - name: kubelet-plugin
+        args:
+        - --health-monitoring=true
+        - --health-interval=10
