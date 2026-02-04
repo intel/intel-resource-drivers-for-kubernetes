@@ -89,7 +89,7 @@ func getFakeDriver(testDirs testhelpers.TestDirsType, healthcare bool) (*driver,
 			KubeletPluginDir:          testDirs.KubeletPluginDir,
 			KubeletPluginsRegistryDir: testDirs.KubeletPluginRegistryDir,
 		},
-		Coreclient:  kubefake.NewSimpleClientset(),
+		Coreclient:  kubefake.NewClientset(),
 		DriverFlags: &gaudiFlags,
 	}
 
