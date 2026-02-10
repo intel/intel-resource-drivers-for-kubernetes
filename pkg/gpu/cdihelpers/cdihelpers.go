@@ -21,9 +21,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
-	"strconv"
-	"strings"
 
 	"k8s.io/klog/v2"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
@@ -46,157 +43,24 @@ func getGPUSpecs(cdiCache *cdiapi.Cache) []*cdiapi.Spec {
 	return gpuSpecs
 }
 
-// SyncDetectedDevicesWithRegistry adds detected devices into cdi registry if they are not yet there.
-// Update existing registry devices with detected.
-// Remove absent registry devices.
-func SyncDetectedDevicesWithRegistry(cdiCache *cdiapi.Cache, detectedDevices device.DevicesInfo, doCleanup bool) error {
-
-	vendorSpecs := getGPUSpecs(cdiCache)
-	devicesToAdd := detectedDevices.DeepCopy()
-
-	if len(vendorSpecs) == 0 {
-		klog.V(5).Infof("No existing specs found for vendor %v, creating new", device.CDIVendor)
-		if err := addNewDevicesToNewRegistry(cdiCache, devicesToAdd); err != nil {
-			return fmt.Errorf("error adding devices to a new CDI manifest: %v", err)
-		}
-		return nil
-	}
-
-	// loop through spec devices
-	// - remove from CDI those not detected
-	// - update with card and renderD indexes
-	//   - delete from detected so they are not added as duplicates
-	// - write spec
-	// add rest of detected devices to first vendor spec
-	for specidx, vendorSpec := range vendorSpecs {
-		klog.V(5).Infof("checking vendorspec %v", specidx)
-
-		specChanged, updatedDevices := syncSpecDevices(vendorSpec.Devices, devicesToAdd, doCleanup)
-		if specChanged {
-			vendorSpec.Devices = updatedDevices
-			if err := writeUpdatedSpec(cdiCache, vendorSpec); err != nil {
-				return err
-			}
+// AddDetectedDevicesToCDIRegistry adds detected devices into cdi registry after deleting old specs.
+func AddDetectedDevicesToCDIRegistry(cdiCache *cdiapi.Cache, detectedDevices device.DevicesInfo) error {
+	gpuSpecs := getGPUSpecs(cdiCache)
+	for _, spec := range gpuSpecs {
+		if err := cdiCache.RemoveSpec(spec.GetPath()); err != nil {
+			return fmt.Errorf("failed to remove old CDI spec %v: %v", spec, err)
 		}
 	}
 
-	if len(devicesToAdd) > 0 {
-		return addDevicesToExistingSpec(cdiCache, vendorSpecs[0], devicesToAdd)
+	if err := addDevicesToNewSpec(cdiCache, detectedDevices); err != nil {
+		return fmt.Errorf("failed adding devices to new CDI spec: %v", err)
 	}
 
 	return nil
 }
 
-func syncSpecDevices(specDevices []specs.Device, detected device.DevicesInfo, doCleanup bool) (bool, []specs.Device) {
-	updated := []specs.Device{}
-	changed := false
-
-	for _, specDevice := range specDevices {
-		if detectedDevice, found := detected[specDevice.Name]; found {
-			if SyncDeviceNodes(specDevice, detectedDevice, device.CardRegexp, device.RenderdRegexp) {
-				changed = true
-			}
-			updated = append(updated, specDevice)
-			delete(detected, specDevice.Name)
-		} else if doCleanup {
-			klog.V(5).Infof("Removing device %v from CDI registry", specDevice.Name)
-			changed = true
-		} else {
-			updated = append(updated, specDevice)
-		}
-	}
-
-	return changed, updated
-}
-
-func writeUpdatedSpec(cdiCache *cdiapi.Cache, spec *cdiapi.Spec) error {
-	specName := path.Base(spec.GetPath())
-
-	if len(spec.Devices) == 0 {
-		klog.V(5).Infof("No devices in spec %v, deleting it", specName)
-		if err := cdiCache.RemoveSpec(specName); err != nil {
-			return fmt.Errorf("failed to remove empty CDI spec %v: %v", specName, err)
-		}
-		return nil
-	}
-
-	klog.V(5).Infof("Updating spec %v", specName)
-	err := cdiCache.WriteSpec(spec.Spec, specName)
-	if err != nil {
-		klog.Errorf("failed to write CDI spec %v: %v", spec.GetPath(), err)
-		return fmt.Errorf("failed to write CDI spec %v: %v", spec.GetPath(), err)
-	}
-	return nil
-}
-
-func addDevicesToExistingSpec(cdiCache *cdiapi.Cache, apispec *cdiapi.Spec, devicesToAdd device.DevicesInfo) error {
-	klog.V(5).Infof("Adding %d devices to CDI spec", len(devicesToAdd))
-	AddDevicesToSpec(devicesToAdd, apispec.Spec)
-	specName := path.Base(apispec.GetPath())
-
-	cdiVersion, err := cdiapi.MinimumRequiredVersion(apispec.Spec)
-	if err != nil {
-		klog.Errorf("failed to get minimum CDI version for spec %v: %v", apispec.GetPath(), err)
-		return fmt.Errorf("failed to get minimum CDI version for spec %v: %v", apispec.GetPath(), err)
-	}
-	if apispec.Version != cdiVersion {
-		apispec.Version = cdiVersion
-	}
-
-	klog.V(5).Infof("Overwriting spec %v", specName)
-	err = cdiCache.WriteSpec(apispec.Spec, specName)
-	if err != nil {
-		klog.Errorf("failed to write CDI spec %v: %v", apispec.GetPath(), err)
-		return fmt.Errorf("failed to write CDI spec %v: %v", apispec.GetPath(), err)
-	}
-
-	return nil
-}
-
-func SyncDeviceNodes(
-	specDevice specs.Device, detectedDevice *device.DeviceInfo,
-	cardregexp *regexp.Regexp, renderdregexp *regexp.Regexp) bool {
-	specChanged := false
-	dridevpath := device.GetDriDevPath()
-
-	for deviceNodeIdx, deviceNode := range specDevice.ContainerEdits.DeviceNodes {
-		driFileName := path.Base(deviceNode.Path) // e.g. card1 or renderD129
-		switch {
-		case cardregexp.MatchString(driFileName):
-			klog.V(5).Infof("CDI device node %v is a card device: %v", deviceNodeIdx, driFileName)
-			cardIdx, err := strconv.ParseUint(strings.Split(driFileName, "card")[1], 10, 64)
-			if err != nil {
-				klog.Errorf("Failed to parse index of DRI card device '%v', skipping", driFileName)
-				continue // deviceNode loop
-			}
-			if cardIdx != detectedDevice.CardIdx {
-				klog.V(5).Infof("Fixing card index for CDI device %v", detectedDevice.UID)
-				deviceNode.Path = path.Join(dridevpath, fmt.Sprintf("card%d", detectedDevice.CardIdx))
-				deviceNode.HostPath = deviceNode.Path // update host path as well
-				specChanged = true
-			}
-		case renderdregexp.MatchString(driFileName):
-			klog.V(5).Infof("CDI device node %v is a renderD device: %v", deviceNodeIdx, driFileName)
-			renderdIdx, err := strconv.ParseUint(strings.Split(driFileName, "renderD")[1], 10, 64)
-			if err != nil {
-				klog.Errorf("Failed to parse index of DRI renderD device '%v', skipping", driFileName)
-				continue // deviceNode loop
-			}
-			if renderdIdx != detectedDevice.RenderdIdx {
-				klog.V(5).Infof("Fixing renderD index for CDI device %v", detectedDevice.UID)
-				deviceNode.Path = path.Join(dridevpath, fmt.Sprintf("renderD%d", detectedDevice.RenderdIdx))
-				deviceNode.HostPath = deviceNode.Path // update host path as well
-				specChanged = true
-			}
-		default:
-			klog.Warningf("Unexpected device node %v in CDI device %v", deviceNode.Path, specDevice.Name)
-		}
-	}
-	return specChanged
-}
-
-// addNewDevicesToNewRegistry writes devices into new vendor-specific CDI spec, should only be called if such spec does not exist.
-func addNewDevicesToNewRegistry(cdiCache *cdiapi.Cache, devices device.DevicesInfo) error {
+// addDevicesToNewSpec creates new CDI spec and adds devices to it.
+func addDevicesToNewSpec(cdiCache *cdiapi.Cache, devices device.DevicesInfo) error {
 	if len(devices) == 0 {
 		return nil
 	}

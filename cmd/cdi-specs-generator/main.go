@@ -165,9 +165,8 @@ func handleGPUDevices(cdiCache *cdiapi.Cache, namingStyle string, dryRun bool) e
 		return nil
 	}
 
-	// syncDetectedDevicesWithCdiRegistry overrides uid in detecteddevices from existing cdi spec
-	if err := gpuCdihelpers.SyncDetectedDevicesWithRegistry(cdiCache, detectedDevices, true); err != nil {
-		fmt.Printf("unable to sync detected devices to CDI registry: %v", err)
+	if err := gpuCdihelpers.AddDetectedDevicesToCDIRegistry(cdiCache, detectedDevices); err != nil {
+		fmt.Printf("unable to add detected devices to CDI registry: %v", err)
 		return err
 	}
 

@@ -54,9 +54,8 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 
 	cdiCache := cdiapi.GetDefaultCache()
 
-	// syncDetectedDevicesWithRegistry overrides uid in detecteddevices from existing cdi spec
-	if err := cdihelpers.SyncDetectedDevicesWithRegistry(cdiCache, detectedDevices, true); err != nil {
-		return nil, fmt.Errorf("unable to sync detected devices to CDI registry: %v", err)
+	if err := cdihelpers.AddDetectedDevicesToCDIRegistry(cdiCache, detectedDevices); err != nil {
+		return nil, fmt.Errorf("unable to add detected devices to CDI registry: %v", err)
 	}
 
 	// hack for tests on slow machines

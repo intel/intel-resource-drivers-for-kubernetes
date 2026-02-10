@@ -14,15 +14,20 @@ import (
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
 )
 
-func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
+func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 
 	tests := []struct {
 		name            string
 		existingSpecs   []*cdiapi.Spec
 		detectedDevices device.DevicesInfo
-		doCleanup       bool
 		expectedError   bool
 	}{
+		{
+			name:            "No existing specs, no detected devices",
+			existingSpecs:   nil,
+			detectedDevices: device.DevicesInfo{},
+			expectedError:   false,
+		},
 		{
 			name:          "No existing specs, add new devices",
 			existingSpecs: nil,
@@ -55,11 +60,10 @@ func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 					MaxVFs:     0,
 				},
 			},
-			doCleanup:     false,
 			expectedError: false,
 		},
 		{
-			name: "Existing specs, no changes needed",
+			name: "Existing specs, detected devices replace old ones",
 			existingSpecs: []*cdiapi.Spec{
 				{
 					Spec: &specs.Spec{
@@ -82,7 +86,6 @@ func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 			detectedDevices: device.DevicesInfo{
 				"gpu1": {UID: "gpu1", CardIdx: 0, RenderdIdx: 128},
 			},
-			doCleanup:     false,
 			expectedError: false,
 		},
 		{
@@ -109,11 +112,10 @@ func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 			detectedDevices: device.DevicesInfo{
 				"gpu1": {UID: "gpu1", CardIdx: 0, RenderdIdx: 128},
 			},
-			doCleanup:     false,
 			expectedError: false,
 		},
 		{
-			name: "Existing specs, remove absent devices with cleanup",
+			name: "Existing specs, remove absent devices",
 			existingSpecs: []*cdiapi.Spec{
 				{
 					Spec: &specs.Spec{
@@ -145,11 +147,10 @@ func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 			detectedDevices: device.DevicesInfo{
 				"gpu1": {UID: "gpu1", CardIdx: 0, RenderdIdx: 128},
 			},
-			doCleanup:     true,
 			expectedError: false,
 		},
 		{
-			name: "Existing specs, remove all present devices with cleanup",
+			name: "Existing specs, all devices removed",
 			existingSpecs: []*cdiapi.Spec{
 				{
 					Spec: &specs.Spec{
@@ -179,11 +180,10 @@ func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 				},
 			},
 			detectedDevices: device.DevicesInfo{},
-			doCleanup:       true,
 			expectedError:   false,
 		},
 		{
-			name: "Existing specs, remove earlier device and add new one",
+			name: "Existing specs, replace with new device",
 			existingSpecs: []*cdiapi.Spec{
 				{
 					Spec: &specs.Spec{
@@ -206,7 +206,6 @@ func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 			detectedDevices: device.DevicesInfo{
 				"gpu2": {UID: "gpu2", CardIdx: 1, RenderdIdx: 129},
 			},
-			doCleanup:     false,
 			expectedError: false,
 		},
 	}
@@ -232,8 +231,8 @@ func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 
 			t.Logf("existing specs: %v", cdiCache.GetVendorSpecs(device.CDIVendor))
 
-			if err := SyncDetectedDevicesWithRegistry(cdiCache, tt.detectedDevices, tt.doCleanup); (err != nil) != tt.expectedError {
-				t.Errorf("SyncDetectedDevicesWithRegistry() error = %v, expectedError %v", err, tt.expectedError)
+			if err := AddDetectedDevicesToCDIRegistry(cdiCache, tt.detectedDevices); (err != nil) != tt.expectedError {
+				t.Errorf("AddDetectedDevicesToCDIRegistry() error = %v, expectedError %v", err, tt.expectedError)
 			}
 		})
 	}
