@@ -43,11 +43,9 @@ func getGaudiSpecs(cdiCache *cdiapi.Cache) []*cdiapi.Spec {
 	return gaudiSpecs
 }
 
-// AddDetectedDevicesToCDIRegistry adds detected devices into cdi registry after
-// deleting old specs.
-func AddDetectedDevicesToCDIRegistry(cdiCache *cdiapi.Cache, detectedDevices device.DevicesInfo, doCleanup bool) error {
+// AddDetectedDevicesToCDIRegistry adds detected devices into cdi registry after deleting old specs.
+func AddDetectedDevicesToCDIRegistry(cdiCache *cdiapi.Cache, detectedDevices device.DevicesInfo) error {
 	gaudiSpecs := getGaudiSpecs(cdiCache)
-	// delete all existing Gaudi specs.
 	for _, spec := range gaudiSpecs {
 		if err := cdiCache.RemoveSpec(spec.GetPath()); err != nil {
 			return fmt.Errorf("failed to remove old CDI spec %v: %v", spec, err)
@@ -61,8 +59,7 @@ func AddDetectedDevicesToCDIRegistry(cdiCache *cdiapi.Cache, detectedDevices dev
 	return nil
 }
 
-// addDevicesToNewSpec creates new CDI spec, adds devices to it and calls writeSpec.
-// Old specs are expected to be deleted before writing new spec.
+// addDevicesToNewSpec creates new CDI spec and adds devices to it.
 func addDevicesToNewSpec(cdiCache *cdiapi.Cache, devices device.DevicesInfo) error {
 	klog.V(5).Infof("Adding %v devices to new spec", len(devices))
 
