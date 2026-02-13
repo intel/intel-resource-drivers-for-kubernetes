@@ -90,6 +90,9 @@ rules:
   resources: ["resourceslices"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["resource.k8s.io"]
+  resources: ["devicetaintrules"]
+  verbs: ["get", "list", "watch", "create"]
+- apiGroups: ["resource.k8s.io"]
   resources: ["resourceclaims"]
   verbs: ["get"]
 
