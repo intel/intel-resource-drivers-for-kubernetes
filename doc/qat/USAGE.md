@@ -88,10 +88,9 @@ spec:
                 device.attributes["qat.intel.com"].services == "sym;asym" ||
                 device.attributes["qat.intel.com"].services == "sym;dc" ||
                 device.attributes["qat.intel.com"].services == "asym;sym" ||
-                device.attributes["qat.intel.com"].services == "dc;sym" ||
-
+                device.attributes["qat.intel.com"].services == "dc;sym"
 ---
-apiVersion: v1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: qat-sample-sym
