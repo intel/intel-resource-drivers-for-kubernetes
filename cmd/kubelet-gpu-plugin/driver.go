@@ -48,6 +48,7 @@ type driver struct {
 	healthStreams      map[int]chan *drahealthv1alpha1.NodeWatchResourcesResponse
 	healthStreamsMutex sync.RWMutex
 	healthStreamID     int
+	healthcheck        *healthcheck
 
 	// Embed unimplemented server for forward compatibility
 	drahealthv1alpha1.UnimplementedDRAResourceHealthServer
@@ -150,6 +151,15 @@ PluginDataDirectoryPath: %v`,
 		return nil, err
 	}
 
+	hc, err := startHealthcheck(ctx, gpuFlags.HealthcheckPort,
+		config.CommonFlags.KubeletPluginsRegistryDir,
+		config.CommonFlags.KubeletPluginDir,
+		device.DriverName)
+	if err != nil {
+		klog.Errorf("Failed to start health check server: %v", err)
+	}
+	driver.healthcheck = hc
+
 	if driver.healthcare {
 		klog.Info("Starting health monitoring")
 		go driver.startHealthMonitor(ctx, gpuFlags)
@@ -204,6 +214,7 @@ func (d *driver) UnprepareResourceClaims(ctx context.Context, claims []kubeletpl
 }
 
 func (d *driver) Shutdown(ctx context.Context) error {
+	d.healthcheck.stop()
 	d.helper.Stop()
 	// Health monitoring does shutdown by itself (when main context goes down), if enabled,
 	// otherwise do shutdown here.

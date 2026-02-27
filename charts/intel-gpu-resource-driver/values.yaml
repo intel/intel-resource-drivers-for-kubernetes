@@ -26,11 +26,20 @@ openshift:
   sccName: intel-gpu-resource-driver
 
 kubeletPlugin:
+  healthcheckPort: 51516  # gRPC health check port. Set to -1 to disable.
   podAnnotations: {}
   nodeSelector: {}
     # Label used when nfd.enabled is true.
     # Changes to this are ignored when .Values.nodeFeatureRules.enabled or .Values.nfd.enabled .
     #intel.feature.node.kubernetes.io/gpu: "true"
+
+
+  # Health monitoring configuration
+  healthMonitoring:
+    enabled: false
+    interval: 5
+
+
   tolerations:
     - key: node-role.kubernetes.io/master
       operator: Exists

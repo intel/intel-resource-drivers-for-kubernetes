@@ -33,6 +33,7 @@ const (
 	HealthcareIntervalFlagMin      = 1
 	HealthcareIntervalFlagMax      = 3600
 	HealthcareIntervalFlagDefault  = 5
+	HealthcheckPortDefault         = 51516
 
 	// The following limits have no inherent default; a value of 0 means "flag not provided".
 	// We use *Unset naming instead of *Default to avoid implying a meaningful default value.
@@ -55,6 +56,7 @@ type GPUFlags struct {
 	CoreThermalLimit    int
 	MemoryThermalLimit  int
 	PowerLimit          int
+	HealthcheckPort     int
 }
 
 func main() {
@@ -117,6 +119,13 @@ func main() {
 			Value:       PartitioningDefault,
 			Destination: &gpuFlags.Partitioning,
 			EnvVars:     []string{"PARTITIONING"},
+		},
+		&cli.IntFlag{
+			Name:        "healthcheck-port",
+			Usage:       "gRPC health check port. Set to -1 to disable.",
+			Value:       HealthcheckPortDefault,
+			Destination: &gpuFlags.HealthcheckPort,
+			EnvVars:     []string{"HEALTHCHECK_PORT"},
 		},
 	}
 

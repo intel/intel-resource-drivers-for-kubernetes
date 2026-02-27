@@ -21,6 +21,23 @@ spec:
       - name: kubelet-plugin
         image: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver:latest
         command: ["/kubelet-gpu-plugin"]
+        ports:
+        - name: healthcheck
+          containerPort: 51516
+        startupProbe:
+          grpc:
+            port: 51516
+            service: liveness
+          failureThreshold: 60
+          periodSeconds: 10
+          timeoutSeconds: 10
+        livenessProbe:
+          grpc:
+            port: 51516
+            service: liveness
+          failureThreshold: 3
+          periodSeconds: 30
+          timeoutSeconds: 10
         env:
         - name: NODE_NAME
           valueFrom:

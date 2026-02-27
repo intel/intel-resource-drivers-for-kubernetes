@@ -20,6 +20,31 @@ spec:
         image: {{ include "intel-gpu-resource-driver.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["/kubelet-gpu-plugin"]
+        args:
+        - --healthcheck-port={{ .Values.kubeletPlugin.healthcheckPort }}
+        {{- if .Values.kubeletPlugin.healthMonitoring.enabled }}
+        - --health-monitoring=true
+        - --health-interval={{ .Values.kubeletPlugin.healthMonitoring.interval }}
+        {{- end }}
+        {{- if gt (int .Values.kubeletPlugin.healthcheckPort) 0 }}
+        ports:
+        - name: healthcheck
+          containerPort: {{ .Values.kubeletPlugin.healthcheckPort }}
+        startupProbe:
+          grpc:
+            port: {{ .Values.kubeletPlugin.healthcheckPort }}
+            service: liveness
+          failureThreshold: 60
+          periodSeconds: 10
+          timeoutSeconds: 10
+        livenessProbe:
+          grpc:
+            port: {{ .Values.kubeletPlugin.healthcheckPort }}
+            service: liveness
+          failureThreshold: 3
+          periodSeconds: 30
+          timeoutSeconds: 10
+        {{- end }}
         env:
         - name: NODE_NAME
           valueFrom:
