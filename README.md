@@ -11,6 +11,7 @@ CAUTION: This is a beta / non-production software, do not use on production clus
 ## Glossary
 
 - DRA https://github.com/kubernetes/enhancements/tree/master/keps/sig-node/3063-dynamic-resource-allocation
+- DRA structured parameters https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/4381-dra-structured-parameters/README.md
 - CDI https://github.com/cncf-tags/container-device-interface/
 - K8s https://github.com/kubernetes/kubernetes.git
 
@@ -27,7 +28,7 @@ The resource drivers are based on Dynamic Resource Allocation (DRA) framework in
 
 ### About Dynamic Resource Allocation
 
-Dynamic Resource Allocation (DRA) is a resource management framework in Kubernetes (1.26+), that
+Dynamic Resource Allocation (DRA) is a resource management framework in Kubernetes (beta in 1.32+), that
 allows management of special resources in cluster (typically HW accelerators) by vendor-provided
 resource drivers (typically a controller and a node-agent / kubelet-plugin) in a common way.
 
