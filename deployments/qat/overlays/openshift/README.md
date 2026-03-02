@@ -1,6 +1,6 @@
 # Overlay for installing Intel QAT resource driver in Red Hat OpenShift
 
-- supported RHOS version: 4.20+
+- supported RHOS version: 4.21+
 
 # Installing
 

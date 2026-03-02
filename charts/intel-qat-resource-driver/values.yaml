@@ -23,6 +23,7 @@ serviceAccount:
 
 openshift:
   enabled: false
+  version: 421
   sccName: intel-qat-resource-driver
 
 kubeletPlugin:

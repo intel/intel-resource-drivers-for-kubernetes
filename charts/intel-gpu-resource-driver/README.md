@@ -55,6 +55,19 @@ You may also run `helm show values` on this chart's dependencies for additional 
 
 ## Deploying to RedHat OpenShift Container Platform
 
+### OpenShift 4.20
+```console
+helm install \
+    --set openshift.enabled=true \
+    --set openshift.version=420 \
+    --namespace "intel-gpu-resource-driver" \
+    --create-namespace \
+    intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver-chart
+```
+
+### OpenShift 4.21+
+The default value for `openshift.version` is `421`, so specifying a version is not necessary. Older versions than 4.20 are not supported.
+
 ```console
 helm install \
     --set openshift.enabled=true \
