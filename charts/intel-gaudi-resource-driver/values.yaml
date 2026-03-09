@@ -23,7 +23,7 @@ serviceAccount:
 
 openshift:
   enabled: false
-  version: 421
+  version: 4.21
   sccName: intel-gaudi-resource-driver
 
 kubeletPlugin:

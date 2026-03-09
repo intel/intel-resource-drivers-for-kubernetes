@@ -79,14 +79,14 @@ modprobe qat_4xxx
 ```console
 helm install \
     --set openshift.enabled=true \
-    --set openshift.version=420 \
+    --set openshift.version=4.20 \
     --namespace "intel-qat-resource-driver" \
     --create-namespace \
     intel-qat-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-qat-resource-driver-chart
 ```
 
 ### OpenShift 4.21+
-The default value for `openshift.version` is `421`, so specifying a version is not necessary. Older versions than 4.20 are not supported.
+The default value for `openshift.version` is `4.21`, so specifying a version is not necessary. Older versions than 4.20 are not supported.
 
 ```console
 helm install \

@@ -62,14 +62,14 @@ You may also run `helm show values` on this chart's dependencies for additional 
 ```console
 helm install \
     --set openshift.enabled=true \
-    --set openshift.version=420 \
+    --set openshift.version=4.20 \
     --namespace intel-gaudi-resource-driver \
     --create-namespace \
     intel-gaudi-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver-chart
 ```
 
 ### OpenShift 4.21+
-The default value for `openshift.version` is `421`, so specifying a version is not necessary. Older versions than 4.20 are not supported.
+The default value for `openshift.version` is `4.21`, so specifying a version is not necessary. Older versions than 4.20 are not supported.
 
 ```console
 helm install \

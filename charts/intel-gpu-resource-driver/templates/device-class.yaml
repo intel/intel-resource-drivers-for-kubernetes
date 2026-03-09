@@ -1,4 +1,4 @@
-{{- if and (.Values.openshift.enabled) (lt (int .Values.openshift.version) 421) }}
+{{- if and (.Values.openshift.enabled) (semverCompare "<4.21" .Values.openshift.version) }}
 apiVersion: resource.k8s.io/v1beta1
 {{- else }}
 apiVersion: resource.k8s.io/v1

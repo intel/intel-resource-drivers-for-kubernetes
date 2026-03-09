@@ -5,7 +5,4 @@ resources:
   - clusterRole.yaml
   - clusterRoleBinding.yaml
   - ../../base
-  - device-class.yaml
   - securityContextConstraints.yaml
-patches:
-  - path: delete-v1-device-class.yaml
