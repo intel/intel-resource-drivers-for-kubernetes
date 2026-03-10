@@ -179,11 +179,7 @@ func TestPrepareResourceClaims(t *testing.T) {
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid0": {
-					Err: fmt.Errorf(
-						"error preparing devices for claim %v: device %v (pool %v) is already allocated to another claim and cannot be prepared without adminAccess flag",
-						"uid0",
-						"0000-00-02-0-0x56c0",
-						"node1"),
+					Err: errors.New("error preparing devices for claim uid0: device 0000-00-02-0-0x56c0 (pool node1) is already allocated to another claim and cannot be prepared without adminAccess flag"),
 				},
 			},
 			initialPreparedClaims: helpers.ClaimPreparations{
