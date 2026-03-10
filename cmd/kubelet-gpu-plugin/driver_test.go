@@ -409,7 +409,7 @@ func TestPrepareResourceClaims(t *testing.T) {
 			t.Errorf("%v: unexpected response: %+v, expected response: %+v", testcase.name, response, testcase.expectedResponse)
 		}
 
-		time.Sleep(1000 * time.Millisecond) // ensure any async file writes are completed before reading
+		time.Sleep(time.Second) // ensure any async file writes are completed before reading
 		preparedClaims, err := helpers.ReadPreparedClaimsFromFile(preparedClaimFilePath)
 		if err != nil {
 			t.Errorf("%v: error %v, expected no error", testcase.name, err)
