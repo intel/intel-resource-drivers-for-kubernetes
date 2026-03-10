@@ -18,12 +18,11 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
 	"testing"
-	"time"
 
 	core "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
@@ -400,12 +399,11 @@ func TestPrepareResourceClaims(t *testing.T) {
 		}
 
 		if !testhelpers.DeepEqualPrepareResults(testcase.expectedResponse, response) {
-			//	responseJSON, _ := json.MarshalIndent(response, "", "\t")
-			//	expectedResponseJSON, _ := json.MarshalIndent(testcase.expectedResponse, "", "\t")
-			t.Errorf("%v: unexpected response: %+v, expected response: %+v", testcase.name, response, testcase.expectedResponse)
+			t.Errorf(
+				"%v: unexpected response: %v, expected response: %v",
+				testcase.name, response, testcase.expectedResponse)
 		}
 
-		time.Sleep(time.Second) // ensure any async file writes are completed before reading
 		preparedClaims, err := helpers.ReadPreparedClaimsFromFile(preparedClaimFilePath)
 		if err != nil {
 			t.Errorf("%v: error %v, expected no error", testcase.name, err)
@@ -418,11 +416,9 @@ func TestPrepareResourceClaims(t *testing.T) {
 		}
 
 		if !testhelpers.DeepEqualPreparedClaims(expectedPreparedClaims, preparedClaims) {
-			preparedClaimsJSON, _ := json.MarshalIndent(preparedClaims, "", "\t")
-			expectedPreparedClaimsJSON, _ := json.MarshalIndent(testcase.expectedPreparedClaims, "", "\t")
 			t.Errorf(
-				"%v: unexpected PreparedClaims:\n%s\nexpected PreparedClaims:\n%s",
-				testcase.name, string(preparedClaimsJSON), string(expectedPreparedClaimsJSON),
+				"%v: unexpected PreparedClaims:%v, expected PreparedClaims: %v",
+				testcase.name, preparedClaims, expectedPreparedClaims,
 			)
 		}
 
@@ -526,11 +522,9 @@ func TestNodeUnprepareResources(t *testing.T) {
 		}
 
 		if !testhelpers.DeepEqualPreparedClaims(testcase.expectedPreparedClaims, preparedClaims) {
-			preparedClaimsJSON, _ := json.MarshalIndent(preparedClaims, "", "\t")
-			expectedPreparedClaimsJSON, _ := json.MarshalIndent(testcase.expectedPreparedClaims, "", "\t")
 			t.Errorf(
-				"%v: unexpected PreparedClaims:\n%s\nexpected PreparedClaims:\n%s",
-				testcase.name, preparedClaimsJSON, expectedPreparedClaimsJSON,
+				"%v: unexpected PreparedClaims: %+v, expected PreparedClaims: %+v",
+				testcase.name, preparedClaims, testcase.expectedPreparedClaims,
 			)
 		}
 

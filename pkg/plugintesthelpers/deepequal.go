@@ -25,7 +25,11 @@ import (
 	helpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
 
+// DeepEqualPreparedClaims compares two ClaimPreparations to match.
+// It is built on top of reflect.DeepEqual, but compares error fields
+// by their error message only.
 func DeepEqualPreparedClaims(a, b helpers.ClaimPreparations) bool {
+
 	if len(a) != len(b) {
 		return false
 	}
@@ -50,8 +54,12 @@ func DeepEqualPreparedClaims(a, b helpers.ClaimPreparations) bool {
 	}
 
 	return true
+
 }
 
+// DeepEqualErrorMap compares two error maps to match.
+// It exists because reflect.DeepEqual cannot be used easily in testing
+// where an error only needs the message string to be compared.
 func DeepEqualErrorMap(a, b map[types.UID]error) bool {
 	if len(a) != len(b) {
 		return false
@@ -75,6 +83,9 @@ func DeepEqualErrorMap(a, b map[types.UID]error) bool {
 	return true
 }
 
+// DeepEqualPrepareResults compares two DeepEqualPrepareResults to match.
+// It is built on top of reflect.DeepEqual, but compares error fields
+// by their error message only.
 func DeepEqualPrepareResults(a, b map[types.UID]kubeletplugin.PrepareResult) bool {
 	if len(a) != len(b) {
 		return false
