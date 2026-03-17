@@ -34,7 +34,7 @@ type GaudiFlags struct {
 }
 
 const (
-	HealthCareFlagDefault         = false
+	HealthCareFlagDefault         = true
 	HealthcareIntervalFlagMin     = 1
 	HealthcareIntervalFlagMax     = 3600
 	HealthcareIntervalFlagDefault = 5
