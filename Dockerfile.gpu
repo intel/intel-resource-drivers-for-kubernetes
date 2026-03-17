@@ -20,7 +20,7 @@ COPY . .
 
 # Add xpu-smi shared library
 RUN \
-wget -qO /tmp/xpu-smi.deb https://github.com/intel/xpumanager/releases/download/V1.3.1/xpu-smi_1.3.1_20250724.061629.60921e5e_u24.04_amd64.deb && \
+wget -qO /tmp/xpu-smi.deb https://github.com/intel/xpumanager/releases/download/v1.3.1/xpu-smi_1.3.1_20250724.061629.60921e5e_u24.04_amd64.deb && \
 dpkg -i --ignore-depends=level-zero,intel-gsc,libze-intel-gpu1 /tmp/xpu-smi.deb
 
 # Build GPU DRA driver
