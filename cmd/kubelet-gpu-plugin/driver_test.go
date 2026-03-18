@@ -31,6 +31,8 @@ import (
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 
+	"github.com/containers/nri-plugins/pkg/udev"
+
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/fakesysfs"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	helpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
@@ -531,5 +533,312 @@ func TestNodeUnprepareResources(t *testing.T) {
 		if err := driver.Shutdown(context.TODO()); err != nil {
 			t.Errorf("Shutdown() error = %v, wantErr %v", err, nil)
 		}
+	}
+}
+
+//nolint:cyclop // test code
+func TestRefreshDeviceOnDriverEvent(t *testing.T) {
+	testDirs, err := testhelpers.NewTestDirs(device.DriverName)
+	defer testhelpers.CleanupTest(t, "TestRefreshDeviceOnDriverEvent", testDirs.TestRoot)
+	if err != nil {
+		t.Fatalf("setup error: %v", err)
+	}
+
+	const deviceUID = "0000-00-02-0-0x56c0"
+
+	drv, err := getFakeDriver(testDirs)
+	if err != nil {
+		t.Fatalf("could not create fake driver: %v", err)
+	}
+	defer func() { _ = drv.Shutdown(context.TODO()) }()
+
+	drv.state.Lock()
+	drv.state.Allocatable = map[string]*device.DeviceInfo{
+		deviceUID: {
+			UID:        deviceUID,
+			PCIAddress: "0000:00:02.0",
+			Model:      "0x56c0",
+			ModelName:  "Flex 170",
+			FamilyName: "Data Center Flex",
+			CardIdx:    0,
+			RenderdIdx: 128,
+			MemoryMiB:  16256,
+			DeviceType: "gpu",
+			Driver:     "i915",
+			Health:     device.HealthUnknown,
+		},
+	}
+	//nolint:forcetypeassert
+	allocatable := drv.state.Allocatable.(map[string]*device.DeviceInfo)
+	drv.state.Unlock()
+
+	type testCase struct {
+		name                  string
+		eventAction           string
+		devpath               string
+		xpuSmiInitFails       bool
+		discoveredDevices     map[string]*device.DeviceInfo
+		expectedDeviceUID     string
+		currentDriver         string
+		expectedCurrentDriver string
+	}
+
+	testcases := []testCase{
+		{
+			name:                  "unbind event changes current driver unbound",
+			eventAction:           "unbind",
+			devpath:               "/devices/pci0000:00/0000:00:02.0/drm/card0",
+			xpuSmiInitFails:       true,
+			discoveredDevices:     map[string]*device.DeviceInfo{},
+			expectedDeviceUID:     deviceUID,
+			currentDriver:         "i915",
+			expectedCurrentDriver: "",
+		},
+		{
+			name:            "bind event changes current driver to i915",
+			eventAction:     "bind",
+			devpath:         "/devices/pci0000:00/0000:00:02.0/drm/card0",
+			xpuSmiInitFails: true,
+			discoveredDevices: map[string]*device.DeviceInfo{
+				deviceUID: {
+					UID:        deviceUID,
+					PCIAddress: "0000:00:02.0",
+					Model:      "0x56c0",
+					ModelName:  "Flex 170",
+					FamilyName: "Data Center Flex",
+					CardIdx:    0,
+					RenderdIdx: 128,
+					MemoryMiB:  16256,
+					DeviceType: "gpu",
+					Driver:     "i915",
+					Health:     device.HealthUnknown,
+				},
+			},
+			expectedDeviceUID:     deviceUID,
+			currentDriver:         "vfio-pci",
+			expectedCurrentDriver: "i915",
+		},
+		{
+			name:                  "bind event changes current driver to vfio-pci",
+			eventAction:           "bind",
+			devpath:               "/devices/pci0000:00/0000:00:02.0/vfio-dev/vfio0",
+			xpuSmiInitFails:       true,
+			discoveredDevices:     map[string]*device.DeviceInfo{},
+			expectedDeviceUID:     deviceUID,
+			currentDriver:         "i915",
+			expectedCurrentDriver: "vfio-pci",
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Log(testcase.name)
+
+		if testcase.eventAction == "bind" {
+			driverLink := path.Join(testDirs.SysfsRoot, "devices/pci0000:00/0000:00:02.0/driver")
+			driverTarget := path.Join(testDirs.SysfsRoot, "bus/pci/drivers", testcase.expectedCurrentDriver)
+			if err := os.MkdirAll(path.Dir(driverLink), 0755); err != nil {
+				t.Fatalf("setup error: failed creating fake pci path: %v", err)
+			}
+			if err := os.MkdirAll(driverTarget, 0755); err != nil {
+				t.Fatalf("setup error: failed creating fake driver path: %v", err)
+			}
+			if err := os.Remove(driverLink); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("setup error: failed removing existing driver symlink: %v", err)
+			}
+			if err := os.Symlink(driverTarget, driverLink); err != nil {
+				t.Fatalf("setup error: failed creating driver symlink: %v", err)
+			}
+			drv.state.SysfsRoot = testDirs.SysfsRoot
+		}
+
+		allocatable[deviceUID].CurrentDriver = testcase.currentDriver
+
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("refreshDevicesAndPublish panicked unexpectedly: %v", r)
+				}
+			}()
+
+			drv.refreshDeviceOnDriverEvent(context.Background(), &udev.Event{Action: testcase.eventAction, Devpath: testcase.devpath})
+		}()
+
+		drv.state.Lock()
+		//nolint:forcetypeassert
+		updatedAllocatable := drv.state.Allocatable.(map[string]*device.DeviceInfo)
+		updated := updatedAllocatable[testcase.expectedDeviceUID]
+		drv.state.Unlock()
+
+		if updated == nil {
+			t.Fatalf("expected allocatable to include %q", testcase.expectedDeviceUID)
+		}
+
+		if updated.CurrentDriver != testcase.expectedCurrentDriver {
+			t.Errorf("expected CurrentDriver to be %q, got %q", testcase.expectedCurrentDriver, updated.CurrentDriver)
+		}
+
+	}
+}
+
+func TestShouldProcessUdevEvent(t *testing.T) {
+	deviceUID := "0000-00-02-0-0x56c0"
+
+	drv := &driver{
+		state: &nodeState{
+			NodeState: &helpers.NodeState{
+				Allocatable: map[string]*device.DeviceInfo{
+					deviceUID: {
+						UID:        deviceUID,
+						PCIAddress: "0000:00:02.0",
+					},
+				},
+			},
+		},
+	}
+
+	type testCase struct {
+		name     string
+		event    *udev.Event
+		expected bool
+	}
+
+	testcases := []testCase{
+		{
+			name: "unsupported action is ignored",
+			event: &udev.Event{
+				Action:    "change",
+				Subsystem: "drm",
+				Devpath:   "/devices/pci0000:00/0000:00:02.0/drm/card0",
+			},
+			expected: false,
+		},
+		{
+			name: "drm card device bind event is processed",
+			event: &udev.Event{
+				Action:     "bind",
+				Properties: map[string]string{"Driver": "i915"},
+				Devpath:    "/devices/pci0000:00/0000:00:02.0/drm/card0",
+			},
+			expected: true,
+		},
+		{
+			name: "vfio-pci bind event is processed",
+			event: &udev.Event{
+				Action:     "bind",
+				Properties: map[string]string{"Driver": "vfio-pci"},
+				Devpath:    "/devices/pci0000:00/0000:00:02.0/vfio-dev/vfio0",
+			},
+			expected: true,
+		},
+		{
+			name: "unbind event is processed",
+			event: &udev.Event{
+				Action:  "unbind",
+				Devpath: "/devices/pci0000:00/0000:00:02.0/vfio-dev/vfio0",
+			},
+			expected: true,
+		},
+		{
+			name: "bind event for non-GPU device is ignored",
+			event: &udev.Event{
+				Action:     "bind",
+				Properties: map[string]string{"Driver": "vfio-pci"},
+				Devpath:    "/devices/pci0000:00/0000:00:03.0/vfio-dev/vfio0",
+			},
+			expected: false,
+		},
+		{
+			name: "unbind event for non-GPU device is ignored",
+			event: &udev.Event{
+				Action:  "unbind",
+				Devpath: "/devices/pci0000:00/0000:00:03.0/vfio-dev/vfio0",
+			},
+			expected: false,
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			result := drv.shouldProcessUdevEvent(testcase.event)
+			if result != testcase.expected {
+				t.Fatalf("expected shouldProcessUdevEvent()=%v, got %v", testcase.expected, result)
+			}
+		})
+	}
+}
+
+func TestShouldPublishResourceSlice(t *testing.T) {
+	const (
+		preparedDeviceUID  = "0000-00-02-0-0x56c0"
+		preparedPCIAddress = "0000:00:02.0"
+		freeDeviceUID      = "0000-00-03-0-0x56c0"
+		freeDevicePCI      = "0000:00:03.0"
+	)
+
+	drv := &driver{
+		state: &nodeState{
+			NodeState: &helpers.NodeState{
+				Allocatable: map[string]*device.DeviceInfo{
+					preparedDeviceUID: {
+						UID:        preparedDeviceUID,
+						PCIAddress: preparedPCIAddress,
+					},
+					freeDeviceUID: {
+						UID:        freeDeviceUID,
+						PCIAddress: freeDevicePCI,
+					},
+				},
+				Prepared: helpers.ClaimPreparations{
+					"claim-1": {
+						Devices: []kubeletplugin.Device{{
+							DeviceName: preparedDeviceUID,
+						}},
+					},
+				},
+			},
+		},
+	}
+
+	testcases := []struct {
+		name                    string
+		action                  string
+		uid                     string
+		shouldUntaintNoDRMBound bool
+		expected                bool
+	}{
+		{
+			name:                    "bind event with shouldUntaintNoDRMBound=true publishes",
+			action:                  "bind",
+			uid:                     preparedDeviceUID,
+			shouldUntaintNoDRMBound: true,
+			expected:                true,
+		},
+		{
+			name:                    "bind event with shouldUntaintNoDRMBound=false does not publish",
+			action:                  "bind",
+			uid:                     preparedDeviceUID,
+			shouldUntaintNoDRMBound: false,
+			expected:                false,
+		},
+		{
+			name:     "unbind for prepared device does not publish",
+			action:   "unbind",
+			uid:      preparedDeviceUID,
+			expected: false,
+		},
+		{
+			name:     "unbind for unprepared device publishes",
+			action:   "unbind",
+			uid:      freeDeviceUID,
+			expected: true,
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			if got := drv.shouldPublishResourceSlice(testcase.action, testcase.uid, testcase.shouldUntaintNoDRMBound); got != testcase.expected {
+				t.Fatalf("expected shouldPublishResourceSlice()=%v, got %v", testcase.expected, got)
+			}
+		})
 	}
 }

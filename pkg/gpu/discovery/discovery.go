@@ -94,14 +94,15 @@ func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDi
 		klog.V(5).Infof("Found GPU PCI device: %s", devicePCIAddress)
 
 		newDeviceInfo := &device.DeviceInfo{
-			PCIAddress: devicePCIAddress,
-			MemoryMiB:  0,
-			Millicores: initialMillicores,
-			DeviceType: device.GpuDeviceType, // presume GPU, detect the physfn / parent later
-			CardIdx:    0,
-			RenderdIdx: 0,
-			Driver:     driverName,
-			Health:     device.HealthHealthy, // Presume healthy until proven otherwise. If healthcare is disabled, after discovery the driver will set this to HealthUnknown.
+			PCIAddress:    devicePCIAddress,
+			MemoryMiB:     0,
+			Millicores:    initialMillicores,
+			DeviceType:    device.GpuDeviceType, // presume GPU, detect the physfn / parent later
+			CardIdx:       0,
+			RenderdIdx:    0,
+			Driver:        driverName,
+			CurrentDriver: driverName,
+			Health:        device.HealthHealthy, // Presume healthy until proven otherwise. If healthcare is disabled, after discovery the driver will set this to HealthUnknown.
 		}
 
 		sysfsDeviceDir := path.Join(sysfsDriverDir, devicePCIAddress)

@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -35,6 +36,7 @@ import (
 
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/drm"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
 
@@ -98,6 +100,9 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 }
 
 func (s *nodeState) GetResources() resourceslice.DriverResources {
+	s.Lock()
+	defer s.Unlock()
+
 	devices := []resourcev1.Device{}
 
 	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
@@ -173,6 +178,23 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 				Key:    key,
 				Effect: resourcev1.DeviceTaintEffectNoExecute,
 			}}
+		}
+
+		// If the GPU is neither DRM bound nor prepared, add a taint
+		if !gpu.IsDRMBound() {
+			if s.isDevicePrepared(gpuUID) {
+				devices = append(devices, newDevice)
+				continue
+			}
+
+			currentDriverInKey := gpu.CurrentDriver
+			if currentDriverInKey == "" {
+				currentDriverInKey = "unbound"
+			}
+			newDevice.Taints = append(newDevice.Taints, resourcev1.DeviceTaint{
+				Key:    "NotDRMBound-" + currentDriverInKey,
+				Effect: resourcev1.DeviceTaintEffectNoSchedule,
+			})
 		}
 
 		devices = append(devices, newDevice)
@@ -269,6 +291,99 @@ func (s *nodeState) isDeviceUsedExclusivelyAlready(deviceName, poolName, claimUI
 			}
 		}
 	}
+	return false
+}
 
+func (s *nodeState) IsDeviceDRMBound(deviceUID string) bool {
+	s.Lock()
+	defer s.Unlock()
+
+	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
+	gpu := allocatableDevices[deviceUID]
+
+	return gpu.IsDRMBound()
+}
+
+func (s *nodeState) RefreshDeviceOnDriverEvent(deviceUID, currentDriver string) error {
+	s.Lock()
+	defer s.Unlock()
+
+	// nolint:forcetypeassert
+	allocatable := s.Allocatable.(map[string]*device.DeviceInfo)
+	gpu := allocatable[deviceUID]
+	gpu.CurrentDriver = currentDriver
+	if gpu.CurrentDriver == "" {
+		return nil
+	}
+
+	sysfsDriverDeviceDir := path.Join(s.SysfsRoot, device.SysfsPCIBuspath, gpu.Driver, gpu.PCIAddress)
+	cardIdx, renderIdx, err := drm.DeduceCardAndRenderdIndexes(sysfsDriverDeviceDir)
+	if err != nil {
+		return fmt.Errorf("could not deduce card/render indexes for PCI address %s: %v", gpu.PCIAddress, err)
+	}
+
+	// If the GPU is already DRM bound and the indexes haven't changed, no need to refresh the CDI registry.
+	if gpu.CardIdx == cardIdx && gpu.RenderdIdx == renderIdx {
+		return nil
+	}
+
+	gpu.CardIdx = cardIdx
+	gpu.RenderdIdx = renderIdx
+
+	// Refreshing the CDI registry with updated device information
+	cdiCache := cdiapi.GetDefaultCache()
+	if err := cdihelpers.AddDetectedDevicesToCDIRegistry(cdiCache, allocatable); err != nil {
+		return fmt.Errorf("failed to add detected devices to CDI registry: %v", err)
+	}
+
+	return nil
+}
+
+func (s *nodeState) IsDevicePrepared(deviceUID string) bool {
+	s.Lock()
+	defer s.Unlock()
+
+	return s.isDevicePrepared(deviceUID)
+}
+
+func (s *nodeState) isDevicePrepared(deviceUID string) bool {
+
+	for _, preparedClaim := range s.Prepared {
+		for _, preparedDevice := range preparedClaim.Devices {
+			if preparedDevice.DeviceName == deviceUID {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (s *nodeState) getDeviceUIDFromPCIAddress(pciAddress string) (string, error) {
+	s.Lock()
+	defer s.Unlock()
+	// nolint:forcetypeassert
+	allocatable := s.Allocatable.(map[string]*device.DeviceInfo)
+
+	for deviceUID, deviceInfo := range allocatable {
+		if deviceInfo.PCIAddress == pciAddress {
+			return deviceUID, nil
+		}
+	}
+
+	return "", fmt.Errorf("no device found with PCI address %s", pciAddress)
+}
+
+func (s *nodeState) devpathContainsGPUPCIAddress(devpath string) bool {
+	s.Lock()
+	defer s.Unlock()
+
+	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
+
+	for _, gpu := range allocatableDevices {
+		if strings.Contains(devpath, gpu.PCIAddress) {
+			return true
+		}
+	}
 	return false
 }

@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	resourcev1 "k8s.io/api/resource/v1"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
@@ -213,5 +214,124 @@ func TestPreparedClaimsFiles(t *testing.T) {
 		errorCheck(t, "writing claims", test.op2.err, err)
 
 		// TODO: validate saved JSON against something?
+	}
+}
+
+func TestGetResourcesTaintsOnlyUnpreparedNonDRMBoundDevices(t *testing.T) {
+	state := &nodeState{
+		NodeState: &helpers.NodeState{
+			Allocatable: map[string]*device.DeviceInfo{
+				"gpu-unprepared": {
+					UID:           "gpu-unprepared",
+					PCIAddress:    "0000:00:01.0",
+					Model:         "0x56c0",
+					ModelName:     "Flex 170",
+					FamilyName:    "Data Center Flex",
+					MemoryMiB:     16384,
+					Driver:        "xe",
+					CurrentDriver: "vfio-pci",
+					Health:        device.HealthHealthy,
+				},
+				"gpu-prepared": {
+					UID:           "gpu-prepared",
+					PCIAddress:    "0000:00:02.0",
+					Model:         "0x56c1",
+					ModelName:     "Flex 140",
+					FamilyName:    "Data Center Flex",
+					MemoryMiB:     16384,
+					Driver:        "xe",
+					CurrentDriver: "vfio-pci",
+					Health:        device.HealthHealthy,
+				},
+			},
+			Prepared: helpers.ClaimPreparations{
+				"claim-1": {
+					Devices: []kubeletplugin.Device{{
+						DeviceName: "gpu-prepared",
+					}},
+				},
+			},
+			NodeName: "test-node",
+		},
+	}
+
+	resources := state.GetResources()
+	devices := resources.Pools["test-node"].Slices[0].Devices
+	if len(devices) != 2 {
+		t.Fatalf("expected 2 devices, got %d", len(devices))
+	}
+
+	deviceByName := map[string]resourcev1.Device{}
+	for _, dev := range devices {
+		deviceByName[dev.Name] = dev
+	}
+
+	if len(deviceByName["gpu-unprepared"].Taints) != 1 {
+		t.Fatalf("expected gpu-unprepared to have 1 taint, got %d", len(deviceByName["gpu-unprepared"].Taints))
+	}
+
+	if got := deviceByName["gpu-unprepared"].Taints[0].Key; got != "NotDRMBound-vfio-pci" {
+		t.Fatalf("unexpected taint key for gpu-unprepared: %s", got)
+	}
+
+	if len(deviceByName["gpu-prepared"].Taints) != 0 {
+		t.Fatalf("expected gpu-prepared to have no taints, got %d", len(deviceByName["gpu-prepared"].Taints))
+	}
+}
+
+func TestIsDevicePrepared(t *testing.T) {
+	state := &nodeState{
+		NodeState: &helpers.NodeState{
+			Allocatable: map[string]*device.DeviceInfo{
+				"gpu-prepared": {
+					UID:        "gpu-prepared",
+					PCIAddress: "0000:00:02.0",
+				},
+				"gpu-free": {
+					UID:        "gpu-free",
+					PCIAddress: "0000:00:03.0",
+				},
+			},
+			Prepared: helpers.ClaimPreparations{
+				"claim-1": {
+					Devices: []kubeletplugin.Device{{
+						DeviceName: "gpu-prepared",
+					}},
+				},
+			},
+		},
+	}
+
+	testcases := []struct {
+		name        string
+		uid         string
+		expected    bool
+		expectError bool
+	}{
+		{
+			name:     "prepared device",
+			uid:      "gpu-prepared",
+			expected: true,
+		},
+		{
+			name:     "unprepared device",
+			uid:      "gpu-free",
+			expected: false,
+		},
+		{
+			name:     "unknown device",
+			uid:      "gpu-unknown",
+			expected: false,
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			got := state.IsDevicePrepared(testcase.uid)
+
+			if got != testcase.expected {
+				t.Fatalf("expected IsDevicePrepared()=%v, got %v", testcase.expected, got)
+			}
+		})
 	}
 }
