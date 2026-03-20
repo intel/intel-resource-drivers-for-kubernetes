@@ -54,7 +54,7 @@ COPY . .
 # install libhlml.so from deb for licenses
 RUN \
 curl -fsSL https://vault.habana.ai/artifactory/api/gpg/key/public | gpg --dearmor | tee /etc/apt/trusted.gpg.d/habanalabs.gpg > /dev/null && \
-wget -q -O /etc/apt/sources.list.d/habanalabs_synapseai.list "https://vault.habana.ai/artifactory/gaudi-installer/repos/1.23.0/debian10.10/habanalabs_synapseai.list" > /dev/null && \
+wget -q -O /etc/apt/sources.list.d/habanalabs_synapseai.list "https://vault.habana.ai/artifactory/gaudi-installer/repos/1.23.0/ubuntu24.04/habanalabs_synapseai.list" > /dev/null && \
 sed -i "s/^deb/deb [trusted=yes]/" /etc/apt/sources.list.d/habanalabs_synapseai.list && \
 apt-get update && \
 apt-get download habanalabs-firmware-tools && \

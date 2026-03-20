@@ -38,7 +38,12 @@ const (
 // initHLML loops through devices HLML detecs to update serial number in allocatable.
 // This is needed for health monitoring, critical events contain device serial ID.
 func (d *driver) initHLML() error {
-	ret := hlml.InitWithLogs()
+	var ret error
+	if klog.V(5).Enabled() {
+		ret = hlml.InitWithLogs()
+	} else {
+		ret = hlml.Initialize()
+	}
 	if ret != nil {
 		return fmt.Errorf("failed to initialize HLML: %v", ret)
 	}
@@ -101,18 +106,19 @@ func (d *driver) startHealthMonitor(ctx context.Context, intervalSeconds int) {
 // publish updated resource slice.
 func (d *driver) updateHealth(ctx context.Context, healthy bool, uid string) {
 	d.state.Lock()
-	defer d.state.Unlock()
 
 	allocatable, _ := d.state.Allocatable.(map[string]*device.DeviceInfo)
 	foundDevice, found := allocatable[uid]
 	if !found {
 		klog.Errorf("could not find device with UID %v", uid)
+		d.state.Unlock()
 		return
 	}
 
 	d.createTaintRuleMaybe(ctx, uid)
-
 	foundDevice.Healthy = healthy
+	d.state.Unlock()
+
 	// Health is updated from a go routine, nothing we can do when publishing
 	// resource slice fails, so error is ignored.
 	if err := d.PublishResourceSlice(ctx); err != nil {
@@ -223,6 +229,11 @@ func (d *driver) timedHLMLEventCheck(eventSet hlml.EventSet) (bool, []string) {
 		updateHealth = len(uids) > 0
 		time.Sleep(2 * time.Second)
 		return updateHealth, uids
+	}
+
+	if e.Etype == uint64(0) && e.Serial == "" {
+		// No event received, this is expected when timeout happens. Just return.
+		return false, []string{}
 	}
 
 	klog.V(5).Infof("HLML event received: %+v", e)

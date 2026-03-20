@@ -114,6 +114,7 @@ PluginDataDirectoryPath: %v`,
 		if err := driver.initHLML(); err != nil {
 			return nil, fmt.Errorf("failed to initialize HLML for health monitoring: %v", err)
 		}
+		klog.V(5).Info("HLML initialized successfully")
 	}
 
 	if err := driver.PublishResourceSlice(ctx); err != nil {
