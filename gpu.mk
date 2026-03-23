@@ -36,10 +36,6 @@ bin/kubelet-gpu-plugin: cmd/kubelet-gpu-plugin/*.go $(GPU_COMMON_SRC)
 	CGO_ENABLED=1 GOOS=linux GOARCH=${ARCH} \
 	  go build -a -ldflags "${GPU_LDFLAGS}" -mod vendor -o $@ ./cmd/kubelet-gpu-plugin
 
-bin/alert-webhook: cmd/alert-webhook/*.go $(GPU_COMMON_SRC)
-	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
-	  go build -a -ldflags "${GPU_LDFLAGS}" -mod vendor -o $@ ./cmd/alert-webhook
-
 .PHONY: gpu-container-build
 gpu-container-build: cleanall vendor
 	@echo "Building GPU resource drivers container..."
