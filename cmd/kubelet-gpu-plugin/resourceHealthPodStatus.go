@@ -72,7 +72,6 @@ func (d *driver) buildHealthResponse() *drahealthv1alpha1.NodeWatchResourcesResp
 	return &drahealthv1alpha1.NodeWatchResourcesResponse{Devices: devices}
 }
 
-/*
 // broadcastHealthUpdateWithResponse sends a health update to all registered streams.
 func (d *driver) broadcastHealthUpdateWithResponse(response *drahealthv1alpha1.NodeWatchResourcesResponse) {
 	d.healthStreamsMutex.RLock()
@@ -88,7 +87,6 @@ func (d *driver) broadcastHealthUpdateWithResponse(response *drahealthv1alpha1.N
 		}
 	}
 }
-*/
 
 // deviceInfoToDeviceHealth converts a DeviceInfo to a DeviceHealth message.
 func (d *driver) deviceInfoToDeviceHealth(dev *device.DeviceInfo) *drahealthv1alpha1.DeviceHealth {

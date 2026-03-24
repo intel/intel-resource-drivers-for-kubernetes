@@ -62,6 +62,8 @@ spec:
           mountPath: /var/run/cdi
         - name: sysfs
           mountPath: "/sysfs"
+        - name: xpumd-socket
+          mountPath: "/run/xpumd"
         securityContext:
           privileged: true
           capabilities:
@@ -88,6 +90,9 @@ spec:
       - name: sysfs
         hostPath:
           path: /sys
+      - name: xpumd-socket
+        hostPath:
+          path: /run/xpumd
 ---
 apiVersion: v1
 kind: ServiceAccount

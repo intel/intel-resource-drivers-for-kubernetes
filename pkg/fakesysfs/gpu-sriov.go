@@ -29,7 +29,6 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/drm"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
 
@@ -160,7 +159,7 @@ func addFakeVFsOnParent(numvfsFilePath string, devfsRoot string, numVFs uint64, 
 	model := strings.TrimSpace(string(modelBytes))
 
 	// construct parent's DRM VFs dir path
-	parentCardIdx, _, err := drm.DeduceCardAndRenderdIndexes(sysfsI915DeviceDir)
+	parentCardIdx, _, err := DeduceCardAndRenderdIndexes(sysfsI915DeviceDir)
 	if err != nil {
 		return fmt.Errorf("could not detect drm/cardX index in %v: %v", sysfsI915DeviceDir, err)
 	}
@@ -464,4 +463,35 @@ func watchPFnumvfs(t *testing.T, devfsRoot string, watcher *fsnotify.Watcher, re
 			t.Logf("fsnotify watcher error: %v\n", err)
 		}
 	}
+}
+
+// 100% clone from pkg/gpu/drm , prevents cyclic import. drm test uses fakesysfs, fakesysfs/gpu-sriov uses this func.
+func DeduceCardAndRenderdIndexes(sysfsDeviceDir string) (uint64, uint64, error) {
+	var cardIdx uint64
+	var renderDidx uint64
+
+	// get card and renderD indexes
+	drmDir := path.Join(sysfsDeviceDir, "drm")
+	drmFiles, err := os.ReadDir(drmDir)
+	if err != nil { // ignore this device
+		return 0, 0, fmt.Errorf("cannot read device folder %v: %v", drmDir, err)
+	}
+
+	for _, drmFile := range drmFiles {
+		drmFileName := drmFile.Name()
+		if device.CardRegexp.MatchString(drmFileName) {
+			cardIdx, err = strconv.ParseUint(drmFileName[4:], 10, 64)
+			if err != nil {
+				return 0, 0, fmt.Errorf("failed to parse index of DRM card device '%v', skipping", drmFileName)
+			}
+		} else if device.RenderdRegexp.MatchString(drmFileName) {
+			renderDidx, err = strconv.ParseUint(drmFileName[7:], 10, 64)
+			if err != nil {
+				fmt.Printf("failed to parse renderDN device: %v, skipping", drmFileName)
+				continue
+			}
+		}
+	}
+
+	return cardIdx, renderDidx, nil
 }

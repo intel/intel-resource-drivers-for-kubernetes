@@ -42,10 +42,13 @@ import (
 )
 
 type driver struct {
-	client     coreclientset.Interface
-	state      *nodeState
-	helper     *kubeletplugin.Helper
-	healthcare bool
+	client coreclientset.Interface
+	state  *nodeState
+	helper *kubeletplugin.Helper
+
+	// Flag to stop XPUMD listener and prevent it from attempting to connect to XPUMD.
+	stopXPUMDListener   bool
+	ignoreHealthWarning bool // true if devices with health warnings should still be considered as healthy.
 
 	// Health streaming support
 	healthStreams      map[int]chan *drahealthv1alpha1.NodeWatchResourcesResponse
@@ -55,17 +58,6 @@ type driver struct {
 
 	// Embed unimplemented server for forward compatibility
 	drahealthv1alpha1.UnimplementedDRAResourceHealthServer
-}
-
-func (d *driver) PublishResourceSlice(ctx context.Context) error {
-	resources := d.state.GetResources()
-	klog.FromContext(ctx).Info("Publishing resources", "len", len(resources.Pools[d.state.NodeName].Slices[0].Devices))
-	klog.V(5).Infof("devices: %+v", resources.Pools[d.state.NodeName].Slices[0].Devices)
-	if err := d.helper.PublishResources(ctx, resources); err != nil {
-		return fmt.Errorf("error publishing resources: %v", err)
-	}
-
-	return nil
 }
 
 func getGPUFlags(someFlags any) (*GPUFlags, error) {
@@ -93,20 +85,19 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 				SysfsRoot:              helpers.GetSysfsRoot(device.SysfsDRMpath),
 				NodeName:               config.CommonFlags.NodeName,
 			},
-			ignoreHealthWarning: gpuFlags.IgnoreHealthWarning,
 		},
-		healthcare:    gpuFlags.Healthcare,
-		healthStreams: make(map[int]chan *drahealthv1alpha1.NodeWatchResourcesResponse),
+		healthStreams:       make(map[int]chan *drahealthv1alpha1.NodeWatchResourcesResponse),
+		ignoreHealthWarning: gpuFlags.IgnoreHealthWarning,
 	}
 
-	klog.V(5).Infof("Prepared claims: %v", driver.state)
-
-	detectedDevices := discovery.DiscoverDevices(driver.state.SysfsRoot, device.DefaultNamingStyle)
+	// If we run in privileged mode, device details can be obtained from devfs, otherwise XPUMD has
+	// to supply the details after at some point later when it's up.
+	detectedDevices := discovery.DiscoverDevices(driver.state.SysfsRoot, device.DefaultNamingStyle, gpuFlags.Healthcare)
 	if len(detectedDevices) == 0 {
 		klog.Warning("No supported devices detected on this node")
 	}
 
-	if !driver.healthcare {
+	if !gpuFlags.Healthcare {
 		klog.V(5).Info("Healthcare is disabled, setting all device health to HealthUnknown")
 		for _, dev := range detectedDevices {
 			dev.Health = device.HealthUnknown
@@ -114,7 +105,7 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 	}
 
 	klog.V(3).Info("Creating new NodeState")
-	driver.state, err = newNodeState(detectedDevices, config.CommonFlags.CdiRoot, driver.state.PreparedClaimsFilePath, driver.state.SysfsRoot, driver.state.NodeName, gpuFlags.IgnoreHealthWarning)
+	driver.state, err = newNodeState(detectedDevices, config.CommonFlags.CdiRoot, driver.state.PreparedClaimsFilePath, driver.state.SysfsRoot, driver.state.NodeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new NodeState: %v", err)
 	}
@@ -137,7 +128,6 @@ PluginDataDirectoryPath: %v`,
 	if err != nil {
 		return nil, fmt.Errorf("failed to start kubelet-plugin: %v", err)
 	}
-
 	driver.helper = helper
 
 	klog.V(3).Info("Publishing ResourceSlice")
@@ -155,8 +145,10 @@ PluginDataDirectoryPath: %v`,
 	}
 	driver.healthcheck = hc
 
-	if driver.healthcare {
+	// Enable monitoring health stream from xpumd 2.0+.
+	if gpuFlags.Healthcare {
 		klog.Info("Starting health monitoring")
+		go driver.xpumdListen(ctx, gpuFlags.XPUMDSocketFilePath)
 
 		// Start device change watcher
 		go driver.watchDevices(ctx)
@@ -164,6 +156,18 @@ PluginDataDirectoryPath: %v`,
 
 	klog.V(3).Info("Finished creating new driver")
 	return driver, nil
+}
+
+func (d *driver) PublishResourceSlice(ctx context.Context) error {
+	resources := d.state.GetResources()
+
+	klog.FromContext(ctx).Info("Publishing resources", "len", len(resources.Pools[d.state.NodeName].Slices[0].Devices))
+	klog.V(5).Infof("devices: %+v", resources.Pools[d.state.NodeName].Slices[0].Devices)
+	if err := d.helper.PublishResources(ctx, resources); err != nil {
+		return fmt.Errorf("error publishing resources: %v", err)
+	}
+
+	return nil
 }
 
 func (d *driver) PrepareResourceClaims(ctx context.Context, claims []*resourceapi.ResourceClaim) (map[types.UID]kubeletplugin.PrepareResult, error) {
@@ -213,7 +217,6 @@ func (d *driver) UnprepareResourceClaims(ctx context.Context, claims []kubeletpl
 func (d *driver) Shutdown(ctx context.Context) error {
 	d.healthcheck.stop()
 	d.helper.Stop()
-
 	return nil
 }
 

@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	PartitioningDefault            = false
 	HealthCareFlagDefault          = false
 	IgnoreHealthWarningFlagDefault = true
 	HealthcheckPortDefault         = 51516
@@ -36,6 +37,7 @@ type GPUFlags struct {
 	Healthcare          bool
 	IgnoreHealthWarning bool // true if Warning status means healthy, false otherwise. Default: true
 	HealthcheckPort     int
+	XPUMDSocketFilePath string
 }
 
 func main() {
@@ -44,15 +46,15 @@ func main() {
 		&cli.BoolFlag{
 			Name:        "health-monitoring",
 			Aliases:     []string{"m"},
-			Usage:       "Actively monitor device health and update ResourceSlice. Requires privileges.",
+			Usage:       "Actively monitor device health information from XPUManager and update ResourceSlice.",
 			Value:       HealthCareFlagDefault,
 			Destination: &gpuFlags.Healthcare,
-			EnvVars:     []string{"HEALTH_MONITORING"},
+
+			EnvVars: []string{"HEALTH_MONITORING"},
 		},
 		&cli.BoolFlag{
-			Name:    "ignore-health-warning",
-			Aliases: []string{"w"},
-			// https://github.com/intel/xpumanager/blob/master/core/src/device/gpu/gpu_device_stub.cpp#L4142
+			Name:        "ignore-health-warning",
+			Aliases:     []string{"w"},
 			Usage:       "Ignore temperature & power thresholds and degraded memory health warnings (= react only to critical memory state). Default: true",
 			Value:       IgnoreHealthWarningFlagDefault,
 			Destination: &gpuFlags.IgnoreHealthWarning,
@@ -64,6 +66,14 @@ func main() {
 			Value:       HealthcheckPortDefault,
 			Destination: &gpuFlags.HealthcheckPort,
 			EnvVars:     []string{"HEALTHCHECK_PORT"},
+		},
+		&cli.StringFlag{
+			Name:        "xpumd-socket",
+			Aliases:     []string{"x"},
+			Usage:       "Path to XPUM daemon (v2.0+) socket file. Requires [-m|--health-monitoring] to be enabled.",
+			Value:       DefaultXPUMDSocketPath,
+			Destination: &gpuFlags.XPUMDSocketFilePath,
+			EnvVars:     []string{"XPUMD_SOCKET"},
 		},
 	}
 

@@ -36,8 +36,12 @@ const (
 	initialMillicores = 1000
 )
 
-// Detect devices from sysfs.
-func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo {
+// DiscoverDevices detects devices from sysfs and devfs if it can, and returns a map of
+// device UID:deviceInfo and a bool indicating if device details were successfully discovered.
+// When DRA driver runs in privileged mode, device details are fetched from devfs. Otherwise the
+// xpumd device info stream will be used to get device details including health and memory when
+// xpumd starts later.
+func DiscoverDevices(sysfsDir, namingStyle string, xpumdEnabled bool) map[string]*device.DeviceInfo {
 	sysfsDRMDir := path.Join(sysfsDir, device.SysfsDRMpath)
 	devices := make(map[string]*device.DeviceInfo)
 
@@ -58,7 +62,26 @@ func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo
 		maps.Copy(devices, moreDevices)
 	}
 
+	if err := populateDevicesInfoMemory(devices); err != nil && !xpumdEnabled {
+		klog.Error("Could not get device details. Enable privileged mode or health monitoring for device capability discovery.")
+	}
+
 	return devices
+}
+
+// populateDevicesInfoMemory tries to query amount of memory from DRM devices /dev/cardX, and returns
+// error as soon as any request fails, or nil otherwise. When DRA driver runs in privileged mode,
+// this should succeed.
+func populateDevicesInfoMemory(devices map[string]*device.DeviceInfo) error {
+	for _, deviceInfo := range devices {
+		memoryMiB, err := getLocalMemoryAmountMiB(deviceInfo.CardIdx, deviceInfo.Driver)
+		if err != nil {
+			return err
+		}
+		deviceInfo.MemoryMiB = memoryMiB
+	}
+
+	return nil
 }
 
 func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDir string, sysfsDRMDir string, namingStyle string) map[string]*device.DeviceInfo {
@@ -105,7 +128,6 @@ func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDi
 
 		newDeviceInfo.CardIdx = cardIdx
 		newDeviceInfo.RenderdIdx = renderdIdx
-		newDeviceInfo.MemoryMiB = getLocalMemoryAmountMiB(devicePCIAddress)
 
 		linkSource := path.Join(sysfsDriverDir, devicePCIAddress)
 		pciRoot, err := helpers.DeterminePCIRoot(linkSource)
@@ -230,6 +252,14 @@ func deduceVfIdx(sysfsDriverDir string, parentDBDF string, vfDBDF string) (uint6
 }
 
 // Return the amount of local memory the GPU has in MiB.
-func getLocalMemoryAmountMiB(pciAddress string) uint64 {
-	return 0
+func getLocalMemoryAmountMiB(cardIdx uint64, driver string) (uint64, error) {
+	klog.V(5).Infof("Getting local memory for card%d with driver %v", cardIdx, driver)
+	switch driver {
+	case device.SysfsXeDriverName:
+		return GetXeDeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, device.DevfsDriPath), device.DevfsDriPath, fmt.Sprintf("card%d", cardIdx)))
+	case device.SysfsI915DriverName:
+		return GetI915DeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, device.DevfsDriPath), device.DevfsDriPath, fmt.Sprintf("card%d", cardIdx)))
+	}
+
+	return 0, fmt.Errorf("unknown driver %v, cannot query local memory", driver)
 }

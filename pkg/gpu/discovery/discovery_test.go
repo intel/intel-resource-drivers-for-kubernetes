@@ -374,7 +374,7 @@ func TestDiscoverDevices(t *testing.T) {
 			}
 
 			// Discover devices.
-			devices := discovery.DiscoverDevices(testDirs.SysfsRoot, tt.namingStyle)
+			devices := discovery.DiscoverDevices(testDirs.SysfsRoot, tt.namingStyle, false)
 
 			// Validate results
 			if len(devices) != len(tt.expected) {

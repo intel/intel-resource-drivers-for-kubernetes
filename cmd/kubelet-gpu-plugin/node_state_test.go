@@ -27,6 +27,7 @@ import (
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
+	testhelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
 )
 
 func TestDeviceInfoDeepCopy(t *testing.T) {
@@ -187,7 +188,7 @@ func TestPreparedClaimsFiles(t *testing.T) {
 		}
 
 		if content && test.op2.claims != nil {
-			if !reflect.DeepEqual(claims, test.op2.claims) {
+			if !testhelpers.DeepEqualPreparedClaims(claims, test.op2.claims) {
 				t.Error("unexpected claims")
 				for claimUID, claimPreparation := range test.op2.claims {
 					t.Logf("expected %v:", claimUID)

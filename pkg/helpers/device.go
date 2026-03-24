@@ -55,7 +55,7 @@ func GetSysfsRoot(sysfsPath string) string {
 	return sysfsDefaultRoot
 }
 
-func GetDevRoot(devfsRootEnvVarName string, devPath string) string {
+func GetDevfsRoot(devfsRootEnvVarName string, devPath string) string {
 	devfsRoot, found := os.LookupEnv(devfsRootEnvVarName)
 
 	if found {

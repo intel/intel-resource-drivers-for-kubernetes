@@ -26,8 +26,8 @@ import (
 
 var (
 	PciRegexp     = regexp.MustCompile(`[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$`)
-	CardRegexp    = regexp.MustCompile(`^card[0-9]+$`)
-	RenderdRegexp = regexp.MustCompile(`^renderD[0-9]+$`)
+	CardRegexp    = regexp.MustCompile(`^card[0-9]{1,3}$`)
+	RenderdRegexp = regexp.MustCompile(`^renderD[0-9]{1,3}$`)
 )
 
 const (
@@ -205,5 +205,5 @@ func (g *DevicesInfo) DeepCopy() DevicesInfo {
 }
 
 func GetDriDevPath() string {
-	return filepath.Join(helpers.GetDevRoot(helpers.DevfsEnvVarName, DevfsDriPath), DevfsDriPath)
+	return filepath.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, DevfsDriPath), DevfsDriPath)
 }
