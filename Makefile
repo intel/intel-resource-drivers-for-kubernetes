@@ -72,7 +72,7 @@ include $(CURDIR)/qat.mk
 
 
 .PHONY: build device-faker device-faker-container-build
-build: gpu gaudi qat bin/intel-cdi-specs-generator bin/device-faker bin/goxpusmi
+build: vendor gpu gaudi qat bin/intel-cdi-specs-generator bin/device-faker
 
 
 bin/intel-cdi-specs-generator: cmd/cdi-specs-generator/*.go $(GPU_COMMON_SRC)
@@ -84,11 +84,6 @@ bin/device-faker: cmd/device-faker/*.go
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
 	  go build -a -ldflags "${LDFLAGS} -X ${PKG}/pkg/version.version=${DEVICE_FAKER_VERSION} -extldflags ${EXT_LDFLAGS}" \
 	  -mod vendor -o $@ ./cmd/device-faker
-
-bin/goxpusmi: cmd/goxpusmi/*.go pkg/goxpusmi/*.go
-	GOOS=linux GOARCH=${ARCH} \
-	  go build -a -ldflags "${LDFLAGS}" \
-	  -mod vendor -o $@ ./cmd/goxpusmi
 
 device-faker: bin/device-faker
 	@echo "bin/device-faker"
@@ -320,8 +315,7 @@ gaudi-coverage: clean-coverage vendor copytests gaudi-coverage.out
 %-coverage: %-coverage.out
 	go tool cover -func=$@.out
 
-.PHONY: coverage-check
-coverage-check: coverage.out
-	.github/scripts/coverage_check.sh gpu-coverage 70
-	.github/scripts/coverage_check.sh gaudi-coverage 70
-	.github/scripts/coverage_check.sh qat-coverage 70
+.PHONY: copytests
+copytests:
+	@echo "Copying test files to cmd/kubelet-gaudi-plugin/vendor to make them available for gaudi coverage testing which executes tests in that directory and its subdirectories only."
+	@find . -name '*_test.go' | grep -v cmd/kubelet-gaudi-plugin | xargs -I{} cp --parents {} cmd/kubelet-gaudi-plugin/vendor/github.com/intel/intel-resource-drivers-for-kubernetes

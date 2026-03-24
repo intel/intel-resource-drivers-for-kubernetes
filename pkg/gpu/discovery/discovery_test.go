@@ -65,12 +65,11 @@ func TestDiscoverDevices(t *testing.T) {
 			setupFunc: createFakeSysfsWithSingleGpu,
 			expected: map[string]*device.DeviceInfo{
 				"0000-0f-00-0-0x56c0": {
-					Model:      "0x56c0",
-					ModelName:  "Flex 170",
-					FamilyName: "Data Center Flex",
-					PCIAddress: "0000:0f:00.0",
-					PCIRoot:    "pci0000:00",
-					// TODO: FIXME: fake xpu-smi
+					Model:         "0x56c0",
+					ModelName:     "Flex 170",
+					FamilyName:    "Data Center Flex",
+					PCIAddress:    "0000:0f:00.0",
+					PCIRoot:       "pci0000:00",
 					MemoryMiB:     0,
 					DeviceType:    "gpu",
 					CardIdx:       0,
@@ -133,12 +132,11 @@ func TestDiscoverDevices(t *testing.T) {
 			},
 			expected: map[string]*device.DeviceInfo{
 				"0000-0f-00-0-0x56c0": {
-					Model:      "0x56c0",
-					ModelName:  "Flex 170",
-					FamilyName: "Data Center Flex",
-					PCIAddress: "0000:0f:00.0",
-					PCIRoot:    "pci0000:00",
-					// TODO: FIXME: fake xpu-smi
+					Model:         "0x56c0",
+					ModelName:     "Flex 170",
+					FamilyName:    "Data Center Flex",
+					PCIAddress:    "0000:0f:00.0",
+					PCIRoot:       "pci0000:00",
 					MemoryMiB:     0,
 					DeviceType:    "gpu",
 					CardIdx:       0,
@@ -151,12 +149,11 @@ func TestDiscoverDevices(t *testing.T) {
 					Health:        device.HealthHealthy,
 				},
 				"0000-0f-00-1-0x56c0": {
-					Model:      "0x56c0",
-					ModelName:  "Flex 170",
-					FamilyName: "Data Center Flex",
-					PCIAddress: "0000:0f:00.1",
-					PCIRoot:    "pci0000:00",
-					// TODO: FIXME: fake xpu-smi
+					Model:         "0x56c0",
+					ModelName:     "Flex 170",
+					FamilyName:    "Data Center Flex",
+					PCIAddress:    "0000:0f:00.1",
+					PCIRoot:       "pci0000:00",
 					MemoryMiB:     0,
 					DeviceType:    "vf",
 					ParentUID:     "0000-0f-00-0-0x56c0",
@@ -197,12 +194,11 @@ func TestDiscoverDevices(t *testing.T) {
 			},
 			expected: map[string]*device.DeviceInfo{
 				"0000-0f-00-0-0x56c0": {
-					Model:      "0x56c0",
-					ModelName:  "Flex 170",
-					FamilyName: "Data Center Flex",
-					PCIAddress: "0000:0f:00.0",
-					PCIRoot:    "pci0000:00",
-					// TODO: FIXME: fake xpu-smi
+					Model:         "0x56c0",
+					ModelName:     "Flex 170",
+					FamilyName:    "Data Center Flex",
+					PCIAddress:    "0000:0f:00.0",
+					PCIRoot:       "pci0000:00",
 					MemoryMiB:     0,
 					DeviceType:    "gpu",
 					CardIdx:       0,
@@ -229,12 +225,11 @@ func TestDiscoverDevices(t *testing.T) {
 			},
 			expected: map[string]*device.DeviceInfo{
 				"0000-0f-00-0-0x56c0": {
-					Model:      "0x56c0",
-					ModelName:  "Flex 170",
-					FamilyName: "Data Center Flex",
-					PCIAddress: "0000:0f:00.0",
-					PCIRoot:    "pci0000:00",
-					// TODO: FIXME: fake xpu-smi
+					Model:         "0x56c0",
+					ModelName:     "Flex 170",
+					FamilyName:    "Data Center Flex",
+					PCIAddress:    "0000:0f:00.0",
+					PCIRoot:       "pci0000:00",
 					MemoryMiB:     0,
 					DeviceType:    "gpu",
 					CardIdx:       0,
@@ -342,12 +337,11 @@ func TestDiscoverDevices(t *testing.T) {
 			namingStyle: "classic",
 			expected: map[string]*device.DeviceInfo{
 				"card0": {
-					Model:      "0x56c0",
-					ModelName:  "Flex 170",
-					FamilyName: "Data Center Flex",
-					PCIAddress: "0000:0f:00.0",
-					PCIRoot:    "pci0000:00",
-					// TODO: FIXME: fake xpu-smi
+					Model:         "0x56c0",
+					ModelName:     "Flex 170",
+					FamilyName:    "Data Center Flex",
+					PCIAddress:    "0000:0f:00.0",
+					PCIRoot:       "pci0000:00",
 					MemoryMiB:     0,
 					DeviceType:    "gpu",
 					CardIdx:       0,
@@ -379,8 +373,8 @@ func TestDiscoverDevices(t *testing.T) {
 				}
 			}
 
-			// Discover devices without xpu-smi. TODO: cover xpu-smi as well.
-			devices := discovery.DiscoverDevices(testDirs.SysfsRoot, tt.namingStyle, true, false)
+			// Discover devices.
+			devices := discovery.DiscoverDevices(testDirs.SysfsRoot, tt.namingStyle)
 
 			// Validate results
 			if len(devices) != len(tt.expected) {

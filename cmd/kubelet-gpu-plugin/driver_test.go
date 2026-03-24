@@ -576,7 +576,6 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 		name                  string
 		eventAction           string
 		devpath               string
-		xpuSmiInitFails       bool
 		discoveredDevices     map[string]*device.DeviceInfo
 		expectedDeviceUID     string
 		currentDriver         string
@@ -588,17 +587,15 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 			name:                  "unbind event changes current driver unbound",
 			eventAction:           "unbind",
 			devpath:               "/devices/pci0000:00/0000:00:02.0/drm/card0",
-			xpuSmiInitFails:       true,
 			discoveredDevices:     map[string]*device.DeviceInfo{},
 			expectedDeviceUID:     deviceUID,
 			currentDriver:         "i915",
 			expectedCurrentDriver: "",
 		},
 		{
-			name:            "bind event changes current driver to i915",
-			eventAction:     "bind",
-			devpath:         "/devices/pci0000:00/0000:00:02.0/drm/card0",
-			xpuSmiInitFails: true,
+			name:        "bind event changes current driver to i915",
+			eventAction: "bind",
+			devpath:     "/devices/pci0000:00/0000:00:02.0/drm/card0",
 			discoveredDevices: map[string]*device.DeviceInfo{
 				deviceUID: {
 					UID:        deviceUID,
@@ -622,7 +619,6 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 			name:                  "bind event changes current driver to vfio-pci",
 			eventAction:           "bind",
 			devpath:               "/devices/pci0000:00/0000:00:02.0/vfio-dev/vfio0",
-			xpuSmiInitFails:       true,
 			discoveredDevices:     map[string]*device.DeviceInfo{},
 			expectedDeviceUID:     deviceUID,
 			currentDriver:         "i915",

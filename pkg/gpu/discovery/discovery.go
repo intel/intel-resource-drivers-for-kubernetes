@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/goxpusmi"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/drm"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
@@ -37,16 +36,8 @@ const (
 	initialMillicores = 1000
 )
 
-var (
-	xpuDeviceDetails = make(map[string]goxpusmi.XPUSMIDeviceDetails)
-)
-
 // Detect devices from sysfs.
-func DiscoverDevices(sysfsDir, namingStyle string, verbose bool, withXpuSmi bool) map[string]*device.DeviceInfo {
-	if withXpuSmi {
-		populateXpuDeviceDetails(verbose)
-	}
-
+func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo {
 	sysfsDRMDir := path.Join(sysfsDir, device.SysfsDRMpath)
 	devices := make(map[string]*device.DeviceInfo)
 
@@ -68,18 +59,6 @@ func DiscoverDevices(sysfsDir, namingStyle string, verbose bool, withXpuSmi bool
 	}
 
 	return devices
-}
-
-func populateXpuDeviceDetails(verbose bool) {
-	var err error
-
-	klog.V(5).Info("Querying xpu-smi for devices information")
-	xpuDeviceDetails, err = goxpusmi.Discover(verbose)
-	if err != nil {
-		klog.Errorf("failed to discover devices with xpu-smi: %v", err)
-	} else {
-		klog.V(5).Infof("Discovered %d devices with xpu-smi: %+v", len(xpuDeviceDetails), xpuDeviceDetails)
-	}
 }
 
 func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDir string, sysfsDRMDir string, namingStyle string) map[string]*device.DeviceInfo {
@@ -250,12 +229,7 @@ func deduceVfIdx(sysfsDriverDir string, parentDBDF string, vfDBDF string) (uint6
 	return 0, fmt.Errorf("could not find PF %v symlink to VF %v", parentDBDF, vfDBDF)
 }
 
-// Return the amount of local memory the GPU has in MiB from libxpum discovery results.
+// Return the amount of local memory the GPU has in MiB.
 func getLocalMemoryAmountMiB(pciAddress string) uint64 {
-	if deviceDetails, found := xpuDeviceDetails[pciAddress]; found {
-		return deviceDetails.MemoryMiB
-	}
-	klog.Warningf("missing libxpum info for device %v: ignoring local memory if any", pciAddress)
-	klog.V(5).Infof("xpuDeviceDetails: %+v", xpuDeviceDetails)
 	return 0
 }

@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/containers/nri-plugins/pkg/udev"
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -34,9 +35,6 @@ import (
 	"k8s.io/klog/v2"
 	drahealthv1alpha1 "k8s.io/kubelet/pkg/apis/dra-health/v1alpha1"
 
-	"github.com/containers/nri-plugins/pkg/udev"
-
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/goxpusmi"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/discovery"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
@@ -81,8 +79,6 @@ func getGPUFlags(someFlags any) (*GPUFlags, error) {
 
 func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, error) {
 	driverVersion.PrintDriverVersion(device.DriverName)
-	verboseDiscovery := klog.V(5).Enabled()
-	klog.Infof("Verbose mode: %v", verboseDiscovery)
 
 	gpuFlags, err := getGPUFlags(config.DriverFlags)
 	if err != nil {
@@ -105,15 +101,7 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 
 	klog.V(5).Infof("Prepared claims: %v", driver.state)
 
-	// Initialize XPU SMI library.
-	klog.V(5).Info("Initializing xpu-smi")
-	xpusmiInitErr := goxpusmi.Initialize()
-	if xpusmiInitErr != nil {
-		klog.Errorf("failed to initialize xpu-smi: %v, ignoring device details", xpusmiInitErr)
-		driver.healthcare = false
-	}
-
-	detectedDevices := discovery.DiscoverDevices(driver.state.SysfsRoot, device.DefaultNamingStyle, verboseDiscovery, xpusmiInitErr == nil)
+	detectedDevices := discovery.DiscoverDevices(driver.state.SysfsRoot, device.DefaultNamingStyle)
 	if len(detectedDevices) == 0 {
 		klog.Warning("No supported devices detected on this node")
 	}
@@ -152,10 +140,12 @@ PluginDataDirectoryPath: %v`,
 
 	driver.helper = helper
 
+	klog.V(3).Info("Publishing ResourceSlice")
 	if err := driver.PublishResourceSlice(ctx); err != nil {
 		return nil, err
 	}
 
+	// Enable health- and readiness- probes endpoints.
 	hc, err := startHealthcheck(ctx, gpuFlags.HealthcheckPort,
 		config.CommonFlags.KubeletPluginsRegistryDir,
 		config.CommonFlags.KubeletPluginDir,
@@ -167,14 +157,12 @@ PluginDataDirectoryPath: %v`,
 
 	if driver.healthcare {
 		klog.Info("Starting health monitoring")
-		go driver.startHealthMonitor(ctx, gpuFlags)
 
 		// Start device change watcher
 		go driver.watchDevices(ctx)
-
 	}
-	klog.V(3).Info("Finished creating new driver")
 
+	klog.V(3).Info("Finished creating new driver")
 	return driver, nil
 }
 
@@ -225,13 +213,7 @@ func (d *driver) UnprepareResourceClaims(ctx context.Context, claims []kubeletpl
 func (d *driver) Shutdown(ctx context.Context) error {
 	d.healthcheck.stop()
 	d.helper.Stop()
-	// Health monitoring does shutdown by itself (when main context goes down), if enabled,
-	// otherwise do shutdown here.
-	if !d.healthcare {
-		if err := goxpusmi.Shutdown(); err != nil {
-			klog.Errorf("failed to shutdown xpu-smi: %v", err)
-		}
-	}
+
 	return nil
 }
 

@@ -10,4 +10,3 @@ spec:
       - name: kubelet-plugin
         args:
         - --health-monitoring=true
-        - --health-interval=10

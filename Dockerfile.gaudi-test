@@ -27,22 +27,10 @@ ARG GID=1000
 COPY --from=build /build/hack/fake_libhlml/fake_libhlml.so /usr/lib/habanalabs/libhlml.so
 COPY --from=build --chown=${UID}:${GID} /usr/local/go /home/ubuntu/go
 
-# add xpu-smi shared library for GPU tests and other dependencies
 RUN \
 apt-get update && \
-apt-get install -y make gcc wget software-properties-common python3-launchpadlib git yamllint shellcheck bc && \
-add-apt-repository -y ppa:kobuk-team/intel-graphics && \
-apt-get update && \
-apt-get install -y libze-intel-gpu1 libze1 intel-metrics-discovery intel-opencl-icd clinfo intel-gsc && \
-wget -qO /tmp/xpu-smi.deb https://github.com/intel/xpumanager/releases/download/V1.3.1/xpu-smi_1.3.1_20250724.061629.60921e5e_u24.04_amd64.deb && \
-apt-get install -y /tmp/xpu-smi.deb && \
-rm /tmp/xpu-smi.deb && \
-echo 'export PATH=/home/ubuntu/go/bin:$PATH' >> /home/ubuntu/.bashrc && \
-wget -q https://github.com/golangci/golangci-lint/releases/download/v2.7.2/golangci-lint-2.7.2-linux-amd64.tar.gz && \
-tar zxf golangci-lint-2.7.2-linux-amd64.tar.gz --strip-components=1 golangci-lint-2.7.2-linux-amd64/golangci-lint && \
-mv golangci-lint /usr/local/bin/golangci-lint && \
-rm golangci-lint-2.7.2-linux-amd64.tar.gz && \
-unset http_proxy https_proxy no_proxy
+apt-get install -y make git bc && \
+echo 'export PATH=/home/ubuntu/go/bin:$PATH' >> /home/ubuntu/.bashrc
 
 RUN \
 mkdir /github && \

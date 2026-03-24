@@ -84,7 +84,11 @@ func DeviceUIDFromPCIinfo(pciAddress string, pciid string) string {
 	// 0000:00:01.0, 0x0000 -> 0000-00-01-0-0x0000
 	// Replace colons and the dot in PCI address with hyphens.
 	rfc1123PCIaddress := strings.ReplaceAll(strings.ReplaceAll(pciAddress, ":", "-"), ".", "-")
-	newUID := fmt.Sprintf("%v-%v", rfc1123PCIaddress, pciid)
+	deviceId := pciid
+	if len(deviceId) == 4 {
+		deviceId = "0x" + deviceId
+	}
+	newUID := fmt.Sprintf("%v-%v", rfc1123PCIaddress, deviceId)
 
 	return newUID
 }

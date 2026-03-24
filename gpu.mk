@@ -27,13 +27,13 @@ pkg/gpu/cdihelpers/*.go \
 pkg/gpu/device/*.go \
 pkg/gpu/discovery/*.go
 
-GPU_LDFLAGS = ${LDFLAGS} -X ${PKG}/pkg/version.version=${GPU_VERSION}
+GPU_LDFLAGS = ${LDFLAGS} -extldflags $(EXT_LDFLAGS) -X ${PKG}/pkg/version.version=${GPU_VERSION}
 
 .PHONY: gpu
 gpu: $(GPU_BINARIES)
 
 bin/kubelet-gpu-plugin: cmd/kubelet-gpu-plugin/*.go $(GPU_COMMON_SRC)
-	CGO_ENABLED=1 GOOS=linux GOARCH=${ARCH} \
+	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
 	  go build -a -ldflags "${GPU_LDFLAGS}" -mod vendor -o $@ ./cmd/kubelet-gpu-plugin
 
 .PHONY: gpu-container-build

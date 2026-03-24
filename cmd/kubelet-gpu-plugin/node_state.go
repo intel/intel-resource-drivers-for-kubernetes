@@ -165,7 +165,7 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 			// The format will change in K8s 1.35+.
 			unhealthyTypes := []string{}
 			for healthType, healthStatus := range gpu.HealthStatus {
-				if !s.StatusHealth(healthStatus) {
+				if healthStatus == device.HealthUnhealthy {
 					unhealthyTypes = append(unhealthyTypes, healthType)
 				}
 			}
@@ -202,23 +202,6 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 
 	return resourceslice.DriverResources{Pools: map[string]resourceslice.Pool{
 		s.NodeName: {Slices: []resourceslice.Slice{{Devices: devices}}}}}
-}
-
-func (s *nodeState) StatusHealth(status string) (health bool) {
-	switch status {
-	case "Critical":
-		return false
-	case "Warning":
-		return s.ignoreHealthWarning
-	case "OK":
-		return true
-	case "Unknown":
-		return true
-	default:
-		// This is unexpected, we should never get here.
-		klog.Error("Unsupported health status value: ", status)
-		panic("invalid status value")
-	}
 }
 
 func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim) error {

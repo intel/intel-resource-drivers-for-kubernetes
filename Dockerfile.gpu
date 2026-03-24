@@ -18,11 +18,6 @@ FROM golang:1.25.8@sha256:dfae680962532eeea67ab297f1166c2c4e686edb9a8f05f9d02d96
 WORKDIR /build
 COPY . .
 
-# Add xpu-smi shared library
-RUN \
-wget -qO /tmp/xpu-smi.deb https://github.com/intel/xpumanager/releases/download/v1.3.1/xpu-smi_1.3.1_20250724.061629.60921e5e_u24.04_amd64.deb && \
-dpkg -i --ignore-depends=level-zero,intel-gsc,libze-intel-gpu1 /tmp/xpu-smi.deb
-
 # Build GPU DRA driver
 RUN make gpu && \
 mkdir -p /install_root && \
@@ -32,60 +27,9 @@ fi && \
 cp -r licenses /install_root/ && \
 cp bin/kubelet-gpu-plugin /install_root/
 
-# Prepare dependencies
-FROM ubuntu:24.04@sha256:80dd3c3b9c6cecb9f1667e9290b3bc61b78c2678c02cbdae5f0fea92cc6734ab AS ubuntu
-COPY --from=build /tmp/xpu-smi.deb /tmp/xpu-smi.deb
-
-RUN \
-sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources && \
-apt-get update && \
-apt-get install -y software-properties-common python3-launchpadlib
-
-RUN \
-add-apt-repository -s -y ppa:kobuk-team/intel-graphics && \
-apt-get update && \
-apt-get install -y libze-intel-gpu1 libze1 intel-metrics-discovery intel-gsc libmetee5 && \
-apt-get install -y /tmp/xpu-smi.deb
-
-RUN \
-mkdir /tmp/src && \
-cd /tmp/src && \
-apt-get source --download-only dash glibc libcap2 libudev1 libstdc++6 libmetee5 && \
-mkdir /licenses && \
-for pkg in dash libc6 intel-gsc libcap2 libudev1 libze1 libigdgmm12 libstdc++6 libze-intel-gpu1 libmetee5; do \
-    mkdir -p /licenses/$pkg; \
-    cp /usr/share/doc/$pkg/copyright /licenses/$pkg/; \
-done && \
-if grep -q /common-licenses/ /licenses/*/copyright; then \
-    cp -r /usr/share/common-licenses/ /licenses/; \
-fi
-
 FROM scratch
 WORKDIR /
 LABEL description="Intel GPU resource driver for Kubernetes"
 
-# /bin/sh is used by xpu-smi library.
 COPY --from=build /install_root /
-COPY --from=build /usr/lib/x86_64-linux-gnu/libxpum.so.1 /usr/lib/x86_64-linux-gnu/libxpum.so.1
-COPY --from=ubuntu /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so.6
-COPY --from=ubuntu /lib64/ld-linux-x86-64.so.2 /lib64/ld-linux-x86-64.so.2
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libm.so.6 /usr/lib/x86_64-linux-gnu/libm.so.6
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so.2
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libz.so.1 /usr/lib/x86_64-linux-gnu/libz.so.1
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libze_loader.so.1 /usr/lib/x86_64-linux-gnu/libze_loader.so.1
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libigsc.so.0 /usr/lib/x86_64-linux-gnu/libigsc.so.0
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libudev.so.1 /usr/lib/x86_64-linux-gnu/libudev.so.1
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libcap.so.2 /usr/lib/x86_64-linux-gnu/libcap.so.2
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /usr/lib/x86_64-linux-gnu/libstdc++.so.6
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 /usr/lib/x86_64-linux-gnu/libgcc_s.so.1
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libze_intel_gpu.so.1 /usr/lib/x86_64-linux-gnu/libze_intel_gpu.so.1
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libmetee.so.5.0.0 /usr/lib/x86_64-linux-gnu/libmetee.so.5.0.0
-
-COPY --from=ubuntu /lib/x86_64-linux-gnu/libpciaccess.so.0 /lib/x86_64-linux-gnu/libpciaccess.so.0
-COPY --from=ubuntu /lib/x86_64-linux-gnu/libigdgmm.so.12 /lib/x86_64-linux-gnu/libigdgmm.so.12
-COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libigc.so.2 /usr/lib/x86_64-linux-gnu/libigc.so.2
-
-COPY --from=ubuntu /bin/sh /bin/sh
-COPY --from=ubuntu /licenses /licenses
-COPY --from=ubuntu /tmp/src /src
 CMD ["/kubelet-gpu-plugin"]
