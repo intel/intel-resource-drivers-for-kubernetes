@@ -40,6 +40,7 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 					MemoryMiB:  8192,
 					DeviceType: "gpu",
 					CardIdx:    0,
+					MEIName:    "mei0",
 					RenderdIdx: 128,
 					Millicores: 1000,
 					UID:        "0000-0f-00-0-0x56c0",

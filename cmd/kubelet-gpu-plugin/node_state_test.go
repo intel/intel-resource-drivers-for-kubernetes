@@ -41,6 +41,7 @@ func TestDeviceInfoDeepCopy(t *testing.T) {
 		ParentUID:  "ffff",
 		VFProfile:  "fffff",
 		VFIndex:    7,
+		MEIName:    "mei0",
 	}
 
 	dc := di.DeepCopy()
