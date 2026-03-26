@@ -11,6 +11,9 @@ spec:
           deviceClassName: gaudi.intel.com
           adminAccess: true
           allocationMode: "All"
+          tolerations:
+          - effect: NoExecute
+          - effect: NoSchedule
 ---
 apiVersion: v1
 kind: Pod
