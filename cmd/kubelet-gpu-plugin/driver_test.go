@@ -22,7 +22,9 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"reflect"
 	"testing"
+	"time"
 
 	core "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
@@ -110,8 +112,8 @@ func TestPrepareResourceClaims(t *testing.T) {
 		name                   string
 		request                []*resourceapi.ResourceClaim
 		expectedResponse       map[types.UID]kubeletplugin.PrepareResult
-		initialPreparedClaims  helpers.ClaimPreparations
-		expectedPreparedClaims helpers.ClaimPreparations
+		initialPreparedClaims  ClaimPreparations
+		expectedPreparedClaims ClaimPreparations
 	}
 
 	testcases := []testCase{
@@ -119,7 +121,7 @@ func TestPrepareResourceClaims(t *testing.T) {
 			name:                  "blank request",
 			request:               []*resourceapi.ResourceClaim{},
 			expectedResponse:      map[types.UID]kubeletplugin.PrepareResult{},
-			initialPreparedClaims: helpers.ClaimPreparations{},
+			initialPreparedClaims: ClaimPreparations{},
 		},
 		{
 			name: "single GPU",
@@ -133,15 +135,12 @@ func TestPrepareResourceClaims(t *testing.T) {
 					},
 				},
 			},
-			initialPreparedClaims: helpers.ClaimPreparations{},
-			expectedPreparedClaims: helpers.ClaimPreparations{
+			initialPreparedClaims: ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{
 				"uid1": {
-					Devices: []kubeletplugin.Device{
+					PreparedDevices: []PreparedDevice{
 						{
-							Requests:     []string{"request1"},
-							PoolName:     "node1",
-							DeviceName:   "0000-00-02-0-0x56c0",
-							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"request1"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"}},
 						},
 					},
 				},
@@ -159,15 +158,12 @@ func TestPrepareResourceClaims(t *testing.T) {
 					},
 				},
 			},
-			initialPreparedClaims: helpers.ClaimPreparations{},
-			expectedPreparedClaims: helpers.ClaimPreparations{
+			initialPreparedClaims: ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{
 				"uid2": {
-					Devices: []kubeletplugin.Device{
+					PreparedDevices: []PreparedDevice{
 						{
-							Requests:     []string{"request2"},
-							PoolName:     "node1",
-							DeviceName:   "0000-00-03-1-0x56c0",
-							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"},
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"request2"}, PoolName: "node1", DeviceName: "0000-00-03-1-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"}},
 						},
 					},
 				},
@@ -183,26 +179,30 @@ func TestPrepareResourceClaims(t *testing.T) {
 					Err: errors.New("error preparing devices for claim uid0: device 0000-00-02-0-0x56c0 (pool node1) is already allocated to another claim and cannot be prepared without adminAccess flag"),
 				},
 			},
-			initialPreparedClaims: helpers.ClaimPreparations{
+			initialPreparedClaims: ClaimPreparations{
 				"uid1": {
-					Devices: []kubeletplugin.Device{
+					PreparedDevices: []PreparedDevice{
 						{
-							Requests:     []string{"request1"},
-							PoolName:     "node1",
-							DeviceName:   "0000-00-02-0-0x56c0",
-							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"request1"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-02-0-0x56c0",
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+							},
 						},
 					},
 				},
 			},
-			expectedPreparedClaims: helpers.ClaimPreparations{
+			expectedPreparedClaims: ClaimPreparations{
 				"uid1": {
-					Devices: []kubeletplugin.Device{
+					PreparedDevices: []PreparedDevice{
 						{
-							Requests:     []string{"request1"},
-							PoolName:     "node1",
-							DeviceName:   "0000-00-02-0-0x56c0",
-							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"request1"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-02-0-0x56c0",
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+							},
 						},
 					},
 				},
@@ -224,14 +224,26 @@ func TestPrepareResourceClaims(t *testing.T) {
 					},
 				},
 			},
-			initialPreparedClaims: helpers.ClaimPreparations{},
-			expectedPreparedClaims: helpers.ClaimPreparations{
+			initialPreparedClaims: ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{
 				"uid3": {
-					Devices: []kubeletplugin.Device{
-						{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"}},
-						{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-03-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-0-0x56c0"}},
-						{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-03-1-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"}},
-						{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-04-0-0x0000", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-04-0-0x0000"}},
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"}},
+							AdminAccess:         true,
+						},
+						{
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-03-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-0-0x56c0"}},
+							AdminAccess:         true,
+						},
+						{
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-03-1-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"}},
+							AdminAccess:         true,
+						},
+						{
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-04-0-0x0000", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-04-0-0x0000"}},
+							AdminAccess:         true,
+						},
 					},
 				},
 			},
@@ -252,34 +264,45 @@ func TestPrepareResourceClaims(t *testing.T) {
 					},
 				},
 			},
-			initialPreparedClaims: helpers.ClaimPreparations{
+			initialPreparedClaims: ClaimPreparations{
 				"uid4": {
-					Devices: []kubeletplugin.Device{
+					PreparedDevices: []PreparedDevice{
 						{
-							Requests:     []string{"request4"},
-							PoolName:     "node1",
-							DeviceName:   "0000-00-03-1-0x56c0",
-							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"},
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"request4"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-03-1-0x56c0",
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"},
+							},
 						},
 					},
 				},
 			},
-			expectedPreparedClaims: helpers.ClaimPreparations{
+			expectedPreparedClaims: ClaimPreparations{
 				"uid3": {
-					Devices: []kubeletplugin.Device{
-						{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"}},
-						{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-03-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-0-0x56c0"}},
-						{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-03-1-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"}},
-						{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-04-0-0x0000", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-04-0-0x0000"}},
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-02-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"}},
+							AdminAccess:         true,
+						},
+						{
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-03-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-0-0x56c0"}},
+							AdminAccess:         true,
+						},
+						{
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-03-1-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"}},
+							AdminAccess:         true,
+						},
+						{
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"monitor"}, PoolName: "node1", DeviceName: "0000-00-04-0-0x0000", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-04-0-0x0000"}},
+							AdminAccess:         true,
+						},
 					},
 				},
 				"uid4": {
-					Devices: []kubeletplugin.Device{
+					PreparedDevices: []PreparedDevice{
 						{
-							Requests:     []string{"request4"},
-							PoolName:     "node1",
-							DeviceName:   "0000-00-03-1-0x56c0",
-							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"},
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"request4"}, PoolName: "node1", DeviceName: "0000-00-03-1-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"}},
 						},
 					},
 				},
@@ -293,32 +316,24 @@ func TestPrepareResourceClaims(t *testing.T) {
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid4": {
 					Devices: []kubeletplugin.Device{
+						{Requests: []string{"request4"}, PoolName: "node1", DeviceName: "0000-00-03-1-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"}},
+					},
+				},
+			},
+			initialPreparedClaims: ClaimPreparations{
+				"uid4": {
+					PreparedDevices: []PreparedDevice{
 						{
-							Requests: []string{"request4"}, PoolName: "node1", DeviceName: "0000-00-03-1-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"},
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"request4"}, PoolName: "node1", DeviceName: "0000-00-03-1-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"}},
 						},
 					},
 				},
 			},
-			initialPreparedClaims: helpers.ClaimPreparations{
+			expectedPreparedClaims: ClaimPreparations{
 				"uid4": {
-					Devices: []kubeletplugin.Device{
+					PreparedDevices: []PreparedDevice{
 						{
-							Requests:     []string{"request4"},
-							PoolName:     "node1",
-							DeviceName:   "0000-00-03-1-0x56c0",
-							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"},
-						},
-					},
-				},
-			},
-			expectedPreparedClaims: helpers.ClaimPreparations{
-				"uid4": {
-					Devices: []kubeletplugin.Device{
-						{
-							Requests:     []string{"request4"},
-							PoolName:     "node1",
-							DeviceName:   "0000-00-03-1-0x56c0",
-							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"},
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"request4"}, PoolName: "node1", DeviceName: "0000-00-03-1-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-03-1-0x56c0"}},
 						},
 					},
 				},
@@ -332,24 +347,16 @@ func TestPrepareResourceClaims(t *testing.T) {
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uidxe": {
 					Devices: []kubeletplugin.Device{
-						{
-							Requests:     []string{"requestxe"},
-							PoolName:     "node1",
-							DeviceName:   "0000-00-05-0-0x56c0",
-							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0x56c0"},
-						},
+						{Requests: []string{"requestxe"}, PoolName: "node1", DeviceName: "0000-00-05-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0x56c0"}},
 					},
 				},
 			},
-			initialPreparedClaims: helpers.ClaimPreparations{},
-			expectedPreparedClaims: helpers.ClaimPreparations{
+			initialPreparedClaims: ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{
 				"uidxe": {
-					Devices: []kubeletplugin.Device{
+					PreparedDevices: []PreparedDevice{
 						{
-							Requests:     []string{"requestxe"},
-							PoolName:     "node1",
-							DeviceName:   "0000-00-05-0-0x56c0",
-							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0x56c0"},
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"requestxe"}, PoolName: "node1", DeviceName: "0000-00-05-0-0x56c0", CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0x56c0"}},
 						},
 					},
 				},
@@ -385,7 +392,7 @@ func TestPrepareResourceClaims(t *testing.T) {
 		}
 
 		preparedClaimFilePath := path.Join(testDirs.KubeletPluginDir, device.PreparedClaimsFileName)
-		if err := helpers.WritePreparedClaimsToFile(preparedClaimFilePath, testcase.initialPreparedClaims); err != nil {
+		if err := WritePreparedClaimsToFile(preparedClaimFilePath, testcase.initialPreparedClaims); err != nil {
 			t.Errorf("%v: error %v, writing prepared claims to file", testcase.name, err)
 		}
 
@@ -406,7 +413,7 @@ func TestPrepareResourceClaims(t *testing.T) {
 				testcase.name, response, testcase.expectedResponse)
 		}
 
-		preparedClaims, err := helpers.ReadPreparedClaimsFromFile(preparedClaimFilePath)
+		preparedClaims, err := readPreparedClaimsFromFile(preparedClaimFilePath)
 		if err != nil {
 			t.Errorf("%v: error %v, expected no error", testcase.name, err)
 			continue
@@ -414,10 +421,10 @@ func TestPrepareResourceClaims(t *testing.T) {
 
 		expectedPreparedClaims := testcase.expectedPreparedClaims
 		if expectedPreparedClaims == nil {
-			expectedPreparedClaims = helpers.ClaimPreparations{}
+			expectedPreparedClaims = ClaimPreparations{}
 		}
 
-		if !testhelpers.DeepEqualPreparedClaims(expectedPreparedClaims, preparedClaims) {
+		if !reflect.DeepEqual(expectedPreparedClaims, preparedClaims) {
 			t.Errorf(
 				"%v: unexpected PreparedClaims:%v, expected PreparedClaims: %v",
 				testcase.name, preparedClaims, expectedPreparedClaims,
@@ -435,8 +442,8 @@ func TestNodeUnprepareResources(t *testing.T) {
 		name                   string
 		request                []kubeletplugin.NamespacedObject
 		expectedResponse       map[types.UID]error
-		preparedClaims         helpers.ClaimPreparations
-		expectedPreparedClaims helpers.ClaimPreparations
+		preparedClaims         ClaimPreparations
+		expectedPreparedClaims ClaimPreparations
 	}
 
 	testcases := []testCase{
@@ -444,28 +451,58 @@ func TestNodeUnprepareResources(t *testing.T) {
 			name:                   "blank request",
 			request:                []kubeletplugin.NamespacedObject{},
 			expectedResponse:       map[types.UID]error{},
-			preparedClaims:         helpers.ClaimPreparations{},
-			expectedPreparedClaims: helpers.ClaimPreparations{},
+			preparedClaims:         ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{},
 		},
 		{
 			name:             "single GPU",
 			request:          []kubeletplugin.NamespacedObject{{UID: "uid1"}},
 			expectedResponse: map[types.UID]error{"uid1": nil},
-			preparedClaims: helpers.ClaimPreparations{
-				"uid1": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, PoolName: "node1", DeviceName: "0000-b3-00-0-0x0bda", CDIDeviceIDs: []string{"intel.com/gpu=0000-b3-00-0-0x0bda"}}}},
+			preparedClaims: ClaimPreparations{
+				"uid1": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests: []string{"request1"}, PoolName: "node1", DeviceName: "0000-b3-00-0-0x0bda", CDIDeviceIDs: []string{"intel.com/gpu=0000-b3-00-0-0x0bda"},
+							},
+						},
+					},
+				},
 			},
-			expectedPreparedClaims: helpers.ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{},
 		},
 		{
 			name:             "single VF without cleanup",
 			request:          []kubeletplugin.NamespacedObject{{UID: "uid2"}},
 			expectedResponse: map[types.UID]error{"uid2": nil},
-			preparedClaims: helpers.ClaimPreparations{
-				"uid2": {Devices: []kubeletplugin.Device{{Requests: []string{"request2"}, PoolName: "node1", DeviceName: "0000-af-00-1-0x0bda", CDIDeviceIDs: []string{"intel.com/gpu=0000-af-00-1-0x0bda"}}}},
-				"uid3": {Devices: []kubeletplugin.Device{{Requests: []string{"request3"}, PoolName: "node1", DeviceName: "0000-af-00-2-0x0bda", CDIDeviceIDs: []string{"intel.com/gpu=0000-af-00-2-0x0bda"}}}},
+			preparedClaims: ClaimPreparations{
+				"uid2": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests: []string{"request2"}, PoolName: "node1", DeviceName: "0000-af-00-1-0x0bda", CDIDeviceIDs: []string{"intel.com/gpu=0000-af-00-1-0x0bda"},
+							},
+						},
+					},
+				},
+				"uid3": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{Requests: []string{"request3"}, PoolName: "node1", DeviceName: "0000-af-00-2-0x0bda", CDIDeviceIDs: []string{"intel.com/gpu=0000-af-00-2-0x0bda"}},
+						},
+					},
+				},
 			},
-			expectedPreparedClaims: helpers.ClaimPreparations{
-				"uid3": {Devices: []kubeletplugin.Device{{Requests: []string{"request3"}, PoolName: "node1", DeviceName: "0000-af-00-2-0x0bda", CDIDeviceIDs: []string{"intel.com/gpu=0000-af-00-2-0x0bda"}}}},
+			expectedPreparedClaims: ClaimPreparations{
+				"uid3": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests: []string{"request3"}, PoolName: "node1", DeviceName: "0000-af-00-2-0x0bda", CDIDeviceIDs: []string{"intel.com/gpu=0000-af-00-2-0x0bda"},
+							},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -496,7 +533,7 @@ func TestNodeUnprepareResources(t *testing.T) {
 		}
 
 		preparedClaimsFilePath := path.Join(testDirs.KubeletPluginDir, device.PreparedClaimsFileName)
-		if err := helpers.WritePreparedClaimsToFile(preparedClaimsFilePath, testcase.preparedClaims); err != nil {
+		if err := WritePreparedClaimsToFile(preparedClaimsFilePath, testcase.preparedClaims); err != nil {
 			t.Errorf("%v: error %v, writing prepared claims to file", testcase.name, err)
 			continue
 		}
@@ -513,7 +550,7 @@ func TestNodeUnprepareResources(t *testing.T) {
 			continue
 		}
 
-		preparedClaims, err := helpers.ReadPreparedClaimsFromFile(preparedClaimsFilePath)
+		preparedClaims, err := readPreparedClaimsFromFile(preparedClaimsFilePath)
 		if err != nil {
 			t.Errorf("%v: error %v, expected no error", testcase.name, err)
 			continue
@@ -523,7 +560,7 @@ func TestNodeUnprepareResources(t *testing.T) {
 			t.Errorf("%v: unexpected response: %+v, expected response: %v", testcase.name, response, testcase.expectedResponse)
 		}
 
-		if !testhelpers.DeepEqualPreparedClaims(testcase.expectedPreparedClaims, preparedClaims) {
+		if !reflect.DeepEqual(testcase.expectedPreparedClaims, preparedClaims) {
 			t.Errorf(
 				"%v: unexpected PreparedClaims: %+v, expected PreparedClaims: %+v",
 				testcase.name, preparedClaims, testcase.expectedPreparedClaims,
@@ -681,12 +718,10 @@ func TestShouldProcessUdevEvent(t *testing.T) {
 
 	drv := &driver{
 		state: &nodeState{
-			NodeState: &helpers.NodeState{
-				Allocatable: map[string]*device.DeviceInfo{
-					deviceUID: {
-						UID:        deviceUID,
-						PCIAddress: "0000:00:02.0",
-					},
+			Allocatable: map[string]*device.DeviceInfo{
+				deviceUID: {
+					UID:        deviceUID,
+					PCIAddress: "0000:00:02.0",
 				},
 			},
 		},
@@ -773,22 +808,24 @@ func TestShouldPublishResourceSlice(t *testing.T) {
 
 	drv := &driver{
 		state: &nodeState{
-			NodeState: &helpers.NodeState{
-				Allocatable: map[string]*device.DeviceInfo{
-					preparedDeviceUID: {
-						UID:        preparedDeviceUID,
-						PCIAddress: preparedPCIAddress,
-					},
-					freeDeviceUID: {
-						UID:        freeDeviceUID,
-						PCIAddress: freeDevicePCI,
-					},
+			Allocatable: map[string]*device.DeviceInfo{
+				preparedDeviceUID: {
+					UID:        preparedDeviceUID,
+					PCIAddress: preparedPCIAddress,
 				},
-				Prepared: helpers.ClaimPreparations{
-					"claim-1": {
-						Devices: []kubeletplugin.Device{{
-							DeviceName: preparedDeviceUID,
-						}},
+				freeDeviceUID: {
+					UID:        freeDeviceUID,
+					PCIAddress: freeDevicePCI,
+				},
+			},
+			Prepared: ClaimPreparations{
+				"claim-1": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								DeviceName: preparedDeviceUID,
+							},
+						},
 					},
 				},
 			},
@@ -837,4 +874,89 @@ func TestShouldPublishResourceSlice(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandleError(t *testing.T) {
+	type testCase struct {
+		name    string
+		err     error
+		message string
+	}
+
+	testcases := []testCase{
+		{
+			name:    "recoverable error",
+			err:     kubeletplugin.ErrRecoverable,
+			message: "recoverable error occurred",
+		},
+		{
+			name:    "non-recoverable error",
+			err:     errors.New("some other error"),
+			message: "non-recoverable error occurred",
+		},
+		{
+			name:    "nil error",
+			err:     nil,
+			message: "nil error message",
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			drv := &driver{
+				state: &nodeState{},
+			}
+
+			// Should not panic
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("HandleError panicked unexpectedly: %v", r)
+				}
+			}()
+
+			drv.HandleError(context.TODO(), testcase.err, testcase.message)
+		})
+	}
+}
+
+func waitForWatchDevicesExit(t *testing.T, done <-chan struct{}, timeout time.Duration) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		t.Fatal("watchDevices did not exit before timeout")
+	}
+}
+
+func TestWatchDevices_ContextCancelledBeforeStart(t *testing.T) {
+	drv := &driver{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		drv.watchDevices(ctx)
+	}()
+
+	waitForWatchDevicesExit(t, done, 3*time.Second)
+}
+
+func TestWatchDevices_ContextCancelledAfterStart(t *testing.T) {
+	drv := &driver{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		drv.watchDevices(ctx)
+	}()
+
+	// Give goroutine a brief chance to start monitor setup, then cancel.
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	waitForWatchDevicesExit(t, done, 3*time.Second)
 }

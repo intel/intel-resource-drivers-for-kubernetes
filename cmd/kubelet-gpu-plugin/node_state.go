@@ -22,11 +22,13 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	inf "gopkg.in/inf.v0"
 	resourcev1 "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/dynamic-resource-allocation/deviceattribute"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
@@ -41,7 +43,13 @@ import (
 )
 
 type nodeState struct {
-	*helpers.NodeState
+	sync.Mutex
+	CdiCache               *cdiapi.Cache
+	Allocatable            interface{}
+	Prepared               ClaimPreparations
+	PreparedClaimsFilePath string
+	NodeName               string
+	SysfsRoot              string
 }
 
 func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string, preparedClaimFilePath string, sysfsRoot string, nodeName string) (*nodeState, error) {
@@ -68,7 +76,7 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 		klog.V(5).Infof("CDI device: %v : %+v", duid, ddev)
 	}
 
-	preparedClaims, err := helpers.GetOrCreatePreparedClaims(preparedClaimFilePath)
+	preparedClaims, err := GetOrCreatePreparedClaims(preparedClaimFilePath)
 	if err != nil {
 		klog.Errorf("Error getting prepared claims: %v", err)
 		return nil, fmt.Errorf("failed to get prepared claims: %v", err)
@@ -76,14 +84,12 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 
 	klog.V(5).Info("Creating NodeState")
 	state := nodeState{
-		NodeState: &helpers.NodeState{
-			CdiCache:               cdiCache,
-			Allocatable:            detectedDevices,
-			Prepared:               preparedClaims,
-			PreparedClaimsFilePath: preparedClaimFilePath,
-			SysfsRoot:              sysfsRoot,
-			NodeName:               nodeName,
-		},
+		CdiCache:               cdiCache,
+		Allocatable:            detectedDevices,
+		Prepared:               preparedClaims,
+		PreparedClaimsFilePath: preparedClaimFilePath,
+		SysfsRoot:              sysfsRoot,
+		NodeName:               nodeName,
 	}
 
 	allocatableDevices, ok := state.Allocatable.(map[string]*device.DeviceInfo)
@@ -202,15 +208,15 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 		s.NodeName: {Slices: []resourceslice.Slice{{Devices: devices}}}}}
 }
 
-func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim) error {
+func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim) (kubeletplugin.PrepareResult, error) {
 	s.Lock()
 	defer s.Unlock()
 
 	if claim.Status.Allocation == nil {
-		return fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
+		return kubeletplugin.PrepareResult{}, fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
 	}
 
-	preparedDevices := kubeletplugin.PrepareResult{}
+	preparedDevices := []PreparedDevice{}
 
 	for _, allocatedDevice := range claim.Status.Allocation.Devices.Results {
 		// ATM the only pool is cluster node's pool: all devices on current node.
@@ -220,8 +226,8 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		}
 
 		adminAccess := ptr.Deref(allocatedDevice.AdminAccess, false)
-		if !adminAccess && s.isDeviceUsedExclusivelyAlready(allocatedDevice.Device, allocatedDevice.Pool, string(claim.UID)) {
-			return fmt.Errorf(
+		if !adminAccess && s.isDeviceUsedExclusivelyAlready(allocatedDevice.Device, allocatedDevice.Pool, claim.UID) {
+			return kubeletplugin.PrepareResult{}, fmt.Errorf(
 				"device %v (pool %v) is already allocated to another claim and cannot be prepared without adminAccess flag",
 				allocatedDevice.Device, allocatedDevice.Pool)
 		}
@@ -229,43 +235,49 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
 		allocatableDevice, found := allocatableDevices[allocatedDevice.Device]
 		if !found {
-			return fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
+			return kubeletplugin.PrepareResult{}, fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
 		}
 
-		newDevice := kubeletplugin.Device{
-			Requests:     []string{allocatedDevice.Request},
-			PoolName:     allocatedDevice.Pool,
-			DeviceName:   allocatedDevice.Device,
-			CDIDeviceIDs: []string{allocatableDevice.CDIName()},
+		newDevice := PreparedDevice{
+			KubeletpluginDevice: kubeletplugin.Device{
+				Requests:     []string{allocatedDevice.Request},
+				PoolName:     allocatedDevice.Pool,
+				DeviceName:   allocatedDevice.Device,
+				CDIDeviceIDs: []string{allocatableDevice.CDIName()},
+			},
+			AdminAccess: adminAccess,
 		}
-		preparedDevices.Devices = append(preparedDevices.Devices, newDevice)
+		preparedDevices = append(preparedDevices, newDevice)
 	}
 
-	s.Prepared[string(claim.UID)] = preparedDevices
+	s.Prepared[claim.UID] = ClaimPreparation{PreparedDevices: preparedDevices}
 
-	err := helpers.WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared)
+	err := WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared)
 	if err != nil {
 		klog.Errorf("Error writing prepared claims to file: %v", err)
-		return fmt.Errorf("failed to write prepared claims to file: %v", err)
+		return kubeletplugin.PrepareResult{}, fmt.Errorf("failed to write prepared claims to file: %v", err)
 	}
 
 	klog.V(5).Infof("Created prepared claim %v allocation", claim.UID)
-	return nil
+	return s.Prepared[claim.UID].PrepareResult(), nil
 }
 
 // isDeviceUsedExclusivelyAlready returns true if the device is already in use in some other claim and
 // adminAccess flag is not set.
 // TODO: FIXME: shareID needs to be checked as well but it is not in kubeletplugin.PrepareResult,
 // and therefore it is not currently stored in cached preparedClaims file or in s.Prepared.
-func (s *nodeState) isDeviceUsedExclusivelyAlready(deviceName, poolName, claimUID string) bool {
-	for preparedClaimUID, claim := range s.Prepared {
+func (s *nodeState) isDeviceUsedExclusivelyAlready(deviceName, poolName string, claimUID types.UID) bool {
+	for preparedClaimUID, claimPreparation := range s.Prepared {
 		// Ignore currently processed claim if it was prepared before.
 		if preparedClaimUID == claimUID {
 			continue
 		}
 
-		for _, preparedDevice := range claim.Devices {
-			if preparedDevice.DeviceName == deviceName && preparedDevice.PoolName == poolName {
+		for _, preparedDevice := range claimPreparation.PreparedDevices {
+			if preparedDevice.AdminAccess {
+				continue
+			}
+			if preparedDevice.KubeletpluginDevice.DeviceName == deviceName && preparedDevice.KubeletpluginDevice.PoolName == poolName {
 				// TODO: FIXME: check for shareID when consumableCapacity is supported.
 				return true
 			}
@@ -319,6 +331,25 @@ func (s *nodeState) RefreshDeviceOnDriverEvent(deviceUID, currentDriver string) 
 	return nil
 }
 
+func (s *nodeState) Unprepare(ctx context.Context, claimUID types.UID) error {
+	s.Lock()
+	defer s.Unlock()
+
+	if _, found := s.Prepared[claimUID]; !found {
+		return nil
+	}
+
+	klog.V(5).Infof("Freeing devices from claim %v", claimUID)
+	delete(s.Prepared, claimUID)
+
+	// write prepared claims to file
+	if err := WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared); err != nil {
+		return fmt.Errorf("failed to write prepared claims to file: %v", err)
+	}
+
+	return nil
+}
+
 func (s *nodeState) IsDevicePrepared(deviceUID string) bool {
 	s.Lock()
 	defer s.Unlock()
@@ -326,11 +357,12 @@ func (s *nodeState) IsDevicePrepared(deviceUID string) bool {
 	return s.isDevicePrepared(deviceUID)
 }
 
+// TODO: FIXME: can this be replaced with isDeviceUsedExclusivelyAlready which ignores AdminAccess devices?
 func (s *nodeState) isDevicePrepared(deviceUID string) bool {
 
 	for _, preparedClaim := range s.Prepared {
-		for _, preparedDevice := range preparedClaim.Devices {
-			if preparedDevice.DeviceName == deviceUID {
+		for _, preparedDevice := range preparedClaim.PreparedDevices {
+			if preparedDevice.KubeletpluginDevice.DeviceName == deviceUID {
 				return true
 			}
 		}

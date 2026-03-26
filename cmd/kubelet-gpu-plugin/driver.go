@@ -80,11 +80,9 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 	driver := &driver{
 		client: config.Coreclient,
 		state: &nodeState{
-			NodeState: &helpers.NodeState{
-				PreparedClaimsFilePath: path.Join(config.CommonFlags.KubeletPluginDir, device.PreparedClaimsFileName),
-				SysfsRoot:              helpers.GetSysfsRoot(device.SysfsDRMpath),
-				NodeName:               config.CommonFlags.NodeName,
-			},
+			PreparedClaimsFilePath: path.Join(config.CommonFlags.KubeletPluginDir, device.PreparedClaimsFileName),
+			SysfsRoot:              helpers.GetSysfsRoot(device.SysfsDRMpath),
+			NodeName:               config.CommonFlags.NodeName,
 		},
 		healthStreams:       make(map[int]chan *drahealthv1alpha1.NodeWatchResourcesResponse),
 		ignoreHealthWarning: gpuFlags.IgnoreHealthWarning,
@@ -185,18 +183,19 @@ func (d *driver) PrepareResourceClaims(ctx context.Context, claims []*resourceap
 func (d *driver) prepareResourceClaim(ctx context.Context, claim *resourceapi.ResourceClaim) kubeletplugin.PrepareResult {
 	klog.V(5).Infof("NodePrepareResource is called for claim %v", claim.UID)
 
-	if claimPreparation, found := d.state.Prepared[string(claim.UID)]; found {
+	if claimPreparation, found := d.state.Prepared[claim.UID]; found {
 		klog.V(3).Infof("Claim %v was already prepared, nothing to do", claim.UID)
-		return claimPreparation
+		return claimPreparation.PrepareResult()
 	}
 
-	if err := d.state.Prepare(ctx, claim); err != nil {
+	prepareResult, err := d.state.Prepare(ctx, claim)
+	if err != nil {
 		return kubeletplugin.PrepareResult{
 			Err: fmt.Errorf("error preparing devices for claim %v: %v", claim.UID, err),
 		}
 	}
 
-	return d.state.Prepared[string(claim.UID)]
+	return prepareResult
 }
 
 func (d *driver) UnprepareResourceClaims(ctx context.Context, claims []kubeletplugin.NamespacedObject) (map[types.UID]error, error) {
@@ -204,7 +203,7 @@ func (d *driver) UnprepareResourceClaims(ctx context.Context, claims []kubeletpl
 	response := map[types.UID]error{}
 
 	for _, claim := range claims {
-		if err := d.state.Unprepare(ctx, string(claim.UID)); err != nil {
+		if err := d.state.Unprepare(ctx, claim.UID); err != nil {
 			response[claim.UID] = fmt.Errorf("could not unprepare resource: %v", err)
 		} else {
 			response[claim.UID] = nil

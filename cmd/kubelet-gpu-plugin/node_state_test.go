@@ -17,17 +17,15 @@
 package main
 
 import (
-	"os"
 	"reflect"
 	"strings"
 	"testing"
 
 	resourcev1 "k8s.io/api/resource/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
-	testhelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
 )
 
 func TestDeviceInfoDeepCopy(t *testing.T) {
@@ -56,204 +54,54 @@ func errorCheck(t *testing.T, name, substr string, err error) {
 	switch {
 	case err == nil:
 		if substr != "" {
-			t.Errorf("unexpected success on %s, expected: %s", name, substr)
+			t.Errorf("%v: unexpected success, expected: %s", name, substr)
 		}
 	case substr == "":
-		t.Errorf("unexpected failure on %s: %v", name, err)
+		t.Errorf("%v: unexpected failure: %v", name, err)
 	case !strings.Contains(err.Error(), substr):
-		t.Errorf("wrong %s error, expected '%s', got: %v", name, substr, err)
-	default:
-		t.Logf("=> expected error for %s: %v", name, substr)
-	}
-}
-
-// TestPreparedClaimsFiles checks prepared claims JSON read & write helpers.
-// nolint:cyclop
-func TestPreparedClaimsFiles(t *testing.T) {
-	type testOp struct {
-		// if non-empty, op1 writes to given file, op2 reads file & compares against
-		claims helpers.ClaimPreparations
-		file   string // otherwise, if non-empty, op1 reads, op2 writes to given file
-		err    string // part of error message, if any
-	}
-	type testCase struct {
-		name string
-		op1  testOp
-		op2  testOp
-	}
-
-	tmpFile, err := os.CreateTemp("", "dra-test-*.json")
-	if err != nil {
-		t.Errorf("tmp file creation failed: %v", err)
-	}
-	tmpClaim := tmpFile.Name()
-	defer os.RemoveAll(tmpClaim)
-
-	claimDir := "test-claims/"
-	missingPath := "non/existing/file"
-
-	multiClaim := helpers.ClaimPreparations{
-		"uid1": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, DeviceName: "0000-af-00-1-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-1-0xabcd"}}}},
-		"uid2": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, DeviceName: "0000-af-00-2-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-2-0xabcd"}}}},
-		"uid3": {Devices: []kubeletplugin.Device{{Requests: []string{"request1"}, DeviceName: "0000-af-00-3-0xabcd", PoolName: "node1", CDIDeviceIDs: []string{"0000-af-00-3-0xabcd"}}}},
-	}
-
-	testcases := []testCase{
-		{
-			"read fail returns error",
-			testOp{
-				nil, missingPath, "failed reading",
-			},
-			testOp{
-				nil, "", "",
-			},
-		},
-		{
-			"write fail returns error",
-			testOp{
-				nil, "", "",
-			},
-			testOp{
-				helpers.ClaimPreparations{}, missingPath, "no such file",
-			},
-		},
-		{
-			"invalid JSON returns error",
-			testOp{
-				nil, claimDir + "invalid.json", "invalid character",
-			},
-			testOp{
-				nil, "", "",
-			},
-		},
-		{
-			"empty JSON read OK",
-			testOp{
-				nil, claimDir + "empty.json", "",
-			},
-			testOp{
-				helpers.ClaimPreparations{}, "", "",
-			},
-		},
-		{
-			"empty write & read OK",
-			testOp{
-				helpers.ClaimPreparations{}, tmpClaim, "",
-			},
-			testOp{
-				helpers.ClaimPreparations{}, tmpClaim, "",
-			},
-		},
-		{
-			"multi-claim JSON read OK",
-			testOp{
-				nil, claimDir + "multi.json", "",
-			},
-			testOp{
-				multiClaim, "", "",
-			},
-		},
-		{
-			"multi-claim write & read OK",
-			testOp{
-				multiClaim, tmpClaim, "",
-			},
-			testOp{
-				multiClaim, tmpClaim, "",
-			},
-		},
-	}
-
-	var claims helpers.ClaimPreparations
-	for _, test := range testcases {
-		t.Log(test.name)
-
-		content := true
-		switch {
-		case test.op1.claims != nil:
-			// JSON write & read roundtrip
-			if test.op1.file != test.op2.file {
-				t.Errorf("=> different files for round-trip check: '%s' vs. '%s'", test.op1.file, test.op2.file)
-			}
-			err = helpers.WritePreparedClaimsToFile(test.op1.file, test.op1.claims)
-			errorCheck(t, "writing claims", test.op1.err, err)
-			claims, err = helpers.ReadPreparedClaimsFromFile(test.op2.file)
-			errorCheck(t, "reading claims", test.op2.err, err)
-		case test.op1.file != "":
-			// read pre-existing JSON
-			claims, err = helpers.ReadPreparedClaimsFromFile(test.op1.file)
-			errorCheck(t, "reading claims", test.op1.err, err)
-		default:
-			content = false
-		}
-
-		if content && test.op2.claims != nil {
-			if !testhelpers.DeepEqualPreparedClaims(claims, test.op2.claims) {
-				t.Error("unexpected claims")
-				for claimUID, claimPreparation := range test.op2.claims {
-					t.Logf("expected %v:", claimUID)
-					for _, device := range claimPreparation.Devices {
-						t.Logf("    %+v", device)
-					}
-				}
-				for claimUID, claimPreparation := range claims {
-					t.Logf("found %v:", claimUID)
-					for _, device := range claimPreparation.Devices {
-						t.Logf("    %+v", device)
-					}
-				}
-			} else {
-				t.Log("=> claims match (OK)")
-			}
-		}
-
-		if test.op2.file == "" || !content {
-			continue
-		}
-
-		err = helpers.WritePreparedClaimsToFile(test.op2.file, claims)
-		errorCheck(t, "writing claims", test.op2.err, err)
-
-		// TODO: validate saved JSON against something?
+		t.Errorf("%v: unexpected error: %v, expected error: %v", name, err, substr)
 	}
 }
 
 func TestGetResourcesTaintsOnlyUnpreparedNonDRMBoundDevices(t *testing.T) {
 	state := &nodeState{
-		NodeState: &helpers.NodeState{
-			Allocatable: map[string]*device.DeviceInfo{
-				"gpu-unprepared": {
-					UID:           "gpu-unprepared",
-					PCIAddress:    "0000:00:01.0",
-					Model:         "0x56c0",
-					ModelName:     "Flex 170",
-					FamilyName:    "Data Center Flex",
-					MemoryMiB:     16384,
-					Driver:        "xe",
-					CurrentDriver: "vfio-pci",
-					Health:        device.HealthHealthy,
-				},
-				"gpu-prepared": {
-					UID:           "gpu-prepared",
-					PCIAddress:    "0000:00:02.0",
-					Model:         "0x56c1",
-					ModelName:     "Flex 140",
-					FamilyName:    "Data Center Flex",
-					MemoryMiB:     16384,
-					Driver:        "xe",
-					CurrentDriver: "vfio-pci",
-					Health:        device.HealthHealthy,
-				},
+		Allocatable: map[string]*device.DeviceInfo{
+			"gpu-unprepared": {
+				UID:           "gpu-unprepared",
+				PCIAddress:    "0000:00:01.0",
+				Model:         "0x56c0",
+				ModelName:     "Flex 170",
+				FamilyName:    "Data Center Flex",
+				MemoryMiB:     16384,
+				Driver:        "xe",
+				CurrentDriver: "vfio-pci",
+				Health:        device.HealthHealthy,
 			},
-			Prepared: helpers.ClaimPreparations{
-				"claim-1": {
-					Devices: []kubeletplugin.Device{{
-						DeviceName: "gpu-prepared",
-					}},
-				},
+			"gpu-prepared": {
+				UID:           "gpu-prepared",
+				PCIAddress:    "0000:00:02.0",
+				Model:         "0x56c1",
+				ModelName:     "Flex 140",
+				FamilyName:    "Data Center Flex",
+				MemoryMiB:     16384,
+				Driver:        "xe",
+				CurrentDriver: "vfio-pci",
+				Health:        device.HealthHealthy,
 			},
-			NodeName: "test-node",
 		},
+		Prepared: ClaimPreparations{
+			"claim-1": {
+				PreparedDevices: []PreparedDevice{
+					{
+						KubeletpluginDevice: kubeletplugin.Device{
+							DeviceName: "gpu-prepared",
+						},
+						AdminAccess: false,
+					},
+				},
+			},
+		},
+		NodeName: "test-node",
 	}
 
 	resources := state.GetResources()
@@ -282,22 +130,38 @@ func TestGetResourcesTaintsOnlyUnpreparedNonDRMBoundDevices(t *testing.T) {
 
 func TestIsDevicePrepared(t *testing.T) {
 	state := &nodeState{
-		NodeState: &helpers.NodeState{
-			Allocatable: map[string]*device.DeviceInfo{
-				"gpu-prepared": {
-					UID:        "gpu-prepared",
-					PCIAddress: "0000:00:02.0",
-				},
-				"gpu-free": {
-					UID:        "gpu-free",
-					PCIAddress: "0000:00:03.0",
+		Allocatable: map[string]*device.DeviceInfo{
+			"gpu-prepared": {
+				UID:        "gpu-prepared",
+				PCIAddress: "0000:00:02.0",
+			},
+			"gpu-free": {
+				UID:        "gpu-free",
+				PCIAddress: "0000:00:03.0",
+			},
+			"gpu-prepared-with-admin-access": {
+				UID:        "gpu-prepared-with-admin-access",
+				PCIAddress: "0000:00:02.0",
+			},
+		},
+		Prepared: ClaimPreparations{
+			"claim-1": {
+				PreparedDevices: []PreparedDevice{
+					{
+						KubeletpluginDevice: kubeletplugin.Device{
+							DeviceName: "gpu-prepared",
+						},
+					},
 				},
 			},
-			Prepared: helpers.ClaimPreparations{
-				"claim-1": {
-					Devices: []kubeletplugin.Device{{
-						DeviceName: "gpu-prepared",
-					}},
+			"claim-2": {
+				PreparedDevices: []PreparedDevice{
+					{
+						KubeletpluginDevice: kubeletplugin.Device{
+							DeviceName: "gpu-prepared-with-admin-access",
+						},
+						AdminAccess: true,
+					},
 				},
 			},
 		},
@@ -332,6 +196,111 @@ func TestIsDevicePrepared(t *testing.T) {
 
 			if got != testcase.expected {
 				t.Fatalf("expected IsDevicePrepared()=%v, got %v", testcase.expected, got)
+			}
+		})
+	}
+}
+
+func TestIsDeviceUsedExclusivelyAlready(t *testing.T) {
+	state := &nodeState{
+		Allocatable: map[string]*device.DeviceInfo{
+			"gpu-prepared": {
+				UID:        "gpu-prepared",
+				PCIAddress: "0000:00:02.0",
+			},
+			"gpu-being-prepared": {
+				UID:        "gpu-being-prepared",
+				PCIAddress: "0000:00:04.0",
+			},
+			"gpu-free": {
+				UID:        "gpu-free",
+				PCIAddress: "0000:00:03.0",
+			},
+			"gpu-prepared-with-admin-access": {
+				UID:        "gpu-prepared-with-admin-access",
+				PCIAddress: "0000:00:01.0",
+			},
+		},
+		Prepared: ClaimPreparations{
+			"claim-1": {
+				PreparedDevices: []PreparedDevice{
+					{
+						KubeletpluginDevice: kubeletplugin.Device{
+							DeviceName: "gpu-prepared",
+							PoolName:   "pool0",
+						},
+					},
+				},
+			},
+			"claim-2": {
+				PreparedDevices: []PreparedDevice{
+					{
+						KubeletpluginDevice: kubeletplugin.Device{
+							DeviceName: "gpu-prepared-with-admin-access",
+							PoolName:   "pool0",
+						},
+						AdminAccess: true,
+					},
+				},
+			},
+			"claim-new": {
+				PreparedDevices: []PreparedDevice{
+					{
+						KubeletpluginDevice: kubeletplugin.Device{
+							DeviceName: "gpu-being-prepared",
+							PoolName:   "pool0",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	testcases := []struct {
+		name        string
+		uid         string
+		expected    bool
+		expectError bool
+		claimUid    types.UID
+	}{
+		{
+			name:     "prepared device",
+			uid:      "gpu-prepared",
+			expected: true,
+			claimUid: "claim-x",
+		},
+		{
+			name:     "unprepared device",
+			uid:      "gpu-free",
+			claimUid: "claim-x",
+			expected: false,
+		},
+		{
+			name:     "unknown device",
+			uid:      "gpu-unknown",
+			claimUid: "claim-x",
+			expected: false,
+		},
+		{
+			name:     "prepared device with admin access",
+			uid:      "gpu-prepared-with-admin-access",
+			claimUid: "claim-x",
+			expected: false, // AdminAccess devices should not be considered prepared for exclusivity checks.
+		},
+		{
+			name:     "already-prepared-claim repeats",
+			uid:      "gpu-being-prepared",
+			claimUid: "claim-new",
+			expected: false, // AdminAccess devices should not be considered prepared for exclusivity checks.
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			got := state.isDeviceUsedExclusivelyAlready(testcase.uid, "pool0", testcase.claimUid)
+
+			if got != testcase.expected {
+				t.Fatalf("expected IsDeviceUsedExclusivelyAlready()=%v, got %v", testcase.expected, got)
 			}
 		})
 	}
