@@ -47,11 +47,12 @@ func DeduceCardAndRenderdIndexes(sysfsDeviceDir string) (uint64, uint64, error) 
 				return 0, 0, fmt.Errorf("failed to parse index of DRM card device '%v', skipping", drmFileName)
 			}
 		} else if device.RenderdRegexp.MatchString(drmFileName) {
-			renderDidx, err = strconv.ParseUint(drmFileName[7:], 10, 64)
+			renderValue, err := strconv.ParseUint(drmFileName[7:], 10, 64)
 			if err != nil {
 				klog.Errorf("failed to parse renderDN device: %v, skipping", drmFileName)
 				continue
 			}
+			renderDidx = renderValue
 		}
 	}
 
