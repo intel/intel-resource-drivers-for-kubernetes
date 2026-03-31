@@ -21,10 +21,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strconv"
-
-	"github.com/google/uuid"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
@@ -32,18 +29,7 @@ import (
 
 const (
 	// Uninitialized renderDidx is zero, real renderD index starts with 128.
-	NoRenderDev        = "renderD0"
-	meiGSCDriverName   = "mei_gsc_proxy"
-	meiLBDriverName    = "mei_lb"
-	meiHDCPDriverName  = "mei_hdcp"
-	meiPXPDriverName   = "mei_pxp"
-	meiAuxDriverName   = "mei_gsc"
-	xeGSCFIIdx         = uint64(1024)
-	i915GSCIdx         = uint64(2304)
-	i915HostPCIAddress = "0000:00:16.0"
-	xeGSCFIClientCount = 2
-	i915GSCClientCount = 2
-	i915GSCFICount     = 1
+	NoRenderDev = "renderD0"
 )
 
 var perDeviceIdTilesDirs = map[string][]string{
@@ -195,384 +181,35 @@ func fakeGpuMEI(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, real
 		return nil
 	}
 
-	driverUUIDs := makeMEIDriverUUIDs()
-
-	switch gpu.Driver {
-	case device.SysfsXeDriverName:
-		return fakeGpuMEIAux(sysfsRoot, devfsRoot, gpu, realDevices, gpu.MEIName, driverUUIDs,
-			fmt.Sprintf("xe.mei-gscfi.%d", xeGSCFIIdx),
-			map[int]string{
-				0: meiGSCDriverName,
-				1: meiLBDriverName,
-			},
-			nil,
-		)
-	case device.SysfsI915DriverName:
-		if err := fakeGpuMEIAux(sysfsRoot, devfsRoot, gpu, realDevices, gpu.MEIName, driverUUIDs,
-			fmt.Sprintf("i915.mei-gsc.%d", i915GSCIdx),
-			map[int]string{
-				0: meiHDCPDriverName,
-				1: meiPXPDriverName,
-			},
-			map[int]string{
-				0: meiHDCPDriverName,
-				1: meiPXPDriverName,
-			},
-		); err != nil {
-			return err
-		}
-
-		return fakeGpuMEIAux(sysfsRoot, devfsRoot, gpu, realDevices, gpu.MEIName, driverUUIDs,
-			fmt.Sprintf("i915.mei-gscfi.%d", i915GSCIdx),
-			map[int]string{
-				0: meiLBDriverName,
-			},
-			nil,
-		)
-	default:
-		return nil
-	}
-}
-
-func fakeGpuMEIAux(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, realDevices bool, meiName string, driverUUIDs map[string]string, auxName string, clientDrivers map[int]string, hostDrivers map[int]string) error {
-	devicesDir := path.Join(sysfsRoot, "devices", gpu.PCIRoot, gpu.PCIAddress)
-	auxDir := path.Join(devicesDir, auxName)
-	meiDeviceDir := path.Join(auxDir, "mei", meiName)
-	meiClassDir := path.Join(sysfsRoot, "class/mei")
-	clientUUIDs, err := makeClientUUIDs(clientDrivers, hostDrivers, driverUUIDs)
-	if err != nil {
-		return err
-	}
-
+	meiClassDir := path.Join(sysfsRoot, device.SysfsMEIpath)
 	if err := os.MkdirAll(meiClassDir, 0750); err != nil {
-		return fmt.Errorf("creating directory %v: %v", meiClassDir, err)
+		return fmt.Errorf("creating MEI class directory %v: %v", meiClassDir, err)
 	}
 
-	if err := createFakeMEIDeviceTree(meiDeviceDir, meiClassDir, auxName, meiName); err != nil {
-		return err
-	}
-	if err := createFakeMEIAuxTree(sysfsRoot, auxDir); err != nil {
-		return err
-	}
-	if err := createFakeMEIDevfs(devfsRoot, meiName, realDevices); err != nil {
-		return err
+	auxDirName := "mei"
+	switch gpu.Driver {
+	case device.SysfsI915DriverName:
+		auxDirName = "i915.mei-gscfi.2304"
+	case device.SysfsXeDriverName:
+		auxDirName = "xe.mei-gscfi.768"
 	}
 
-	if err := fakeGpuMEIBus(sysfsRoot, auxName, auxDir, clientUUIDs, clientDrivers, hostDrivers); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func fakeGpuMEIBus(sysfsRoot string, auxName string, auxDir string, clientUUIDs []string, clientDrivers map[int]string, hostDrivers map[int]string) error {
-	driverNames := collectMEIDriverNames(clientDrivers, hostDrivers)
-	busMEIDevicesDir, busMEIDriversDir, err := createFakeMEIBusScaffolding(sysfsRoot, driverNames)
-	if err != nil {
-		return err
-	}
-
-	if err := createFakeMEIClientEntries(sysfsRoot, auxName, auxDir, busMEIDevicesDir, busMEIDriversDir, clientUUIDs, clientDrivers); err != nil {
-		return err
-	}
-
-	if err := createFakeMEIHostEntries(sysfsRoot, busMEIDriversDir, clientUUIDs, hostDrivers); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func createFakeMEIDeviceTree(meiDeviceDir, meiClassDir, auxName, meiName string) error {
+	meiDeviceDir := path.Join(sysfsRoot, "devices", gpu.PCIRoot, gpu.PCIAddress, auxDirName, "mei", gpu.MEIName)
 	if err := os.MkdirAll(meiDeviceDir, 0750); err != nil {
-		return fmt.Errorf("creating fake mei target dir, err: %v", err)
+		return fmt.Errorf("creating MEI device directory %v: %v", meiDeviceDir, err)
 	}
 
-	for _, fileName := range []string{"dev", "dev_state", "fw_status", "fw_ver", "hbm_ver", "hbm_ver_drv", "kind", "trc", "tx_queue_limit", "uevent"} {
-		if writeErr := helpers.WriteFile(path.Join(meiDeviceDir, fileName), ""); writeErr != nil {
-			return fmt.Errorf("creating fake mei device file %v: %v", fileName, writeErr)
-		}
+	meiClassLink := path.Join(meiClassDir, gpu.MEIName)
+	if err := createRelativeSymlink(meiDeviceDir, meiClassLink); err != nil {
+		return fmt.Errorf("creating MEI class symlink %v: %v", meiClassLink, err)
 	}
 
-	if err := createFakePowerStateTree(meiDeviceDir); err != nil {
-		return err
-	}
-
-	if err := os.Symlink(path.Join("..", "..", "..", auxName), path.Join(meiDeviceDir, "device")); err != nil {
-		if !os.IsExist(err) {
-			return fmt.Errorf("creating fake mei device symlink: %v", err)
-		}
-	}
-
-	if err := createRelativeSymlink(meiClassDir, path.Join(meiDeviceDir, "subsystem")); err != nil {
-		return fmt.Errorf("creating fake mei subsystem symlink: %v", err)
-	}
-
-	if err := createRelativeSymlink(meiDeviceDir, path.Join(meiClassDir, meiName)); err != nil {
-		return fmt.Errorf("creating fake mei symlink, err: %v", err)
-	}
-
-	return nil
-}
-
-func createFakeMEIAuxTree(sysfsRoot, auxDir string) error {
-	if err := createFakePowerStateTree(auxDir); err != nil {
-		return err
-	}
-
-	if writeErr := helpers.WriteFile(path.Join(auxDir, "uevent"), ""); writeErr != nil {
-		return fmt.Errorf("creating fake mei aux uevent: %v", writeErr)
-	}
-
-	if err := createRelativeSymlink(path.Join(sysfsRoot, "bus", "auxiliary"), path.Join(auxDir, "subsystem")); err != nil {
-		return fmt.Errorf("creating fake mei aux subsystem symlink: %v", err)
-	}
-
-	if err := createRelativeSymlink(path.Join(sysfsRoot, "bus", "auxiliary", "drivers", meiAuxDriverName), path.Join(auxDir, "driver")); err != nil {
-		return fmt.Errorf("creating fake mei aux driver symlink: %v", err)
-	}
-
-	if err := os.MkdirAll(path.Join(sysfsRoot, "bus", "auxiliary", "drivers", meiAuxDriverName), 0750); err != nil {
-		return fmt.Errorf("creating fake auxiliary driver dir: %v", err)
-	}
-
-	if err := createFakeModuleDriverEntry(sysfsRoot, meiAuxDriverName, "auxiliary", meiAuxDriverName); err != nil {
-		return fmt.Errorf("creating fake module entry for %v: %v", meiAuxDriverName, err)
-	}
-
-	return nil
-}
-
-func createFakeMEIDevfs(devfsRoot, meiName string, realDevices bool) error {
 	if err := os.MkdirAll(devfsRoot, 0750); err != nil {
 		return fmt.Errorf("creating fake devfs root: %v", err)
 	}
 
-	if err := createDevice(path.Join(devfsRoot, meiName), realDevices); err != nil {
-		return fmt.Errorf("creating device %v: %v", meiName, err)
-	}
-
-	return nil
-}
-
-func collectMEIDriverNames(clientDrivers, hostDrivers map[int]string) map[string]struct{} {
-	driverNames := map[string]struct{}{}
-	for _, driverName := range clientDrivers {
-		driverNames[driverName] = struct{}{}
-	}
-	for _, driverName := range hostDrivers {
-		driverNames[driverName] = struct{}{}
-	}
-
-	return driverNames
-}
-
-func createFakeMEIBusScaffolding(sysfsRoot string, driverNames map[string]struct{}) (string, string, error) {
-	busMEIDir := path.Join(sysfsRoot, "bus", "mei")
-	busMEIDevicesDir := path.Join(busMEIDir, "devices")
-	busMEIDriversDir := path.Join(busMEIDir, "drivers")
-
-	dirs := []string{busMEIDevicesDir}
-	for driverName := range driverNames {
-		dirs = append(dirs, path.Join(busMEIDriversDir, driverName))
-	}
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0750); err != nil {
-			return "", "", fmt.Errorf("creating fake mei bus dir %v: %v", dir, err)
-		}
-	}
-
-	filePaths := []string{
-		path.Join(busMEIDir, "drivers_autoprobe"),
-		path.Join(busMEIDir, "drivers_probe"),
-		path.Join(busMEIDir, "uevent"),
-	}
-	for driverName := range driverNames {
-		filePaths = append(filePaths,
-			path.Join(busMEIDriversDir, driverName, "bind"),
-			path.Join(busMEIDriversDir, driverName, "unbind"),
-			path.Join(busMEIDriversDir, driverName, "uevent"),
-		)
-	}
-	for _, filePath := range filePaths {
-		if writeErr := helpers.WriteFile(filePath, ""); writeErr != nil {
-			return "", "", fmt.Errorf("creating fake mei bus file %v: %v", filePath, writeErr)
-		}
-	}
-
-	for driverName := range driverNames {
-		moduleLink := path.Join(busMEIDriversDir, driverName, "module")
-		if err := createRelativeSymlink(path.Join(sysfsRoot, "module", driverName), moduleLink); err != nil {
-			return "", "", fmt.Errorf("creating fake mei module symlink %v: %v", moduleLink, err)
-		}
-		if err := createFakeModuleDriverEntry(sysfsRoot, driverName, "mei", driverName); err != nil {
-			return "", "", fmt.Errorf("creating fake module entry for %v: %v", driverName, err)
-		}
-	}
-
-	return busMEIDevicesDir, busMEIDriversDir, nil
-}
-
-func createFakeMEIClientEntries(sysfsRoot, auxName, auxDir, busMEIDevicesDir, busMEIDriversDir string, clientUUIDs []string, clientDrivers map[int]string) error {
-	clientIndexes := make([]int, 0, len(clientDrivers))
-	for index := range clientDrivers {
-		clientIndexes = append(clientIndexes, index)
-	}
-	sort.Ints(clientIndexes)
-
-	for _, index := range clientIndexes {
-		clientUUID := clientUUIDs[index]
-		clientName := fmt.Sprintf("%s-%s", auxName, clientUUID)
-		clientDir := path.Join(auxDir, clientName)
-		if err := os.MkdirAll(clientDir, 0750); err != nil {
-			return fmt.Errorf("creating fake mei client dir %v: %v", clientName, err)
-		}
-
-		for _, fileName := range []string{"fixed", "max_conn", "max_len", "modalias", "name", "uevent", "version", "vtag"} {
-			if writeErr := helpers.WriteFile(path.Join(clientDir, fileName), ""); writeErr != nil {
-				return fmt.Errorf("creating fake mei client file %v/%v: %v", clientName, fileName, writeErr)
-			}
-		}
-		if writeErr := helpers.WriteFile(path.Join(clientDir, "uuid"), clientUUID); writeErr != nil {
-			return fmt.Errorf("creating fake mei uuid for %v: %v", clientName, writeErr)
-		}
-		if err := createFakePowerStateTree(clientDir); err != nil {
-			return err
-		}
-		if err := createRelativeSymlink(path.Join(sysfsRoot, "bus", "mei"), path.Join(clientDir, "subsystem")); err != nil {
-			return fmt.Errorf("creating fake mei client subsystem symlink: %v", err)
-		}
-
-		driverName := clientDrivers[index]
-		if err := createRelativeSymlink(path.Join(busMEIDriversDir, driverName), path.Join(clientDir, "driver")); err != nil {
-			return fmt.Errorf("creating fake %v driver link: %v", driverName, err)
-		}
-
-		driverLink := path.Join(busMEIDriversDir, driverName, clientName)
-		if err := createRelativeSymlink(clientDir, driverLink); err != nil {
-			return fmt.Errorf("creating fake %v bus link: %v", driverName, err)
-		}
-
-		deviceLink := path.Join(busMEIDevicesDir, clientName)
-		if err := createRelativeSymlink(clientDir, deviceLink); err != nil {
-			return fmt.Errorf("creating fake mei bus device symlink, err: %v", err)
-		}
-	}
-
-	return nil
-}
-
-func createFakeMEIHostEntries(sysfsRoot, busMEIDriversDir string, clientUUIDs []string, hostDrivers map[int]string) error {
-	for index, driverName := range hostDrivers {
-		clientUUID := clientUUIDs[index]
-		hostClientName := fmt.Sprintf("%s-%s", i915HostPCIAddress, clientUUID)
-		hostClientDir := path.Join(sysfsRoot, "devices", "pci0000:00", i915HostPCIAddress, hostClientName)
-		if err := os.MkdirAll(hostClientDir, 0750); err != nil {
-			return fmt.Errorf("creating fake host mei client dir %v: %v", hostClientName, err)
-		}
-		if err := createRelativeSymlink(path.Join(busMEIDriversDir, driverName), path.Join(hostClientDir, "driver")); err != nil {
-			return fmt.Errorf("creating fake host %v driver link: %v", driverName, err)
-		}
-		if err := createRelativeSymlink(hostClientDir, path.Join(busMEIDriversDir, driverName, hostClientName)); err != nil {
-			return fmt.Errorf("creating fake host %v bus link: %v", driverName, err)
-		}
-	}
-
-	return nil
-}
-
-func makeMEIDriverUUIDs() map[string]string {
-	return map[string]string{
-		meiGSCDriverName:  uuid.NewString(),
-		meiLBDriverName:   uuid.NewString(),
-		meiHDCPDriverName: uuid.NewString(),
-		meiPXPDriverName:  uuid.NewString(),
-	}
-}
-
-func makeClientUUIDs(clientDrivers map[int]string, hostDrivers map[int]string, driverUUIDs map[string]string) ([]string, error) {
-	maxIndex := -1
-	for index := range clientDrivers {
-		if index > maxIndex {
-			maxIndex = index
-		}
-	}
-	for index := range hostDrivers {
-		if index > maxIndex {
-			maxIndex = index
-		}
-	}
-
-	if maxIndex < 0 {
-		return nil, fmt.Errorf("no MEI clients requested")
-	}
-
-	clientUUIDs := make([]string, maxIndex+1)
-	allDrivers := map[int]string{}
-	for index, driverName := range clientDrivers {
-		allDrivers[index] = driverName
-	}
-	for index, driverName := range hostDrivers {
-		allDrivers[index] = driverName
-	}
-
-	for index, driverName := range allDrivers {
-		driverUUID, found := driverUUIDs[driverName]
-		if !found {
-			return nil, fmt.Errorf("missing MEI UUID for driver %v", driverName)
-		}
-		clientUUIDs[index] = driverUUID
-	}
-
-	return clientUUIDs, nil
-}
-
-func createFakeModuleDriverEntry(sysfsRoot, moduleName, busName, driverName string) error {
-	moduleDir := path.Join(sysfsRoot, "module", moduleName)
-
-	for _, subdir := range []string{"drivers", "holders", "notes", "sections"} {
-		dir := path.Join(moduleDir, subdir)
-		if err := os.MkdirAll(dir, 0750); err != nil {
-			return fmt.Errorf("creating module directory %v: %v", dir, err)
-		}
-	}
-
-	for _, fileName := range []string{"coresize", "initsize", "initstate", "refcnt", "srcversion", "taint", "uevent"} {
-		if writeErr := helpers.WriteFile(path.Join(moduleDir, fileName), ""); writeErr != nil {
-			return fmt.Errorf("creating module file %v/%v: %v", moduleName, fileName, writeErr)
-		}
-	}
-
-	driverLinkName := fmt.Sprintf("%s:%s", busName, driverName)
-	driverLinkPath := path.Join(moduleDir, "drivers", driverLinkName)
-	driverPath := path.Join(sysfsRoot, "bus", busName, "drivers", driverName)
-	if err := createRelativeSymlink(driverPath, driverLinkPath); err != nil {
-		return fmt.Errorf("creating module driver symlink %v: %v", driverLinkPath, err)
-	}
-
-	return nil
-}
-
-func createFakePowerStateTree(baseDir string) error {
-	powerDir := path.Join(baseDir, "power")
-	if err := os.MkdirAll(powerDir, 0750); err != nil {
-		return fmt.Errorf("creating power directory %v: %v", powerDir, err)
-	}
-
-	for _, fileName := range []string{
-		"async",
-		"autosuspend_delay_ms",
-		"control",
-		"runtime_active_kids",
-		"runtime_active_time",
-		"runtime_enabled",
-		"runtime_status",
-		"runtime_suspended_time",
-		"runtime_usage",
-	} {
-		if writeErr := helpers.WriteFile(path.Join(powerDir, fileName), ""); writeErr != nil {
-			return fmt.Errorf("creating fake power file %v/%v: %v", baseDir, fileName, writeErr)
-		}
+	if err := createDevice(path.Join(devfsRoot, gpu.MEIName), realDevices); err != nil {
+		return fmt.Errorf("creating device %v: %v", gpu.MEIName, err)
 	}
 
 	return nil
