@@ -247,6 +247,12 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 			},
 			AdminAccess: adminAccess,
 		}
+
+		if adminAccess && allocatableDevice.MEIName != "" {
+			klog.V(5).Infof("Adding MEI CDI device for device %v with MEI name %v", allocatedDevice.Device, allocatableDevice.MEIName)
+			newDevice.KubeletpluginDevice.CDIDeviceIDs = append(newDevice.KubeletpluginDevice.CDIDeviceIDs, allocatableDevice.MEICDIName())
+		}
+
 		preparedDevices = append(preparedDevices, newDevice)
 	}
 

@@ -5,6 +5,7 @@
 package cdihelpers
 
 import (
+	"sort"
 	"testing"
 
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
@@ -17,16 +18,18 @@ import (
 func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 
 	tests := []struct {
-		name            string
-		existingSpecs   []*cdiapi.Spec
-		detectedDevices device.DevicesInfo
-		expectedError   bool
+		name             string
+		existingSpecs    []*cdiapi.Spec
+		detectedDevices  device.DevicesInfo
+		expectedError    bool
+		expectedMEINames []string
 	}{
 		{
-			name:            "No existing specs, no detected devices",
-			existingSpecs:   nil,
-			detectedDevices: device.DevicesInfo{},
-			expectedError:   false,
+			name:             "No existing specs, no detected devices",
+			existingSpecs:    nil,
+			detectedDevices:  device.DevicesInfo{},
+			expectedError:    false,
+			expectedMEINames: nil,
 		},
 		{
 			name:          "No existing specs, add new devices",
@@ -61,7 +64,44 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 					MaxVFs:     0,
 				},
 			},
-			expectedError: false,
+			expectedError:    false,
+			expectedMEINames: []string{"mei0"},
+		},
+		{
+			name:          "No existing MEI spec, add devices with MEI",
+			existingSpecs: nil,
+			detectedDevices: device.DevicesInfo{
+				"gpu0": {UID: "gpu0", CardIdx: 0, RenderdIdx: 128, MEIName: "mei0"},
+				"gpu1": {UID: "gpu1", CardIdx: 1, RenderdIdx: 129, MEIName: "mei1"},
+			},
+			expectedError:    false,
+			expectedMEINames: []string{"mei0", "mei1"},
+		},
+		{
+			name: "Existing MEI spec is replaced",
+			existingSpecs: []*cdiapi.Spec{
+				{
+					Spec: &specs.Spec{
+						Kind:    device.CDIMEIKind,
+						Version: "0.6.0",
+						Devices: []specs.Device{
+							{
+								Name: "mei9",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/mei9", HostPath: "/dev/mei9", Type: "c"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			detectedDevices: device.DevicesInfo{
+				"gpu0": {UID: "gpu0", CardIdx: 0, RenderdIdx: 128, MEIName: "mei0"},
+			},
+			expectedError:    false,
+			expectedMEINames: []string{"mei0"},
 		},
 		{
 			name: "Existing specs, detected devices replace old ones",
@@ -87,7 +127,8 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 			detectedDevices: device.DevicesInfo{
 				"gpu1": {UID: "gpu1", CardIdx: 0, RenderdIdx: 128},
 			},
-			expectedError: false,
+			expectedError:    false,
+			expectedMEINames: nil,
 		},
 		{
 			name: "Existing specs, update device indices",
@@ -113,7 +154,8 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 			detectedDevices: device.DevicesInfo{
 				"gpu1": {UID: "gpu1", CardIdx: 0, RenderdIdx: 128},
 			},
-			expectedError: false,
+			expectedError:    false,
+			expectedMEINames: nil,
 		},
 		{
 			name: "Existing specs, remove absent devices",
@@ -148,7 +190,8 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 			detectedDevices: device.DevicesInfo{
 				"gpu1": {UID: "gpu1", CardIdx: 0, RenderdIdx: 128},
 			},
-			expectedError: false,
+			expectedError:    false,
+			expectedMEINames: nil,
 		},
 		{
 			name: "Existing specs, all devices removed",
@@ -180,8 +223,9 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 					},
 				},
 			},
-			detectedDevices: device.DevicesInfo{},
-			expectedError:   false,
+			detectedDevices:  device.DevicesInfo{},
+			expectedError:    false,
+			expectedMEINames: nil,
 		},
 		{
 			name: "Existing specs, replace with new device",
@@ -207,7 +251,8 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 			detectedDevices: device.DevicesInfo{
 				"gpu2": {UID: "gpu2", CardIdx: 1, RenderdIdx: 129},
 			},
-			expectedError: false,
+			expectedError:    false,
+			expectedMEINames: nil,
 		},
 	}
 	for _, tt := range tests {
@@ -234,6 +279,28 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 
 			if err := AddDetectedDevicesToCDIRegistry(cdiCache, tt.detectedDevices); (err != nil) != tt.expectedError {
 				t.Errorf("AddDetectedDevicesToCDIRegistry() error = %v, expectedError %v", err, tt.expectedError)
+			}
+
+			plugintesthelpers.CDICacheDelay()
+
+			actualMEINames := []string{}
+			for _, meiSpec := range getMEISpecs(cdiCache) {
+				for _, meiDevice := range meiSpec.Devices {
+					actualMEINames = append(actualMEINames, meiDevice.Name)
+				}
+			}
+			sort.Strings(actualMEINames)
+
+			expectedMEINames := tt.expectedMEINames
+			sort.Strings(expectedMEINames)
+
+			if len(actualMEINames) != len(expectedMEINames) {
+				t.Fatalf("expected MEI CDI devices %v, got %v", expectedMEINames, actualMEINames)
+			}
+			for i := range actualMEINames {
+				if actualMEINames[i] != expectedMEINames[i] {
+					t.Fatalf("expected MEI CDI devices %v, got %v", expectedMEINames, actualMEINames)
+				}
 			}
 		})
 	}

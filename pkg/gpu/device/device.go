@@ -28,6 +28,7 @@ var (
 	PciRegexp     = regexp.MustCompile(`[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$`)
 	CardRegexp    = regexp.MustCompile(`^card[0-9]{1,3}$`)
 	RenderdRegexp = regexp.MustCompile(`^renderD[0-9]{1,3}$`)
+	MEIRegexp     = regexp.MustCompile(`^mei[0-9]+$`)
 )
 
 const (
@@ -39,6 +40,7 @@ const (
 	SysfsI915DriverName = "i915"
 	SysfsXeDriverName   = "xe"
 	SysfsDRMpath        = "class/drm/"
+	SysfsMEIpath        = "class/mei/"
 
 	CDIVendor   = "intel.com"
 	CDIGPUClass = "gpu"

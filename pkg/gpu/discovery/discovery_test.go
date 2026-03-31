@@ -85,7 +85,6 @@ func TestDiscoverDevices(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "with 1 vf",
 			setupFunc: func(sysfsRoot, devfsRoot string, driver string) error {

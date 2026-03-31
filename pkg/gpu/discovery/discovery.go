@@ -27,6 +27,7 @@ import (
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/drm"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/mei"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 
 	"k8s.io/klog/v2"
@@ -128,6 +129,7 @@ func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDi
 
 		newDeviceInfo.CardIdx = cardIdx
 		newDeviceInfo.RenderdIdx = renderdIdx
+		newDeviceInfo.MEIName = mei.DiscoverMEIDeviceForGPU(sysfsDriverDir, sysfsDeviceDir)
 
 		linkSource := path.Join(sysfsDriverDir, devicePCIAddress)
 		pciRoot, err := helpers.DeterminePCIRoot(linkSource)
