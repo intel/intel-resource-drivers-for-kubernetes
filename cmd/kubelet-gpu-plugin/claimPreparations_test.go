@@ -98,7 +98,7 @@ func TestPreparedClaimsFiles(t *testing.T) {
 			"getOrCreate create success", []byte("{}"), ClaimPreparations{}, preparedClaimsFile, "", "read",
 		},
 		{
-			"read invalid JSON returns error", []byte("'"), nil, preparedClaimsFile, "failed parsing ClaimPreparations data", "get",
+			"read invalid JSON returns error", []byte("'"), nil, preparedClaimsFile, "failed to unmarshal prepared claims file as unversioned", "get",
 		},
 		{
 			"empty write & read OK", []byte("{}"), ClaimPreparations{}, preparedClaimsFile, "", "get",
