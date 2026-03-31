@@ -583,11 +583,36 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 
 	const deviceUID = "0000-00-02-0-0x56c0"
 
+	if err := fakesysfs.FakeSysFsGpuContents(
+		testDirs.SysfsRoot,
+		testDirs.DevfsRoot,
+		device.DevicesInfo{
+			deviceUID: {
+				UID:        deviceUID,
+				PCIAddress: "0000:00:02.0",
+				Model:      "0x56c0",
+				ModelName:  "Flex 170",
+				FamilyName: "Data Center Flex",
+				CardIdx:    0,
+				MEIName:    "mei0",
+				RenderdIdx: 128,
+				MemoryMiB:  16256,
+				DeviceType: "gpu",
+				Driver:     device.SysfsI915DriverName,
+			},
+		},
+		false,
+	); err != nil {
+		t.Fatalf("setup error: could not create fake sysfs: %v", err)
+	}
+
 	drv, err := getFakeDriver(testDirs)
 	if err != nil {
 		t.Fatalf("could not create fake driver: %v", err)
 	}
 	defer func() { _ = drv.Shutdown(context.TODO()) }()
+
+	preparedClaimsFilePath := path.Join(testDirs.KubeletPluginDir, device.PreparedClaimsFileName)
 
 	drv.state.Lock()
 	drv.state.Allocatable = map[string]*device.DeviceInfo{
@@ -614,10 +639,13 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 		name                  string
 		eventAction           string
 		devpath               string
-		discoveredDevices     map[string]*device.DeviceInfo
 		expectedDeviceUID     string
-		currentDriver         string
+		innitialCurrentDriver string
+		initialCardIdx        uint64
+		initialRenderdIdx     uint64
 		expectedCurrentDriver string
+		expectedCardIdx       uint64
+		expectedRenderdIdx    uint64
 	}
 
 	testcases := []testCase{
@@ -625,43 +653,49 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 			name:                  "unbind event changes current driver unbound",
 			eventAction:           "unbind",
 			devpath:               "/devices/pci0000:00/0000:00:02.0/drm/card0",
-			discoveredDevices:     map[string]*device.DeviceInfo{},
 			expectedDeviceUID:     deviceUID,
-			currentDriver:         "i915",
+			innitialCurrentDriver: "i915",
+			initialCardIdx:        0,
+			initialRenderdIdx:     128,
 			expectedCurrentDriver: "",
+			expectedCardIdx:       0,
+			expectedRenderdIdx:    128,
 		},
 		{
-			name:        "bind event changes current driver to i915",
-			eventAction: "bind",
-			devpath:     "/devices/pci0000:00/0000:00:02.0/drm/card0",
-			discoveredDevices: map[string]*device.DeviceInfo{
-				deviceUID: {
-					UID:        deviceUID,
-					PCIAddress: "0000:00:02.0",
-					Model:      "0x56c0",
-					ModelName:  "Flex 170",
-					FamilyName: "Data Center Flex",
-					CardIdx:    0,
-					MEIName:    "mei1",
-					RenderdIdx: 128,
-					MemoryMiB:  16256,
-					DeviceType: "gpu",
-					Driver:     "i915",
-					Health:     device.HealthUnknown,
-				},
-			},
+			name:                  "bind event changes current driver to i915 and keeps drm indexes when unchanged",
+			eventAction:           "bind",
+			devpath:               "/devices/pci0000:00/0000:00:02.0/drm/card0",
 			expectedDeviceUID:     deviceUID,
-			currentDriver:         "vfio-pci",
+			innitialCurrentDriver: "vfio-pci",
+			initialCardIdx:        0,
+			initialRenderdIdx:     128,
 			expectedCurrentDriver: "i915",
+			expectedCardIdx:       0,
+			expectedRenderdIdx:    128,
+		},
+		{
+			name:                  "bind event changes current driver to i915 and refreshes drm indexes when changed",
+			eventAction:           "bind",
+			devpath:               "/devices/pci0000:00/0000:00:02.0/drm/card0",
+			expectedDeviceUID:     deviceUID,
+			innitialCurrentDriver: "vfio-pci",
+			initialCardIdx:        1,
+			initialRenderdIdx:     129,
+			expectedCurrentDriver: "i915",
+			expectedCardIdx:       0,
+			expectedRenderdIdx:    128,
 		},
 		{
 			name:                  "bind event changes current driver to vfio-pci",
 			eventAction:           "bind",
 			devpath:               "/devices/pci0000:00/0000:00:02.0/vfio-dev/vfio0",
-			discoveredDevices:     map[string]*device.DeviceInfo{},
 			expectedDeviceUID:     deviceUID,
-			currentDriver:         "i915",
+			innitialCurrentDriver: "i915",
+			initialCardIdx:        0,
+			initialRenderdIdx:     128,
 			expectedCurrentDriver: "vfio-pci",
+			expectedCardIdx:       0,
+			expectedRenderdIdx:    128,
 		},
 	}
 
@@ -686,7 +720,11 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 			drv.state.SysfsRoot = testDirs.SysfsRoot
 		}
 
-		allocatable[deviceUID].CurrentDriver = testcase.currentDriver
+		allocatable[deviceUID].CurrentDriver = testcase.innitialCurrentDriver
+		allocatable[deviceUID].CardIdx = testcase.initialCardIdx
+		allocatable[deviceUID].RenderdIdx = testcase.initialRenderdIdx
+		drv.state.PreparedClaimsFilePath = preparedClaimsFilePath
+		drv.state.SysfsRoot = testDirs.SysfsRoot
 
 		func() {
 			defer func() {
@@ -710,6 +748,14 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 
 		if updated.CurrentDriver != testcase.expectedCurrentDriver {
 			t.Errorf("expected CurrentDriver to be %q, got %q", testcase.expectedCurrentDriver, updated.CurrentDriver)
+		}
+
+		if updated.CardIdx != testcase.expectedCardIdx {
+			t.Errorf("expected CardIdx to be %d, got %d", testcase.expectedCardIdx, updated.CardIdx)
+		}
+
+		if updated.RenderdIdx != testcase.expectedRenderdIdx {
+			t.Errorf("expected RenderdIdx to be %d, got %d", testcase.expectedRenderdIdx, updated.RenderdIdx)
 		}
 
 	}
