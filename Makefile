@@ -56,7 +56,7 @@ ifndef DOCKER
 	endif
 endif
 
-DEVICE_FAKER_VERSION ?= v0.5.1
+DEVICE_FAKER_VERSION ?= v0.6.0
 DEVICE_FAKER_IMAGE_NAME ?= intel-device-faker
 DEVICE_FAKER_IMAGE_VERSION ?= $(DEVICE_FAKER_VERSION)
 DEVICE_FAKER_IMAGE_TAG ?= $(REGISTRY)/$(DEVICE_FAKER_IMAGE_NAME):$(DEVICE_FAKER_IMAGE_VERSION)
@@ -90,7 +90,11 @@ device-faker: bin/device-faker
 
 device-faker-container-build:
 	$(DOCKER) build --pull -t $(DEVICE_FAKER_IMAGE_TAG) \
-	--build-arg LOCAL_LICENSES=$(LOCAL_LICENSES) -f Dockerfile.device-faker .
+	--build-arg LOCAL_LICENSES=$(LOCAL_LICENSES) \
+	--build-arg http_proxy=$(http_proxy) \
+	--build-arg https_proxy=$(https_proxy) \
+	--build-arg no_proxy=$(no_proxy) \
+	-f Dockerfile.device-faker .
 
 .PHONY: branch-build
 # test that all commits in $GIT_BRANCH (default=current) build

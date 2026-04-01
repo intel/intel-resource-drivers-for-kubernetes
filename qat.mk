@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-QAT_VERSION ?= v0.4.1
+QAT_VERSION ?= v0.4.2
 QAT_IMAGE_NAME ?= intel-qat-resource-driver
 QAT_IMAGE_VERSION ?= $(QAT_VERSION)
 QAT_IMAGE_TAG ?= $(REGISTRY)/$(QAT_IMAGE_NAME):$(QAT_IMAGE_VERSION)
