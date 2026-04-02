@@ -8,10 +8,10 @@ OBJS = $(SRCS:.c=.o)
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(LDFLAGS) -o $@ $^
+	$(CC) $(LDFLAGS) -I /usr/include/habanalabs/ -o $@ $^
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -I /usr/include/habanalabs/ -c $< -o $@
 
 clean:
 	rm -f $(OBJS) $(TARGET)

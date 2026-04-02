@@ -17,7 +17,11 @@ FROM golang:1.25.8@sha256:dfae680962532eeea67ab297f1166c2c4e686edb9a8f05f9d02d96
 WORKDIR /build
 COPY . .
 
-RUN cd hack/fake_libhlml && \
+RUN \
+wget -c https://vault.habana.ai/artifactory/debian/noble/pool/main/h/habanalabs-firmware-tools/habanalabs-firmware-tools_1.23.0-695_amd64.deb && \
+apt-get update && \
+apt-get install -y --ignore-missing ./habanalabs-firmware-tools_1.23.0-695_amd64.deb && \
+cd hack/fake_libhlml && \
 make clean && make
 
 FROM ubuntu:24.04@sha256:80dd3c3b9c6cecb9f1667e9290b3bc61b78c2678c02cbdae5f0fea92cc6734ab AS ubuntu
@@ -25,12 +29,13 @@ ARG UID=1000
 ARG GID=1000
 # add fake hlml shared library for Gaudi tests
 COPY --from=build /build/hack/fake_libhlml/fake_libhlml.so /usr/lib/habanalabs/libhlml.so
+COPY --from=build /usr/include/habanalabs/hlml.h /usr/include/habanalabs/hlml.h
 COPY --from=build --chown=${UID}:${GID} /usr/local/go /home/ubuntu/go
 
 RUN \
 apt-get update && \
-apt-get install -y make git bc && \
-echo 'export PATH=/home/ubuntu/go/bin:$PATH' >> /home/ubuntu/.bashrc
+apt-get install -y make git bc gcc && \
+echo "export PATH=/home/ubuntu/go/bin:$PATH" >> /home/ubuntu/.bashrc
 
 RUN \
 mkdir /github && \

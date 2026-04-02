@@ -18,6 +18,7 @@ package fakehlml
 
 /*
 #cgo LDFLAGS: "/usr/lib/habanalabs/libhlml.so" -ldl -Wl,--unresolved-symbols=ignore-all
+#cgo CFLAGS: -I/usr/include/habanalabs
 #include "fake_hlml.h"
 #include <stdlib.h>
 */

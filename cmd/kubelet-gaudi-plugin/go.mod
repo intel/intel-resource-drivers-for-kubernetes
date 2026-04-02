@@ -2,7 +2,7 @@ module github.com/intel/intel-resource-drivers-for-kubernetes/cmd/kubelet-gaudi-
 
 go 1.25.0
 
-replace github.com/intel/intel-resource-drivers-for-kubernetes => ../..
+replace github.com/intel/intel-resource-drivers-for-kubernetes => ../../
 
 require (
 	github.com/HabanaAI/gohlml v1.22.2

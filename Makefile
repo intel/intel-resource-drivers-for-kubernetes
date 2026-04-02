@@ -260,17 +260,34 @@ push-helm-charts: package-helm-charts
 		helm push $$tgz oci://${RELEASE_REGISTRY}; \
 	done
 
-.PHONY: test html-coverage test-containerized
+.PHONY: test html-coverage test-containerized gpu-and-qat-test gaudi-test
 COVERAGE_FILE := coverage.out
 # Gaudi tests expect fake HLML library to be present at /usr/lib/habanalabs/libhlml.so
 # Dependency comes from gohlml package hardcoded LD_LIBRARY_PATH pointing to it.
-test: vendor
+test: gpu-and-qat-test gaudi-test
+
+gpu-and-qat-test: vendor
 ifeq ("$(container)","yes")
 		@echo setting safe directory
-		go test -buildvcs=false -v -coverprofile=$(COVERAGE_FILE) $(shell go list ./... | grep -v "test/e2e")
+		go test -buildvcs=false -v -coverprofile=$(COVERAGE_FILE) \
+		$(shell go list ./... | grep -v "test/e2e")
 else
 		@echo running tests
-		go test -v -coverprofile=$(COVERAGE_FILE) $(shell go list ./... | grep -v "test/e2e")
+		go test -v -coverprofile=$(COVERAGE_FILE) \
+		$(shell go list ./... | grep -v "test/e2e")
+endif
+
+gaudi-test: vendor
+ifeq ("$(container)","yes")
+		@echo setting safe directory
+		cd cmd/kubelet-gaudi-plugin && \
+		go test -buildvcs=false -v -coverprofile=$(COVERAGE_FILE) \
+		$(shell cd cmd/kubelet-gaudi-plugin && go list ./... ../../pkg/gaudi/... ../../pkg/helpers/...)
+else
+		@echo running tests
+		cd cmd/kubelet-gaudi-plugin && \
+		go test -v -coverprofile=$(COVERAGE_FILE) \
+		$(shell cd cmd/kubelet-gaudi-plugin && go list ./... ../../pkg/gaudi/... ../../pkg/helpers/...)
 endif
 
 TEST_TARGET ?= test
@@ -304,7 +321,7 @@ qat-coverage.out: $(shell find cmd/kubelet-qat-plugin cmd/qat-showdevice pkg/qat
 
 # gaudi coverage
 gaudi-coverage.out: $(shell find cmd/kubelet-gaudi-plugin pkg/gaudi pkg/helpers -path ./cmd/kubelet-gaudi-plugin/vendor -prune -name '*.go')
-	cd cmd/kubelet-gaudi-plugin && go test -v -coverprofile=$(CURDIR)/$@ \
+	cd cmd/kubelet-gaudi-plugin && CGO_ENABLED=1 go test -v -coverprofile=$(CURDIR)/$@ \
 		$(shell cd cmd/kubelet-gaudi-plugin && go list ./... ../../pkg/gaudi/... ../../pkg/helpers/...)
 
 # cdi-specs-generator coverage
@@ -313,7 +330,7 @@ cdispecsgen-coverage.out: $(shell find cmd/cdi-specs-generator pkg/gpu pkg/gaudi
 
 .PHONY: gaudi-coverage
 gaudi-coverage: clean-coverage vendor copytests gaudi-coverage.out
-	cd cmd/kubelet-gaudi-plugin && go tool cover -func=$(CURDIR)/$@.out
+	cd cmd/kubelet-gaudi-plugin && CGO_ENABLED=1 go tool cover -func=$(CURDIR)/$@.out
 
 .PHONY: %-coverage
 %-coverage: %-coverage.out
