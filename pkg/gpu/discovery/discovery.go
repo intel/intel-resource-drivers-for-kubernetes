@@ -75,7 +75,7 @@ func DiscoverDevices(sysfsDir, namingStyle string, xpumdEnabled bool) map[string
 // this should succeed.
 func populateDevicesInfoMemory(devices map[string]*device.DeviceInfo) error {
 	for _, deviceInfo := range devices {
-		memoryMiB, err := getLocalMemoryAmountMiB(deviceInfo.CardIdx, deviceInfo.Driver)
+		memoryMiB, err := getLocalMemoryAmountMiB(deviceInfo.CardName, deviceInfo.Driver)
 		if err != nil {
 			return err
 		}
@@ -101,8 +101,8 @@ func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDi
 			MemoryMiB:     0,
 			Millicores:    initialMillicores,
 			DeviceType:    device.GpuDeviceType, // presume GPU, detect the physfn / parent later
-			CardIdx:       0,
-			RenderdIdx:    0,
+			CardName:      "",
+			RenderDName:   "",
 			Driver:        driverName,
 			CurrentDriver: driverName,
 			Health:        device.HealthHealthy, // Presume healthy until proven otherwise. If healthcare is disabled, after discovery the driver will set this to HealthUnknown.
@@ -122,13 +122,13 @@ func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDi
 		newDeviceInfo.Model = deviceId
 		newDeviceInfo.SetModelInfo()
 
-		cardIdx, renderdIdx, err := drm.DeduceCardAndRenderdIndexes(sysfsDeviceDir)
+		cardName, renderDName, err := drm.DeduceCardAndRenderDNames(sysfsDeviceDir)
 		if err != nil {
 			continue
 		}
 
-		newDeviceInfo.CardIdx = cardIdx
-		newDeviceInfo.RenderdIdx = renderdIdx
+		newDeviceInfo.CardName = cardName
+		newDeviceInfo.RenderDName = renderDName
 		newDeviceInfo.MEIName = mei.DiscoverMEIDeviceForGPU(sysfsDriverDir, sysfsDeviceDir)
 
 		linkSource := path.Join(sysfsDriverDir, devicePCIAddress)
@@ -148,7 +148,7 @@ func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDi
 
 func determineDeviceName(info *device.DeviceInfo, namingStyle string) string {
 	if namingStyle == "classic" {
-		return "card" + strconv.FormatUint(info.CardIdx, 10)
+		return info.CardName
 	}
 
 	return info.UID
@@ -254,13 +254,17 @@ func deduceVfIdx(sysfsDriverDir string, parentDBDF string, vfDBDF string) (uint6
 }
 
 // Return the amount of local memory the GPU has in MiB.
-func getLocalMemoryAmountMiB(cardIdx uint64, driver string) (uint64, error) {
-	klog.V(5).Infof("Getting local memory for card%d with driver %v", cardIdx, driver)
+func getLocalMemoryAmountMiB(cardName string, driver string) (uint64, error) {
+	if cardName == "" {
+		return 0, fmt.Errorf("empty card device name")
+	}
+
+	klog.V(5).Infof("Getting local memory for %s with driver %v", cardName, driver)
 	switch driver {
 	case device.SysfsXeDriverName:
-		return GetXeDeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, device.DevfsDriPath), device.DevfsDriPath, fmt.Sprintf("card%d", cardIdx)))
+		return GetXeDeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, device.DevfsDriPath), device.DevfsDriPath, cardName))
 	case device.SysfsI915DriverName:
-		return GetI915DeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, device.DevfsDriPath), device.DevfsDriPath, fmt.Sprintf("card%d", cardIdx)))
+		return GetI915DeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, device.DevfsDriPath), device.DevfsDriPath, cardName))
 	}
 
 	return 0, fmt.Errorf("unknown driver %v, cannot query local memory", driver)

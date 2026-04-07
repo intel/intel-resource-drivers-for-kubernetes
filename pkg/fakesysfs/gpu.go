@@ -27,11 +27,6 @@ import (
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
 
-const (
-	// Uninitialized renderDidx is zero, real renderD index starts with 128.
-	NoRenderDev = "renderD0"
-)
-
 var perDeviceIdTilesDirs = map[string][]string{
 	"0x56c0": {"gt"}, // Flex170
 	"0x56c1": {"gt"}, // Flex140
@@ -95,8 +90,7 @@ func fakeSysfsPF(deviceUID string, gpu *device.DeviceInfo, numvfs int, i915DevDi
 		return fmt.Errorf("creating fake sysfs, err(s): '%v', '%v', '%v'", writeErr1, writeErr2, writeErr3)
 	}
 
-	cardName := fmt.Sprintf("card%v", gpu.CardIdx)
-	prelimIovDir := path.Join(i915DevDir, "drm", cardName, "prelim_iov")
+	prelimIovDir := path.Join(i915DevDir, "drm", gpu.CardName, "prelim_iov")
 	pfDir := path.Join(prelimIovDir, "pf")
 	if err := os.MkdirAll(pfDir, 0750); err != nil {
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
@@ -135,13 +129,11 @@ func createFakeSysfsForVFs(prelimIovDir string, gpu *device.DeviceInfo) error {
 
 func fakeGpuDRI(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, i915DevDir string, realDevices bool) error {
 
-	cardName := fmt.Sprintf("card%v", gpu.CardIdx)
-	renderdName := fmt.Sprintf("renderD%v", gpu.RenderdIdx)
-	if err := os.MkdirAll(path.Join(i915DevDir, "drm", cardName), 0750); err != nil {
+	if err := os.MkdirAll(path.Join(i915DevDir, "drm", gpu.CardName), 0750); err != nil {
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
 	}
-	if gpu.RenderdIdx != 0 { // some GPUs do not have render device
-		if err := os.MkdirAll(path.Join(i915DevDir, "drm", renderdName), 0750); err != nil {
+	if gpu.RenderDName != "" { // some GPUs do not have render device
+		if err := os.MkdirAll(path.Join(i915DevDir, "drm", gpu.RenderDName), 0750); err != nil {
 			return fmt.Errorf("creating fake sysfs, err: %v", err)
 		}
 	}
@@ -152,8 +144,8 @@ func fakeGpuDRI(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, i915
 		return fmt.Errorf("creating directory %v: %v", sysfsDRMClassDir, err)
 	}
 
-	drmDirLinkSource := path.Join(sysfsDRMClassDir, cardName)
-	drmDirLinkTarget := path.Join(i915DevDir, "drm", cardName)
+	drmDirLinkSource := path.Join(sysfsDRMClassDir, gpu.CardName)
+	drmDirLinkTarget := path.Join(i915DevDir, "drm", gpu.CardName)
 
 	if err := os.Symlink(drmDirLinkTarget, drmDirLinkSource); err != nil {
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
@@ -169,11 +161,11 @@ func fakeGpuDRI(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, i915
 	}
 
 	// devfs setup
-	if err := fakeGpuDRIDevices(devfsRoot, cardName, renderdName, realDevices); err != nil {
+	if err := fakeGpuDRIDevices(devfsRoot, gpu.CardName, gpu.RenderDName, realDevices); err != nil {
 		return fmt.Errorf("creating fake devfs: %v", err)
 	}
 
-	return createDevfsSymlinks(devfsRoot, cardName, renderdName, gpu.PCIAddress)
+	return createDevfsSymlinks(devfsRoot, gpu.CardName, gpu.RenderDName, gpu.PCIAddress)
 }
 
 func fakeGpuMEI(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, realDevices bool) error {
@@ -236,7 +228,7 @@ func createDevfsSymlinks(devfsRoot, cardName, renderdName, pciAddress string) er
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
 	}
 
-	if renderdName != NoRenderDev { // some GPUs do not have render device
+	if renderdName != "" { // some GPUs do not have render device
 		if err := os.Symlink(fmt.Sprintf("../%v", renderdName), path.Join(devfsRoot, "dri/by-path/", fmt.Sprintf("pci-%v-render", pciAddress))); err != nil {
 			return fmt.Errorf("creating renderD symlink, err: %v", err)
 		}
@@ -300,7 +292,7 @@ func fakeGpuDRIDevices(devfsRoot, cardName, renderdName string, real bool) error
 	devices := []string{
 		path.Join(devfsRoot, "dri", cardName),
 	}
-	if renderdName != NoRenderDev { // some GPUs do not have render device
+	if renderdName != "" { // some GPUs do not have render device
 		devices = append(devices, path.Join(devfsRoot, "dri", renderdName))
 	}
 

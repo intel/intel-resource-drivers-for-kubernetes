@@ -315,18 +315,18 @@ func (s *nodeState) RefreshDeviceOnDriverEvent(deviceUID, currentDriver string) 
 	}
 
 	sysfsDriverDeviceDir := path.Join(s.SysfsRoot, device.SysfsPCIBuspath, gpu.Driver, gpu.PCIAddress)
-	cardIdx, renderIdx, err := drm.DeduceCardAndRenderdIndexes(sysfsDriverDeviceDir)
+	cardName, renderDName, err := drm.DeduceCardAndRenderDNames(sysfsDriverDeviceDir)
 	if err != nil {
-		return fmt.Errorf("could not deduce card/render indexes for PCI address %s: %v", gpu.PCIAddress, err)
+		return fmt.Errorf("could not deduce card/render device names for PCI address %s: %v", gpu.PCIAddress, err)
 	}
 
-	// If the GPU is already DRM bound and the indexes haven't changed, no need to refresh the CDI registry.
-	if gpu.CardIdx == cardIdx && gpu.RenderdIdx == renderIdx {
+	// If the GPU is already DRM bound and the device names haven't changed, no need to refresh the CDI registry.
+	if gpu.CardName == cardName && gpu.RenderDName == renderDName {
 		return nil
 	}
 
-	gpu.CardIdx = cardIdx
-	gpu.RenderdIdx = renderIdx
+	gpu.CardName = cardName
+	gpu.RenderDName = renderDName
 
 	// Refreshing the CDI registry with updated device information
 	cdiCache := cdiapi.GetDefaultCache()

@@ -30,18 +30,18 @@ import (
 
 func TestDeviceInfoDeepCopy(t *testing.T) {
 	di := device.DeviceInfo{
-		UID:        "f",
-		Model:      "ff",
-		CardIdx:    2,
-		RenderdIdx: 3,
-		MemoryMiB:  4,
-		Millicores: 5,
-		DeviceType: "fff",
-		MaxVFs:     6,
-		ParentUID:  "ffff",
-		VFProfile:  "fffff",
-		VFIndex:    7,
-		MEIName:    "mei0",
+		UID:         "f",
+		Model:       "ff",
+		CardName:    "card2",
+		RenderDName: "renderD3",
+		MemoryMiB:   4,
+		Millicores:  5,
+		DeviceType:  "fff",
+		MaxVFs:      6,
+		ParentUID:   "ffff",
+		VFProfile:   "fffff",
+		VFIndex:     7,
+		MEIName:     "mei0",
 	}
 
 	dc := di.DeepCopy()

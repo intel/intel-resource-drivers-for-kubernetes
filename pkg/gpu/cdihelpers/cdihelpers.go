@@ -169,20 +169,20 @@ func AddDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
 			ContainerEdits: specs.ContainerEdits{
 				DeviceNodes: []*specs.DeviceNode{
 					{
-						Path:     path.Join(containerDevdriPath, fmt.Sprintf("card%d", device.CardIdx)),
-						HostPath: path.Join(devdriPath, fmt.Sprintf("card%d", device.CardIdx)),
+						Path:     path.Join(containerDevdriPath, device.CardName),
+						HostPath: path.Join(devdriPath, device.CardName),
 						Type:     "c",
 					},
 				},
 			},
 		}
 		// render nodes can be optional: https://www.kernel.org/doc/html/latest/gpu/drm-uapi.html#render-nodes
-		if device.RenderdIdx != 0 {
+		if device.RenderDName != "" {
 			newDevice.ContainerEdits.DeviceNodes = append(
 				newDevice.ContainerEdits.DeviceNodes,
 				&specs.DeviceNode{
-					Path:     path.Join(containerDevdriPath, fmt.Sprintf("renderD%d", device.RenderdIdx)),
-					HostPath: path.Join(devdriPath, fmt.Sprintf("renderD%d", device.RenderdIdx)),
+					Path:     path.Join(containerDevdriPath, device.RenderDName),
+					HostPath: path.Join(devdriPath, device.RenderDName),
 					Type:     "c",
 				},
 			)

@@ -24,14 +24,14 @@ func TestConsumeXPUMDDeviceDetails(t *testing.T) {
 
 	testDevices := gpudevice.DevicesInfo{
 		"0000-00-02-0-0x56c0": {
-			UID:        "0000-00-02-0-0x56c0",
-			Model:      "0x56c0",
-			DeviceType: "gpu",
-			Driver:     "i915",
-			CardIdx:    0,
-			RenderdIdx: 128,
-			MemoryMiB:  8192,
-			MaxVFs:     16,
+			UID:         "0000-00-02-0-0x56c0",
+			Model:       "0x56c0",
+			DeviceType:  "gpu",
+			Driver:      "i915",
+			CardName:    "card0",
+			RenderDName: "renderD128",
+			MemoryMiB:   8192,
+			MaxVFs:      16,
 		},
 	}
 	if err := fakesysfs.FakeSysFsGpuContents(testDirs.SysfsRoot, testDirs.DevfsRoot, testDevices, false); err != nil {

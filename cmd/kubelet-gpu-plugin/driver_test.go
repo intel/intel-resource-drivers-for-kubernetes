@@ -53,8 +53,8 @@ func TestGPUFakeSysfs(t *testing.T) {
 		testDirs.SysfsRoot,
 		testDirs.DevfsRoot,
 		device.DevicesInfo{
-			"0000-00-02-0-0x56c0": {Model: "0x56c0", MemoryMiB: 8192, DeviceType: "gpu", CardIdx: 0, MEIName: "mei0", RenderdIdx: 128, UID: "0000-00-02-0-0x56c0", MaxVFs: 16, Driver: "i915"},
-			"0000-00-03-0-0x56c0": {Model: "0x56c0", MemoryMiB: 8192, DeviceType: "gpu", CardIdx: 1, MEIName: "mei1", RenderdIdx: 128, UID: "0000-00-03-0-0x56c0", MaxVFs: 16, Driver: "xe"},
+			"0000-00-02-0-0x56c0": {Model: "0x56c0", MemoryMiB: 8192, DeviceType: "gpu", CardName: "card0", MEIName: "mei0", RenderDName: "renderD128", UID: "0000-00-02-0-0x56c0", MaxVFs: 16, Driver: "i915"},
+			"0000-00-03-0-0x56c0": {Model: "0x56c0", MemoryMiB: 8192, DeviceType: "gpu", CardName: "card1", MEIName: "mei1", RenderDName: "renderD128", UID: "0000-00-03-0-0x56c0", MaxVFs: 16, Driver: "xe"},
 		},
 		false,
 	); err != nil {
@@ -378,12 +378,12 @@ func TestPrepareResourceClaims(t *testing.T) {
 			testDirs.SysfsRoot,
 			testDirs.DevfsRoot,
 			device.DevicesInfo{
-				"0000-00-02-0-0x56c0": {Model: "0x56c0", MemoryMiB: 16256, DeviceType: "gpu", CardIdx: 0, MEIName: "mei0", RenderdIdx: 128, UID: "0000-00-02-0-0x56c0", MaxVFs: 16, Driver: "i915"},
-				"0000-00-03-0-0x56c0": {Model: "0x56c0", MemoryMiB: 16256, DeviceType: "gpu", CardIdx: 1, MEIName: "mei1", RenderdIdx: 129, UID: "0000-00-03-0-0x56c0", MaxVFs: 16, Driver: "i915"},
-				"0000-00-03-1-0x56c0": {Model: "0x56c0", MemoryMiB: 8064, DeviceType: "vf", CardIdx: 2, RenderdIdx: 130, UID: "0000-00-03-1-0x56c0", VFIndex: 0, VFProfile: "flex170_m2", ParentUID: "0000-00-03-0-0x56c0", Driver: "i915"},
+				"0000-00-02-0-0x56c0": {Model: "0x56c0", MemoryMiB: 16256, DeviceType: "gpu", CardName: "card0", MEIName: "mei0", RenderDName: "renderD128", UID: "0000-00-02-0-0x56c0", MaxVFs: 16, Driver: "i915"},
+				"0000-00-03-0-0x56c0": {Model: "0x56c0", MemoryMiB: 16256, DeviceType: "gpu", CardName: "card1", MEIName: "mei1", RenderDName: "renderD129", UID: "0000-00-03-0-0x56c0", MaxVFs: 16, Driver: "i915"},
+				"0000-00-03-1-0x56c0": {Model: "0x56c0", MemoryMiB: 8064, DeviceType: "vf", CardName: "card2", RenderDName: "renderD130", UID: "0000-00-03-1-0x56c0", VFIndex: 0, VFProfile: "flex170_m2", ParentUID: "0000-00-03-0-0x56c0", Driver: "i915"},
 				// dummy, no SR-IOV tiles
-				"0000-00-04-0-0x0000": {Model: "0x0000", MemoryMiB: 14248, DeviceType: "gpu", CardIdx: 3, MEIName: "mei2", RenderdIdx: 131, UID: "0000-00-04-0-0x0000", MaxVFs: 16, Driver: "i915"},
-				"0000-00-05-0-0x56c0": {Model: "0x56c0", MemoryMiB: 16256, DeviceType: "gpu", CardIdx: 4, MEIName: "mei3", RenderdIdx: 128, UID: "0000-00-05-0-0x56c0", MaxVFs: 16, Driver: "xe"},
+				"0000-00-04-0-0x0000": {Model: "0x0000", MemoryMiB: 14248, DeviceType: "gpu", CardName: "card3", MEIName: "mei2", RenderDName: "renderD131", UID: "0000-00-04-0-0x0000", MaxVFs: 16, Driver: "i915"},
+				"0000-00-05-0-0x56c0": {Model: "0x56c0", MemoryMiB: 16256, DeviceType: "gpu", CardName: "card4", MEIName: "mei3", RenderDName: "renderD128", UID: "0000-00-05-0-0x56c0", MaxVFs: 16, Driver: "xe"},
 			},
 			false,
 		); err != nil {
@@ -521,10 +521,10 @@ func TestNodeUnprepareResources(t *testing.T) {
 			testDirs.SysfsRoot,
 			testDirs.DevfsRoot,
 			device.DevicesInfo{
-				"0000-b3-00-0-0x0bda": {Model: "0x0bda", MemoryMiB: 49136, DeviceType: "gpu", CardIdx: 0, MEIName: "mei0", UID: "0000-b3-00-0-0x0bda", MaxVFs: 63, Driver: "i915"},
-				"0000-af-00-0-0x0bda": {Model: "0x0bda", MemoryMiB: 49136, DeviceType: "gpu", CardIdx: 1, MEIName: "mei1", UID: "0000-af-00-0-0x0bda", MaxVFs: 63, Driver: "i915"},
-				"0000-af-00-1-0x0bda": {Model: "0x0bda", MemoryMiB: 22528, Millicores: 500, DeviceType: "vf", CardIdx: 2, UID: "0000-af-00-1-0x0bda", VFIndex: 0, VFProfile: "max_47g_c2", ParentUID: "0000-af-00-0-0x0bda", Driver: "i915"},
-				"0000-af-00-2-0x0bda": {Model: "0x0bda", MemoryMiB: 22528, Millicores: 500, DeviceType: "vf", CardIdx: 3, UID: "0000-af-00-2-0x0bda", VFIndex: 1, VFProfile: "max_47g_c2", ParentUID: "0000-af-00-0-0x0bda", Driver: "i915"},
+				"0000-b3-00-0-0x0bda": {Model: "0x0bda", MemoryMiB: 49136, DeviceType: "gpu", CardName: "card0", MEIName: "mei0", UID: "0000-b3-00-0-0x0bda", MaxVFs: 63, Driver: "i915"},
+				"0000-af-00-0-0x0bda": {Model: "0x0bda", MemoryMiB: 49136, DeviceType: "gpu", CardName: "card1", MEIName: "mei1", UID: "0000-af-00-0-0x0bda", MaxVFs: 63, Driver: "i915"},
+				"0000-af-00-1-0x0bda": {Model: "0x0bda", MemoryMiB: 22528, Millicores: 500, DeviceType: "vf", CardName: "card2", UID: "0000-af-00-1-0x0bda", VFIndex: 0, VFProfile: "max_47g_c2", ParentUID: "0000-af-00-0-0x0bda", Driver: "i915"},
+				"0000-af-00-2-0x0bda": {Model: "0x0bda", MemoryMiB: 22528, Millicores: 500, DeviceType: "vf", CardName: "card3", UID: "0000-af-00-2-0x0bda", VFIndex: 1, VFProfile: "max_47g_c2", ParentUID: "0000-af-00-0-0x0bda", Driver: "i915"},
 			},
 			false,
 		); err != nil {
@@ -588,17 +588,17 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 		testDirs.DevfsRoot,
 		device.DevicesInfo{
 			deviceUID: {
-				UID:        deviceUID,
-				PCIAddress: "0000:00:02.0",
-				Model:      "0x56c0",
-				ModelName:  "Flex 170",
-				FamilyName: "Data Center Flex",
-				CardIdx:    0,
-				MEIName:    "mei0",
-				RenderdIdx: 128,
-				MemoryMiB:  16256,
-				DeviceType: "gpu",
-				Driver:     device.SysfsI915DriverName,
+				UID:         deviceUID,
+				PCIAddress:  "0000:00:02.0",
+				Model:       "0x56c0",
+				ModelName:   "Flex 170",
+				FamilyName:  "Data Center Flex",
+				CardName:    "card0",
+				MEIName:     "mei0",
+				RenderDName: "renderD128",
+				MemoryMiB:   16256,
+				DeviceType:  "gpu",
+				Driver:      device.SysfsI915DriverName,
 			},
 		},
 		false,
@@ -617,18 +617,18 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 	drv.state.Lock()
 	drv.state.Allocatable = map[string]*device.DeviceInfo{
 		deviceUID: {
-			UID:        deviceUID,
-			PCIAddress: "0000:00:02.0",
-			Model:      "0x56c0",
-			ModelName:  "Flex 170",
-			FamilyName: "Data Center Flex",
-			CardIdx:    0,
-			MEIName:    "mei0",
-			RenderdIdx: 128,
-			MemoryMiB:  16256,
-			DeviceType: "gpu",
-			Driver:     "i915",
-			Health:     device.HealthUnknown,
+			UID:         deviceUID,
+			PCIAddress:  "0000:00:02.0",
+			Model:       "0x56c0",
+			ModelName:   "Flex 170",
+			FamilyName:  "Data Center Flex",
+			CardName:    "card0",
+			MEIName:     "mei0",
+			RenderDName: "renderD128",
+			MemoryMiB:   16256,
+			DeviceType:  "gpu",
+			Driver:      "i915",
+			Health:      device.HealthUnknown,
 		},
 	}
 	//nolint:forcetypeassert
@@ -641,11 +641,11 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 		devpath               string
 		expectedDeviceUID     string
 		innitialCurrentDriver string
-		initialCardIdx        uint64
-		initialRenderdIdx     uint64
+		initialCardName       string
+		initialRenderDName    string
 		expectedCurrentDriver string
-		expectedCardIdx       uint64
-		expectedRenderdIdx    uint64
+		expectedCardName      string
+		expectedRenderDName   string
 	}
 
 	testcases := []testCase{
@@ -655,11 +655,11 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 			devpath:               "/devices/pci0000:00/0000:00:02.0/drm/card0",
 			expectedDeviceUID:     deviceUID,
 			innitialCurrentDriver: "i915",
-			initialCardIdx:        0,
-			initialRenderdIdx:     128,
+			initialCardName:       "card0",
+			initialRenderDName:    "renderD128",
 			expectedCurrentDriver: "",
-			expectedCardIdx:       0,
-			expectedRenderdIdx:    128,
+			expectedCardName:      "card0",
+			expectedRenderDName:   "renderD128",
 		},
 		{
 			name:                  "bind event changes current driver to i915 and keeps drm indexes when unchanged",
@@ -667,11 +667,11 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 			devpath:               "/devices/pci0000:00/0000:00:02.0/drm/card0",
 			expectedDeviceUID:     deviceUID,
 			innitialCurrentDriver: "vfio-pci",
-			initialCardIdx:        0,
-			initialRenderdIdx:     128,
+			initialCardName:       "card0",
+			initialRenderDName:    "renderD128",
 			expectedCurrentDriver: "i915",
-			expectedCardIdx:       0,
-			expectedRenderdIdx:    128,
+			expectedCardName:      "card0",
+			expectedRenderDName:   "renderD128",
 		},
 		{
 			name:                  "bind event changes current driver to i915 and refreshes drm indexes when changed",
@@ -679,11 +679,11 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 			devpath:               "/devices/pci0000:00/0000:00:02.0/drm/card0",
 			expectedDeviceUID:     deviceUID,
 			innitialCurrentDriver: "vfio-pci",
-			initialCardIdx:        1,
-			initialRenderdIdx:     129,
+			initialCardName:       "card1",
+			initialRenderDName:    "renderD129",
 			expectedCurrentDriver: "i915",
-			expectedCardIdx:       0,
-			expectedRenderdIdx:    128,
+			expectedCardName:      "card0",
+			expectedRenderDName:   "renderD128",
 		},
 		{
 			name:                  "bind event changes current driver to vfio-pci",
@@ -691,11 +691,11 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 			devpath:               "/devices/pci0000:00/0000:00:02.0/vfio-dev/vfio0",
 			expectedDeviceUID:     deviceUID,
 			innitialCurrentDriver: "i915",
-			initialCardIdx:        0,
-			initialRenderdIdx:     128,
+			initialCardName:       "card0",
+			initialRenderDName:    "renderD128",
 			expectedCurrentDriver: "vfio-pci",
-			expectedCardIdx:       0,
-			expectedRenderdIdx:    128,
+			expectedCardName:      "card0",
+			expectedRenderDName:   "renderD128",
 		},
 	}
 
@@ -721,8 +721,8 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 		}
 
 		allocatable[deviceUID].CurrentDriver = testcase.innitialCurrentDriver
-		allocatable[deviceUID].CardIdx = testcase.initialCardIdx
-		allocatable[deviceUID].RenderdIdx = testcase.initialRenderdIdx
+		allocatable[deviceUID].CardName = testcase.initialCardName
+		allocatable[deviceUID].RenderDName = testcase.initialRenderDName
 		drv.state.PreparedClaimsFilePath = preparedClaimsFilePath
 		drv.state.SysfsRoot = testDirs.SysfsRoot
 
@@ -750,12 +750,12 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 			t.Errorf("expected CurrentDriver to be %q, got %q", testcase.expectedCurrentDriver, updated.CurrentDriver)
 		}
 
-		if updated.CardIdx != testcase.expectedCardIdx {
-			t.Errorf("expected CardIdx to be %d, got %d", testcase.expectedCardIdx, updated.CardIdx)
+		if updated.CardName != testcase.expectedCardName {
+			t.Errorf("expected CardName to be %q, got %q", testcase.expectedCardName, updated.CardName)
 		}
 
-		if updated.RenderdIdx != testcase.expectedRenderdIdx {
-			t.Errorf("expected RenderdIdx to be %d, got %d", testcase.expectedRenderdIdx, updated.RenderdIdx)
+		if updated.RenderDName != testcase.expectedRenderDName {
+			t.Errorf("expected RenderDName to be %q, got %q", testcase.expectedRenderDName, updated.RenderDName)
 		}
 
 	}

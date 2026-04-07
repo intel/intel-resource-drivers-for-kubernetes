@@ -159,11 +159,11 @@ func addFakeVFsOnParent(numvfsFilePath string, devfsRoot string, numVFs uint64, 
 	model := strings.TrimSpace(string(modelBytes))
 
 	// construct parent's DRM VFs dir path
-	parentCardIdx, _, err := DeduceCardAndRenderdIndexes(sysfsI915DeviceDir)
+	parentCardName, _, err := DeduceCardAndRenderDNames(sysfsI915DeviceDir)
 	if err != nil {
-		return fmt.Errorf("could not detect drm/cardX index in %v: %v", sysfsI915DeviceDir, err)
+		return fmt.Errorf("could not detect DRM card device name in %v: %v", sysfsI915DeviceDir, err)
 	}
-	parentVFsDir := path.Join(sysfsI915DeviceDir, "drm", fmt.Sprintf("card%d", parentCardIdx), "prelim_iov")
+	parentVFsDir := path.Join(sysfsI915DeviceDir, "drm", parentCardName, "prelim_iov")
 
 	// check if auto_provisioning is enabled
 	automatic, err := autoProvisioningEnabled(parentVFsDir)
@@ -209,15 +209,15 @@ func addFakeVFsOnParent(numvfsFilePath string, devfsRoot string, numVFs uint64, 
 		}
 
 		newDevices[vfUID] = &device.DeviceInfo{
-			PCIAddress: vfPCIAddress,
-			Model:      model,
-			MemoryMiB:  vfMem,
-			DeviceType: "vf",
-			CardIdx:    highestCardIdx + vfIdx + 1,
-			RenderdIdx: highestRenderDIdx + vfIdx + 1,
-			UID:        vfUID,
-			VFIndex:    vfIdx,
-			ParentUID:  helpers.DeviceUIDFromPCIinfo(parentPCIAddress, model),
+			PCIAddress:  vfPCIAddress,
+			Model:       model,
+			MemoryMiB:   vfMem,
+			DeviceType:  "vf",
+			CardName:    fmt.Sprintf("card%d", highestCardIdx+vfIdx+1),
+			RenderDName: fmt.Sprintf("renderD%d", highestRenderDIdx+vfIdx+1),
+			UID:         vfUID,
+			VFIndex:     vfIdx,
+			ParentUID:   helpers.DeviceUIDFromPCIinfo(parentPCIAddress, model),
 		}
 	}
 
@@ -466,32 +466,29 @@ func watchPFnumvfs(t *testing.T, devfsRoot string, watcher *fsnotify.Watcher, re
 }
 
 // 100% clone from pkg/gpu/drm , prevents cyclic import. drm test uses fakesysfs, fakesysfs/gpu-sriov uses this func.
-func DeduceCardAndRenderdIndexes(sysfsDeviceDir string) (uint64, uint64, error) {
-	var cardIdx uint64
-	var renderDidx uint64
+func DeduceCardAndRenderDNames(sysfsDeviceDir string) (string, string, error) {
+	cardName := ""
+	renderDName := ""
 
-	// get card and renderD indexes
+	// get card and renderD names
 	drmDir := path.Join(sysfsDeviceDir, "drm")
 	drmFiles, err := os.ReadDir(drmDir)
 	if err != nil { // ignore this device
-		return 0, 0, fmt.Errorf("cannot read device folder %v: %v", drmDir, err)
+		return "", "", fmt.Errorf("cannot read device folder %v: %v", drmDir, err)
 	}
 
 	for _, drmFile := range drmFiles {
 		drmFileName := drmFile.Name()
 		if device.CardRegexp.MatchString(drmFileName) {
-			cardIdx, err = strconv.ParseUint(drmFileName[4:], 10, 64)
-			if err != nil {
-				return 0, 0, fmt.Errorf("failed to parse index of DRM card device '%v', skipping", drmFileName)
-			}
+			cardName = drmFileName
 		} else if device.RenderdRegexp.MatchString(drmFileName) {
-			renderDidx, err = strconv.ParseUint(drmFileName[7:], 10, 64)
-			if err != nil {
-				fmt.Printf("failed to parse renderDN device: %v, skipping", drmFileName)
-				continue
-			}
+			renderDName = drmFileName
 		}
 	}
 
-	return cardIdx, renderDidx, nil
+	if cardName == "" {
+		return "", "", fmt.Errorf("failed to find DRM card device in %v", drmDir)
+	}
+
+	return cardName, renderDName, nil
 }

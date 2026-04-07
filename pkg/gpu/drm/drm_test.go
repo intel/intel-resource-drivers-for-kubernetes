@@ -24,7 +24,7 @@ import (
 	testhelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
 )
 
-func TestDeduceCardAndRenderdIndexes(t *testing.T) {
+func TestDeduceCardAndRenderDNames(t *testing.T) {
 
 	testDirs, err := testhelpers.NewTestDirs(device.DriverName)
 	defer testhelpers.CleanupTest(t, "TestGPUFakeSysfs", testDirs.TestRoot)
@@ -37,8 +37,8 @@ func TestDeduceCardAndRenderdIndexes(t *testing.T) {
 		testDirs.SysfsRoot,
 		testDirs.DevfsRoot,
 		device.DevicesInfo{
-			"0000-00-02-0-0x56c0": {Model: "0x56c0", MemoryMiB: 8192, DeviceType: "gpu", CardIdx: 0, RenderdIdx: 128, UID: "0000-00-02-0-0x56c0", MaxVFs: 16, Driver: "i915"},
-			"0000-00-03-0-0x56c0": {Model: "0x56c0", MemoryMiB: 8192, DeviceType: "gpu", CardIdx: 1, RenderdIdx: 129, UID: "0000-00-03-0-0x56c0", MaxVFs: 16, Driver: "xe"},
+			"0000-00-02-0-0x56c0": {Model: "0x56c0", MemoryMiB: 8192, DeviceType: "gpu", CardName: "card0", RenderDName: "renderD128", UID: "0000-00-02-0-0x56c0", MaxVFs: 16, Driver: "i915"},
+			"0000-00-03-0-0x56c0": {Model: "0x56c0", MemoryMiB: 8192, DeviceType: "gpu", CardName: "card1", RenderDName: "renderD129", UID: "0000-00-03-0-0x56c0", MaxVFs: 16, Driver: "xe"},
 		},
 		false,
 	); err != nil {
@@ -46,23 +46,23 @@ func TestDeduceCardAndRenderdIndexes(t *testing.T) {
 		return
 	}
 
-	cardIdx, renderIdx, err := DeduceCardAndRenderdIndexes(testDirs.SysfsRoot + "/bus/pci/drivers/i915/0000:00:02.0")
+	cardName, renderDName, err := DeduceCardAndRenderDNames(testDirs.SysfsRoot + "/bus/pci/drivers/i915/0000:00:02.0")
 	if err != nil {
-		t.Errorf("DeduceCardAndRenderdIndexes failed: %v", err)
+		t.Errorf("DeduceCardAndRenderDNames failed: %v", err)
 		return
 	}
 
-	if cardIdx != 0 || renderIdx != 128 {
-		t.Errorf("DeduceCardAndRenderdIndexes returned wrong indexes: got cardIdx %v and renderIdx %v, want cardIdx 0 and renderIdx 128", cardIdx, renderIdx)
+	if cardName != "card0" || renderDName != "renderD128" {
+		t.Errorf("DeduceCardAndRenderDNames returned wrong names: got card %v and render %v, want card0 and renderD128", cardName, renderDName)
 	}
 
-	cardIdx, renderIdx, err = DeduceCardAndRenderdIndexes(testDirs.SysfsRoot + "/bus/pci/drivers/xe/0000:00:03.0")
+	cardName, renderDName, err = DeduceCardAndRenderDNames(testDirs.SysfsRoot + "/bus/pci/drivers/xe/0000:00:03.0")
 	if err != nil {
-		t.Errorf("DeduceCardAndRenderdIndexes failed: %v", err)
+		t.Errorf("DeduceCardAndRenderDNames failed: %v", err)
 		return
 	}
 
-	if cardIdx != 1 || renderIdx != 129 {
-		t.Errorf("DeduceCardAndRenderdIndexes returned wrong indexes: got cardIdx %v and renderIdx %v, want cardIdx 1 and renderIdx 129", cardIdx, renderIdx)
+	if cardName != "card1" || renderDName != "renderD129" {
+		t.Errorf("DeduceCardAndRenderDNames returned wrong names: got card %v and render %v, want card1 and renderD129", cardName, renderDName)
 	}
 }

@@ -85,8 +85,8 @@ type DeviceInfo struct {
 	ModelName     string            `json:"modelname"`     // SKU name, usually Series + Model, e.g. Flex 140
 	FamilyName    string            `json:"familyname"`    // SKU family name, usually Series, e.g. Flex or Max
 	MEIName       string            `json:"meiname"`       // MEI name discovered for this GPU, e.g. mei0 for /dev/mei0
-	CardIdx       uint64            `json:"cardidx"`       // card device number (e.g. 0 for /dev/dri/card0)
-	RenderdIdx    uint64            `json:"renderdidx"`    // renderD device number (e.g. 128 for /dev/dri/renderD128)
+	CardName      string            `json:"cardname"`      // card device name (e.g. card0 for /dev/dri/card0)
+	RenderDName   string            `json:"renderdname"`   // renderD device name (e.g. renderD128 for /dev/dri/renderD128)
 	MemoryMiB     uint64            `json:"memorymib"`     // in MiB
 	Millicores    uint64            `json:"millicores"`    // [0-1000] where 1000 means whole GPU.
 	DeviceType    string            `json:"devicetype"`    // gpu, vf, any
