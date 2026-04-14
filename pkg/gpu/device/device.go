@@ -75,65 +75,6 @@ var VfAttributeFiles = []string{
 	"preempt_timeout_us",
 }
 
-var ModelDetails = map[string]map[string]string{
-	"0x56a0": {
-		"model":  "A770",
-		"family": "Arc",
-	},
-	"0x56a1": {
-		"model":  "A750",
-		"family": "Arc",
-	},
-	"0x56a2": {
-		"model":  "A580",
-		"family": "Arc",
-	},
-	"0x56b1": {
-		"model":  "A40/A50",
-		"family": "Arc Pro",
-	},
-	"0x56c0": {
-		"model":  "Flex 170",
-		"family": "Data Center Flex",
-	},
-	"0x56c1": {
-		"model":  "Flex 140",
-		"family": "Data Center Flex",
-	},
-	"0x0b69": {
-		"model":  "Max 1550",
-		"family": "Data Center Max",
-	},
-	"0x0bd0": {
-		"model":  "Max 1550",
-		"family": "Data Center Max",
-	},
-	"0x0bd5": {
-		"model":  "Max 1550",
-		"family": "Data Center Max",
-	},
-	"0x0bd6": {
-		"model":  "Max 1450",
-		"family": "Data Center Max",
-	},
-	"0x0bd9": {
-		"model":  "Max 1100",
-		"family": "Data Center Max",
-	},
-	"0x0bda": {
-		"model":  "Max 1100",
-		"family": "Data Center Max",
-	},
-	"0x0bdb": {
-		"model":  "Max 1100",
-		"family": "Data Center Max",
-	},
-	"0xa7a0": {
-		"model":  "Raptor Lake-P",
-		"family": "Iris Xe",
-	},
-}
-
 // DeviceInfo is an internal structure type to store info about discovered device.
 type DeviceInfo struct {
 	// UID is a unique identifier on node, used in ResourceSlice K8s API object as RFC1123-compliant identifier.
