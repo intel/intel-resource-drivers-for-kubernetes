@@ -28,7 +28,8 @@ spec:
             add:  [ "MKNOD" ]
       containers:
       - name: kubelet-plugin
-        command: ["/kubelet-gaudi-plugin", "-v", "5", "-n", "/tmp/gaudi-fake-root/gaudinet", "-p", "/tmp/gaudi-fake-root/hookbin"]
+        # Disable health monitoring, HLML will fail to initialize otherwise.
+        command: ["/kubelet-gaudi-plugin", "-v", "5", "-n", "/tmp/gaudi-fake-root/gaudinet", "-p", "/tmp/gaudi-fake-root/hookbin", "-m=0"]
         # TODO: change to :devel when public CI is in place
         image: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver:latest
         # TODO: pull policy is needed when :devel is used instead of :latest
