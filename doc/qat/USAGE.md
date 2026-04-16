@@ -1,6 +1,6 @@
 ## Requirements
 
-- Kubernetes v1.32+, and  optionally [some cluster parameters](../../hack/clusterconfig.yaml) for advanced features, see [Cluster Setup](../CLUSTER_SETUP.md)
+- Kubernetes v1.34+, and  optionally [some cluster parameters](../../hack/clusterconfig.yaml) for advanced features, see [Cluster Setup](../CLUSTER_SETUP.md)
 - Container runtime needs to support CDI:
   - CRI-O v1.23.0 or newer
   - Containerd v1.7 or newer with CDI enabled
@@ -35,7 +35,7 @@ To restrict the deployment to QAT-enabled nodes, follow these steps:
 Follow [Node Feature Discovery](https://github.com/kubernetes-sigs/node-feature-discovery) documentation to install and configure NFD in your cluster.
 
 ```bash
-kubectl apply -k "https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.17.1"
+kubectl apply -k "https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.18.3"
 ```
 
 2. Apply NFD Rules:

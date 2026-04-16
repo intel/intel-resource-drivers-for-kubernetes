@@ -1,6 +1,6 @@
 ## Requirements
 
-- Kubernetes v1.32+, and  optionally [some cluster parameters](../../hack/clusterconfig.yaml) for advanced features, see [Cluster Setup](../CLUSTER_SETUP.md)
+- Kubernetes v1.34+, and  optionally [some cluster parameters](../../hack/clusterconfig.yaml) for advanced features, see [Cluster Setup](../CLUSTER_SETUP.md)
 - Container runtime needs to support CDI:
   - CRI-O v1.23.0 or newer
   - Containerd v1.7 or newer with CDI enabled
@@ -40,18 +40,21 @@ To restrict the deployment to Gaudi-enabled nodes, follow these steps:
 Follow [Node Feature Discovery](https://github.com/kubernetes-sigs/node-feature-discovery) documentation to install and configure NFD in your cluster.
 
 ```bash
-kubectl apply -k "https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.17.3"
+kubectl apply -k "https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.18.3"
 ```
 
-2. Apply NFD Rules:
+2. Deploy the Gaudi DRA driver and NFD Rules together:
 
 ```bash
 kubectl apply -k deployments/gaudi/overlays/nfd_labeled_nodes/
 ```
-After NFD is installed and running, make sure the target node is labeled with:
+
+After NFD is installed and running, the nodes with Gaudi accelerators will be labeled with:
 ```bash
 intel.feature.node.kubernetes.io/gaudi: "true"
 ```
+
+The Gaudi DRA driver will be deployed to nodes that have such labels.
 
 When deploying custom-built resource driver image, change `image:` lines in
 [resource-driver](../../deployments/gaudi/base/resource-driver.yaml) to match its location.
@@ -79,11 +82,11 @@ Example contents of the ResourceSlice object:
 <details>
 
 ```bash
-$ kubectl get resourceSlices/rpl-s-gaudi.intel.com-x8m4h -o yaml
+$ kubectl get resourceslices.resource.k8s.io rpl-s-gaudi.intel.com-x8m4h -o yaml
 apiVersion: resource.k8s.io/v1
 kind: ResourceSlice
 metadata:
-  creationTimestamp: "2024-09-23T13:03:21Z"
+  creationTimestamp: "2026-04-15T07:17:43Z"
   generateName: rpl-s-gaudi.intel.com-
   generation: 1
   name: rpl-s-gaudi.intel.com-x8m4h
@@ -92,38 +95,42 @@ metadata:
     controller: true
     kind: Node
     name: rpl-s
-    uid: 0894e000-e7a3-49ad-8749-04b27be61c03
-  resourceVersion: "2047239"
-  uid: 92fb64c7-219e-4cef-9be9-5233b589d7bd
+    uid: 3a243a6b-e6db-4613-94f2-169f938c87ae
+  resourceVersion: "6266269"
+  uid: d093f601-9ad5-4234-91d8-410733e32784
 spec:
   devices:
-  - basic:
-      attributes:
-        healthy:
-          bool: true
-        model:
-          string: Gaudi2
-        pciRoot:
-          string: "40"
-        serial:
-          string: AN01234567
-    name: 0000-43-00-0-0x1020
-  - basic:
-      attributes:
-        healthy:
-          bool: true
-        model:
-          string: Gaudi2
-        pciRoot:
-          string: "40"
-        serial:
-          string: AN12345678
+  - attributes:
+      healthy:
+        bool: true
+      model:
+        string: Gaudi2
+      pciRoot:
+        string: "01"
+      resource.kubernetes.io/pcieRoot:
+        string: pci0000:01
+      serial:
+        string: ""
+    name: 0000-a0-00-0-0x1020
+  - attributes:
+      healthy:
+        bool: true
+      model:
+        string: Gaudi2
+      pciRoot:
+        string: "02"
+      resource.kubernetes.io/pcieRoot:
+        string: pci0000:02
+      serial:
+        string: ""
+    name: 0000-b0-00-0-0x1020
   driver: gaudi.intel.com
   nodeName: rpl-s
   pool:
-    generation: 0
+    generation: 1
     name: rpl-s
     resourceSliceCount: 1
+
 ```
 
 </details>
@@ -320,8 +327,8 @@ Unlike with normal Gaudi ResourceClaims:
 
 ## Health monitoring support
 
-Starting from v0.7.0 Gaudi DRA driver supports health monitoring with `-m` command-line parameter (enabled 
-in default deployment configuration) through HLML library. When Gaudi accelerator becomes unhealthy, the 
+Starting from v0.7.0 Gaudi DRA driver supports health monitoring with `-m` command-line parameter (enabled
+in default deployment configuration) through HLML library. When Gaudi accelerator becomes unhealthy, the
 DeviceTaintRule is created (to evict current workloads and prevent this device from being allocated), and
 respective device's `healthy` field in ResourceSlice is changed to false.
 
@@ -342,9 +349,9 @@ This approach, however, does not allow influencing the Pods that are / were usin
 
 In K8s v1.33 [DeviceTaintRule](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/#device-taints-and-tolerations) concept was introduced that allows scheduler to handle ResourceSlice devices similarly to how K8s Node Taints and Tolerations allow.
 
-Starting from v0.7.0 Gaudi DRA driver leverages DeviceTaintRules if Gaudi accelerator health degrades.  
-DeviceTaintRule created as a result of degraded health has "NoSchedule" effect, which implies "NoExecute" 
-and results in Pod eviction for devices with degraded health. Workloads that need to access tainted devices  
+Starting from v0.7.0 Gaudi DRA driver leverages DeviceTaintRules if Gaudi accelerator health degrades.
+DeviceTaintRule created as a result of degraded health has "NoSchedule" effect, which implies "NoExecute"
+and results in Pod eviction for devices with degraded health. Workloads that need to access tainted devices
 need to have [taint toleration in ResourceClaim](https://kubernetes.io/docs/concepts/scheduling-eviction/dynamic-resource-allocation/#device-taints-and-tolerations).
 
 ## Known issues

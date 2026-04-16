@@ -85,6 +85,7 @@ $ cat /tmp/gpu-template-3524438793.json
     "model": "0x56c0",
     "modelname": "",
     "familyname": "",
+    "meiname": "mei0",
     "cardidx": 0,
     "renderdidx": 128,
     "memorymib": 1024,
@@ -96,8 +97,9 @@ $ cat /tmp/gpu-template-3524438793.json
     "vfindex": 0,
     "provisioned": false,
     "driver": "i915",
+    "currentdriver": "",
     "pciroot": "pci0000:01",
-    "healthy": false,
+    "health": "",
     "healthstatus": null
   },
   "card1": {
@@ -106,6 +108,7 @@ $ cat /tmp/gpu-template-3524438793.json
     "model": "0xe20b",
     "modelname": "",
     "familyname": "",
+    "meiname": "mei1",
     "cardidx": 1,
     "renderdidx": 129,
     "memorymib": 2048,
@@ -117,8 +120,9 @@ $ cat /tmp/gpu-template-3524438793.json
     "vfindex": 0,
     "provisioned": false,
     "driver": "xe",
+    "currentdriver": "",
     "pciroot": "pci0000:02",
-    "healthy": false,
+    "health": "",
     "healthstatus": null
   }
 }
@@ -138,25 +142,27 @@ Sample output and fake file-system contents
 
 ```shell
 $ device-faker -t /tmp/gpu-template-3524438793.json gpu
-fake file system: /tmp/test-3985488568
-fake sysfs: /tmp/test-3985488568/sysfs
-fake devfs: /tmp/test-3985488568/dev
-fake CDI: /tmp/test-3985488568/cdi
+fake file system: /tmp/test-2503111759/
+fake sysfs: /tmp/test-2503111759/sysfs
+fake devfs: /tmp/test-2503111759/dev
+fake CDI: /tmp/test-2503111759/cdi
 
-$ sudo tree /tmp/test-3985488568
-/tmp/test-3985488568
+$ sudo tree /tmp/test-2503111759/
+/tmp/test-2503111759/
 ├── cdi
 ├── dev
-│   └── dri
-│       ├── by-path
-│       │   ├── pci-0000:03:00.0-card -> ../card0
-│       │   ├── pci-0000:03:00.0-render -> ../renderD128
-│       │   ├── pci-0000:04:00.1-card -> ../card1
-│       │   └── pci-0000:04:00.1-render -> ../renderD129
-│       ├── card0
-│       ├── card1
-│       ├── renderD128
-│       └── renderD129
+│   ├── dri
+│   │   ├── by-path
+│   │   │   ├── pci-0000:03:00.0-card -> ../card0
+│   │   │   ├── pci-0000:03:00.0-render -> ../renderD128
+│   │   │   ├── pci-0000:04:00.1-card -> ../card1
+│   │   │   └── pci-0000:04:00.1-render -> ../renderD129
+│   │   ├── card0
+│   │   ├── card1
+│   │   ├── renderD128
+│   │   └── renderD129
+│   ├── mei0
+│   └── mei1
 ├── kubelet-plugin
 │   ├── plugins
 │   │   └── gpu.intel.com
@@ -175,9 +181,12 @@ $ sudo tree /tmp/test-3985488568
     │               ├── 0000:04:00.1 -> ../../../../devices/pci0000:02/0000:04:00.1
     │               └── bind
     ├── class
-    │   └── drm
-    │       ├── card0 -> /tmp/test-1963481256/sysfs/bus/pci/drivers/i915/0000:03:00.0/drm/card0
-    │       └── card1 -> /tmp/test-1963481256/sysfs/bus/pci/drivers/xe/0000:04:00.1/drm/card1
+    │   ├── drm
+    │   │   ├── card0 -> /tmp/test-2503111759/sysfs/bus/pci/drivers/i915/0000:03:00.0/drm/card0
+    │   │   └── card1 -> /tmp/test-2503111759/sysfs/bus/pci/drivers/xe/0000:04:00.1/drm/card1
+    │   └── mei
+    │       ├── mei0 -> ../../devices/pci0000:01/0000:03:00.0/i915.mei-gscfi.2304/mei/mei0
+    │       └── mei1 -> ../../devices/pci0000:02/0000:04:00.1/xe.mei-gscfi.768/mei/mei1
     └── devices
         ├── pci0000:01
         │   └── 0000:03:00.0
@@ -253,18 +262,24 @@ $ sudo tree /tmp/test-3985488568
         │       │   │               ├── lmem_quota
         │       │   │               └── preempt_timeout_us
         │       │   └── renderD128
+        │       ├── i915.mei-gscfi.2304
+        │       │   └── mei
+        │       │       └── mei0
         │       ├── sriov_drivers_autoprobe
         │       ├── sriov_numvfs
         │       └── sriov_totalvfs
         └── pci0000:02
             └── 0000:04:00.1
                 ├── device
-                └── drm
-                    ├── card1
-                    │   └── lmem_total_bytes
-                    └── renderD129
+                ├── drm
+                │   ├── card1
+                │   │   └── lmem_total_bytes
+                │   └── renderD129
+                └── xe.mei-gscfi.768
+                    └── mei
+                        └── mei1
 
-53 directories, 66 files
+62 directories, 68 files
 ```
 
 </details>

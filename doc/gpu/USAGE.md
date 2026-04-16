@@ -1,9 +1,10 @@
 ## Requirements
 
-- Kubernetes v1.32+, and  optionally [some cluster parameters](../../hack/clusterconfig.yaml) for advanced features, see [Cluster Setup](../CLUSTER_SETUP.md)
+- Kubernetes v1.34+, and  optionally [some cluster parameters](../../hack/clusterconfig.yaml) for advanced features, see [Cluster Setup](../CLUSTER_SETUP.md)
 - Container runtime needs to support CDI:
   - CRI-O v1.23.0 or newer
   - Containerd v1.7 or newer with CDI enabled
+  - Optional (Recommended): [XPUM Daemon](https://github.com/intel/xpumanager/blob/v2.x/xpumd/charts/xpumd/README.md) - can be installed after Intel GPU DRA driver.
 
 ## Deploy resource-driver
 
@@ -26,7 +27,7 @@ See [details](../../charts/intel-gpu-resource-driver/README.md) in the chart dir
 ```bash
 kubectl apply -k 'https://github.com/intel/intel-resource-drivers-for-kubernetes/deployments/gpu?ref=<RELEASE_VERSION>'
 ```
-Example RELEASE_VERSION: `gpu-v0.9.0`.
+Example RELEASE_VERSION: `gpu-v0.10.0`.
 
 By default, the kubelet-plugin is deployed on _all_ nodes in the cluster, as no nodeSelector is defined.
 To restrict the deployment to GPU-enabled nodes, follow these steps:
@@ -36,7 +37,7 @@ To restrict the deployment to GPU-enabled nodes, follow these steps:
 Follow [Node Feature Discovery](https://github.com/kubernetes-sigs/node-feature-discovery) documentation to install and configure NFD in your cluster.
 
 ```bash
-kubectl apply -k "https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.17.4"
+kubectl apply -k "https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.18.3"
 ```
 
 2. Deploy the DRA driver with new NFD Rules for Intel GPUs:
@@ -45,10 +46,12 @@ kubectl apply -k "https://github.com/kubernetes-sigs/node-feature-discovery/depl
 kubectl apply -k 'https://github.com/intel/intel-resource-drivers-for-kubernetes/deployments/gpu/overlays/nfd_labeled_nodes?ref=<RELEASE_VERSION>'
 ```
 
-After NFD is installed and running, make sure the target node is labeled with:
+After NFD is installed and running, the nodes with GPUs will be labeled with:
 ```bash
 intel.feature.node.kubernetes.io/gpu: "true"
 ```
+
+The GPU DRA driver will be deployed to nodes that have such labels.
 
 When deploying custom resource driver image, change `image:` lines in
 [resource-driver](../../deployments/gpu/base/resource-driver.yaml) to match its location.
@@ -94,28 +97,60 @@ metadata:
   uid: 305a8e03-fe9b-44ea-831e-01ce70edb1a7
 spec:
   devices:
-  - basic:
-      attributes:
-        driver:
-          string: i915
-        family:
-          string: Arc
-        healthy:
-          bool: true
-        model:
-          string: A770
-        pciAddress:
-          string: "0000:03:00.0"
-        pciId:
-          string: "0x56a0"
-        pciRoot:
-          string: "00"
-        sriov:
-          bool: false
-      capacity:
-        memory: 16288Mi
-        millicores: 1k
-    name: 0000-03-00-0-0x56a0
+  - attributes:
+      driver:
+        string: i915
+      family:
+        string: Unknown
+      health:
+        string: Healthy
+      model:
+        string: Unknown
+      pciAddress:
+        string: "0000:00:02.0"
+      pciId:
+        string: "0x7d67"
+      pciRoot:
+        string: "00"
+      resource.kubernetes.io/pciBusID:
+        string: "0000:00:02.0"
+      resource.kubernetes.io/pcieRoot:
+        string: pci0000:00
+      sriov:
+        bool: true
+    capacity:
+      memory:
+        value: "0"
+      millicores:
+        value: 1k
+    name: 0000-00-02-0-0x7d67
+  - attributes:
+      driver:
+        string: xe
+      family:
+        string: Unknown
+      health:
+        string: Healthy
+      model:
+        string: Unknown
+      pciAddress:
+        string: "0000:04:00.0"
+      pciId:
+        string: "0xe211"
+      pciRoot:
+        string: "00"
+      resource.kubernetes.io/pciBusID:
+        string: "0000:04:00.0"
+      resource.kubernetes.io/pcieRoot:
+        string: pci0000:00
+      sriov:
+        bool: true
+    capacity:
+      memory:
+        value: 24480Mi
+      millicores:
+        value: 1k
+    name: 0000-04-00-0-0xe211
   driver: gpu.intel.com
   nodeName: rpl-s
   pool:
@@ -154,6 +189,12 @@ request type.  Using latter requires `DRAPrioritizedList` [feature gate](../CLUS
 
 `exactly`-specified request is allocated by the kube-scheduler as-is. The`firstAvailable` list of requests
 is processed by the scheduler sequentially until the currently processed request is possible to allocate.
+
+## v0.10.0
+
+- `pciRoot` attribute of DRA device is deprecated and will eventually be removed (current target is v1.0)
+- health monitoring change: in-container `xpu-smi` is replaced by GRPC-based communications with xpumd: to get operational health monitoring, deploy xpumd into the cluster: https://github.com/intel/xpumanager/blob/v2.x/xpumd/charts/xpumd/README.md
+- hardware discovery change: privileged mode is no longer required, xpumd is now the default source of detailed HW information (e.g. GPU local memory amount). Alternatively, if health monitoring is not required, privileged mode can be used to allow GPU DRA driver query HW details directly from the devices. If neither health-monitoring is enabled, nor privileged mode - the discovered devices are announced to the cluster without the HW details (e.g. memory)
 
 ## Requesting resources
 
@@ -233,7 +274,7 @@ See [workload example](../../deployments/gpu/examples/deployment-extended-resour
 
 Starting K8s v1.35, it is also possible to request DRA driver-managed resource implicitly,
 based on the DRA driver name, even if the latter lacks `extendedResourceName` setting.
-See [example](../../deployments/gaudi/examples/deployment-extended-resources-implicit.yaml)
+See [example](../../deployments/gpu/examples/deployment-extended-resources-implicit.yaml)
 
 ### Device Class
 
@@ -325,15 +366,15 @@ Unlike with normal GPU ResourceClaims:
 
 ## Health monitoring support
 
-Starting from v0.9.0 GPU DRA driver supports health monitoring with `-m` command-line parameter
-(disabled in default deployment configuration) through [xpu-smi](https://github.com/intel/xpumanager)
-library. When it deems GPU accelerator as unhealthy, `healthy` field for corresponding device in
-`ResourceSlice` is set as `false`.
-
-If `DRADeviceTaints` feature gate is enabled in the cluster, health category [DeviceTaint](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/#device-taints-and-tolerations) will be added to the unhealthy device's entry in `ResourceSlice`.
+Starting from v0.10.0 GPU DRA driver supports health monitoring with `-m` command-line parameter
+(disabled in default deployments/ configuration, enabled by default in the [Helm chart](../../charts/intel-gpu-resource-driver/))
+through [XPUM Daemon](https://github.com/intel/xpumanager/xpumd). When it deems GPU accelerator as unhealthy,
+`health` field for corresponding device in `ResourceSlice` is set as `false`. Additionally, if `DRADeviceTaints`
+feature gate is enabled in the cluster, health category [DeviceTaint](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/#device-taints-and-tolerations) will be added to the unhealthy device's entry in `ResourceSlice`, preventing
+workload Pods from using such GPU unless they have toleration specified in the `ResourceClaim`.
 
 This feature was first introduced in K8s v1.33, it allows scheduler to handle ResourceSlice devices
-similarly to how K8s Node Taints and Tolerations allow. Cluster admins can create standalone
+similarly to how K8s Node Taints and Tolerations allow. Cluster admins can also create standalone
 DeviceTaintRule to prevent workloads being scheduled and / or executed on a particular GPU.
 
 ## Known issues
