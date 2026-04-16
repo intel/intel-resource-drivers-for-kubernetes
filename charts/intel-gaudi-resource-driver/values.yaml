@@ -13,7 +13,7 @@ image:
   repository: ghcr.io/intel/intel-resource-drivers-for-kubernetes
   name: intel-gaudi-resource-driver
   pullPolicy: IfNotPresent
-  tag: "v0.6.1"
+  tag: "v0.7.0"
 
 serviceAccount:
   create: true
@@ -51,11 +51,15 @@ cdi:
   staticPath: /etc/cdi
   dynamicPath: /var/run/cdi
 
+# Requires a running NFD in the cluster.
+# Deploy rules that applies to nodes with Intel Gaudi (intel.feature.node.kubernetes.io/gaudi=true).
 nodeFeatureRules:
   enabled: false
 
+# Install NFD as a dependency. Enable only if NFD is not already present in the cluster.
+# This is not creating labels on nodes.
 nfd:
-  enabled: false # change to true to install NFD to the cluster
+  enabled: false
   nameOverride: intel-gaudi-nfd
   # TODO: this deprecated NFD option will be replaced in NFD v0.17 with "featureGates.NodeFeatureAPI" (added in v0.16):
   # https://kubernetes-sigs.github.io/node-feature-discovery/v0.16/deployment/helm.html#general-parameters

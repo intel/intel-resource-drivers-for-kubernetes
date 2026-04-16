@@ -23,8 +23,10 @@ spec:
         args:
         - --healthcheck-port={{ .Values.kubeletPlugin.healthcheckPort }}
         {{- if .Values.kubeletPlugin.healthMonitoring.enabled }}
-        - --health-monitoring=true
-        - --health-interval={{ .Values.kubeletPlugin.healthMonitoring.interval }}
+        - -m
+        {{- if not .Values.kubeletPlugin.healthMonitoring.ignoreHealthWarning }}
+        - --ignore-health-warning=false
+        {{- end }}
         {{- end }}
         {{- if gt (int .Values.kubeletPlugin.healthcheckPort) 0 }}
         ports:
@@ -70,8 +72,10 @@ spec:
         # when using fake sysfs - mount at the same place as on host
         - name: sysfs
           mountPath: "/sysfs"
+        - name: xpumd-socket
+          mountPath: "/run/xpumd"
         securityContext:
-          privileged: true
+          privileged: {{ .Values.kubeletPlugin.privileged }}
           capabilities:
             drop: ["ALL"]
           readOnlyRootFilesystem: true
@@ -94,11 +98,14 @@ spec:
       - name: sysfs
         hostPath:
           path: /sys
+      - name: xpumd-socket
+        hostPath:
+          path: /run/xpumd
       {{- with .Values.kubeletPlugin.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if or .Values.nodeFeatureRules.enabled .Values.nfd.enabled }}
+      {{- if .Values.nodeFeatureRules.enabled }}
       nodeSelector:
         intel.feature.node.kubernetes.io/gpu: "true"
       {{- else }}

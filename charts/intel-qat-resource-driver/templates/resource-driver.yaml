@@ -73,9 +73,14 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.nodeFeatureRules.enabled }}
+      nodeSelector:
+        intel.feature.node.kubernetes.io/qat: "true"
+      {{- else }}
       {{- with .Values.kubeletPlugin.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- end }}
       {{- with .Values.kubeletPlugin.affinity }}
       affinity:
