@@ -29,6 +29,7 @@ ARG UID=1000
 ARG GID=1000
 # add fake hlml shared library for Gaudi tests
 COPY --from=build /build/hack/fake_libhlml/fake_libhlml.so /usr/lib/habanalabs/libhlml.so
+COPY --from=build /build/cmd/kubelet-gaudi-plugin/LICENSE /LICENSE
 COPY --from=build /usr/include/habanalabs/hlml.h /usr/include/habanalabs/hlml.h
 COPY --from=build --chown=${UID}:${GID} /usr/local/go /home/ubuntu/go
 
