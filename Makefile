@@ -336,6 +336,13 @@ gaudi-coverage: clean-coverage vendor copytests gaudi-coverage.out
 %-coverage: %-coverage.out
 	go tool cover -func=$@.out
 
+.PHONY: coverage-check
+coverage-check: coverage.out
+	.github/scripts/coverage_check.sh gpu-coverage 70
+	.github/scripts/coverage_check.sh gaudi-coverage 70
+	.github/scripts/coverage_check.sh qat-coverage 70
+
+
 .PHONY: copytests
 copytests:
 	@echo "Copying test files to cmd/kubelet-gaudi-plugin/vendor to make them available for gaudi coverage testing which executes tests in that directory and its subdirectories only."
