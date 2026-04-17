@@ -101,7 +101,14 @@ func TestGetAccelIndex(t *testing.T) {
 				testDirs.SysfsRoot,
 				testDirs.DevfsRoot,
 				device.DevicesInfo{
-					"0000-0f-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:0f:00.0", DeviceIdx: 1, ModuleIdx: 0, UID: "0000-0f-00-0-0x1020", PCIRoot: "01"},
+					"0000-0f-00-0-0x1020": {
+						Model:      "0x1020",
+						PCIAddress: "0000:0f:00.0",
+						PCIRoot:    "pci0000:00",
+						DeviceIdx:  1,
+						ModuleIdx:  0,
+						UID:        "0000-0f-00-0-0x1020",
+					},
 				},
 				false); err != nil {
 				t.Fatalf("%v: could not setup fake sysfs for test: %v", tt.name, err)
@@ -131,23 +138,37 @@ func TestDiscoverDevices(t *testing.T) {
 			DeviceIdx:  0,
 			ModuleIdx:  0,
 			UID:        "0000-0f-00-0-0x1020",
-			PCIRoot:    "01",
+			PCIRoot:    "pci0000:01",
 			UVerbsIdx:  1024, // device.UverbsMissingIdx
+			Healthy:    true,
 		},
 	}
 
 	tests := []struct {
-		name       string
-		setupFunc  func(string, string) error
-		expected   map[string]*device.DeviceInfo
-		shouldFail bool
+		name        string
+		setupFunc   func(string, string) error
+		cleanupFunc func(string) error
+		expected    map[string]*device.DeviceInfo
+		shouldFail  bool
 	}{
 		{
 			name: "single device",
-			setupFunc: func(sysfsRoot, pciAddr string) error {
+			setupFunc: func(sysfsRoot, devfsRoot string) error {
 				return nil
 			},
-			expected:   testDevicesInfo,
+			expected: map[string]*device.DeviceInfo{
+				"0000-0f-00-0-0x1020": {
+					Model:      "0x1020",
+					PCIAddress: "0000:0f:00.0",
+					DeviceIdx:  0,
+					ModuleIdx:  0,
+					UID:        "0000-0f-00-0-0x1020",
+					Healthy:    true,
+					UVerbsIdx:  1024,
+					PCIRoot:    "pci0000:01",
+					ModelName:  "Gaudi2",
+				},
+			},
 			shouldFail: false,
 		},
 		{
@@ -163,21 +184,24 @@ func TestDiscoverDevices(t *testing.T) {
 			setupFunc: func(sysfsRoot, pciAddress string) error {
 				return os.Chmod(sysfsRoot, 0200)
 			},
+			cleanupFunc: func(sysfsRoot string) error {
+				return os.Chmod(sysfsRoot, 0777)
+			},
 			expected:   map[string]*device.DeviceInfo{},
 			shouldFail: true,
 		},
 		{
 			name: "missing module_id file",
-			setupFunc: func(sysfsroot, pciAddress string) error {
-				return os.Remove(path.Join(sysfsroot, "bus/pci/drivers/habanalabs", pciAddress, "module_id"))
+			setupFunc: func(sysfsRoot, pciAddress string) error {
+				return os.Remove(path.Join(sysfsRoot, "bus/pci/drivers/habanalabs", pciAddress, "module_id"))
 			},
 			expected:   map[string]*device.DeviceInfo{},
 			shouldFail: true,
 		},
 		{
 			name: "invalid module_id index",
-			setupFunc: func(sysfsroot, pciAddress string) error {
-				return helpers.WriteFile(path.Join(sysfsroot, "bus/pci/drivers/habanalabs", pciAddress, "module_id"), "X")
+			setupFunc: func(sysfsRoot, pciAddress string) error {
+				return helpers.WriteFile(path.Join(sysfsRoot, "bus/pci/drivers/habanalabs", pciAddress, "module_id"), "X")
 			},
 			expected:   map[string]*device.DeviceInfo{},
 			shouldFail: true,
@@ -225,6 +249,13 @@ func TestDiscoverDevices(t *testing.T) {
 			result := DiscoverDevices(testDirs.SysfsRoot, device.DefaultNamingStyle)
 			if !tt.shouldFail && !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("expected %+v, got %+v", tt.expected["0000-0f-00-0-0x1020"], result["0000-0f-00-0-0x1020"])
+			}
+
+			// Run cleanup function if provided
+			if tt.cleanupFunc != nil {
+				if err := tt.cleanupFunc(testDirs.SysfsRoot); err != nil {
+					t.Errorf("Could not properly cleanup %v: %v", tt.name, err)
+				}
 			}
 		})
 	}

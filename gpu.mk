@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # Use a custom version for E2E tests if we are testing in CI
-GPU_VERSION ?= v0.9.1
+GPU_VERSION ?= v0.10.0
 GPU_IMAGE_NAME ?= intel-gpu-resource-driver
 GPU_IMAGE_VERSION ?= $(GPU_VERSION)
 GPU_IMAGE_TAG ?= $(REGISTRY)/$(GPU_IMAGE_NAME):$(GPU_IMAGE_VERSION)
@@ -27,18 +27,14 @@ pkg/gpu/cdihelpers/*.go \
 pkg/gpu/device/*.go \
 pkg/gpu/discovery/*.go
 
-GPU_LDFLAGS = ${LDFLAGS} -X ${PKG}/pkg/version.version=${GPU_VERSION}
+GPU_LDFLAGS = ${LDFLAGS} -extldflags $(EXT_LDFLAGS) -X ${PKG}/pkg/version.version=${GPU_VERSION}
 
 .PHONY: gpu
 gpu: $(GPU_BINARIES)
 
 bin/kubelet-gpu-plugin: cmd/kubelet-gpu-plugin/*.go $(GPU_COMMON_SRC)
-	CGO_ENABLED=1 GOOS=linux GOARCH=${ARCH} \
-	  go build -a -ldflags "${GPU_LDFLAGS}" -mod vendor -o $@ ./cmd/kubelet-gpu-plugin
-
-bin/alert-webhook: cmd/alert-webhook/*.go $(GPU_COMMON_SRC)
 	CGO_ENABLED=0 GOOS=linux GOARCH=${ARCH} \
-	  go build -a -ldflags "${GPU_LDFLAGS}" -mod vendor -o $@ ./cmd/alert-webhook
+	  go build -a -ldflags "${GPU_LDFLAGS}" -mod vendor -o $@ ./cmd/kubelet-gpu-plugin
 
 .PHONY: gpu-container-build
 gpu-container-build: cleanall vendor

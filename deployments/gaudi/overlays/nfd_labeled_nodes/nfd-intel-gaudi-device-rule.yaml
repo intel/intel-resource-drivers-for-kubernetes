@@ -11,4 +11,4 @@ spec:
         - feature: pci.device
           matchExpressions:
             vendor: {op: In, value: ["1da3"]}
-            device: {op: In, value: ["1020", "1030"]}
+            device: {op: In, value: ["1020", "1030", "1063"]}

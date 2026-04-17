@@ -146,12 +146,10 @@ func newCommand() *cobra.Command {
 
 func handleGPUDevices(cdiCache *cdiapi.Cache, namingStyle string, dryRun bool) error {
 	sysfsDir := helpers.GetSysfsRoot(gpuDevice.SysfsDRMpath)
-	// For readability in discover call.
-	withoutXpuSmi, nonVerboseDiscovery := false, false
 	fmt.Println("Scanning for GPUs")
 
-	// Do a verbose discovery.
-	detectedDevices := gpuDiscovery.DiscoverDevices(sysfsDir, namingStyle, nonVerboseDiscovery, withoutXpuSmi)
+	// Ignore whether the device details were discovered.
+	detectedDevices := gpuDiscovery.DiscoverDevices(sysfsDir, namingStyle, false)
 	if len(detectedDevices) == 0 {
 		fmt.Println("No supported devices detected")
 	}
@@ -165,9 +163,8 @@ func handleGPUDevices(cdiCache *cdiapi.Cache, namingStyle string, dryRun bool) e
 		return nil
 	}
 
-	// syncDetectedDevicesWithCdiRegistry overrides uid in detecteddevices from existing cdi spec
-	if err := gpuCdihelpers.SyncDetectedDevicesWithRegistry(cdiCache, detectedDevices, true); err != nil {
-		fmt.Printf("unable to sync detected devices to CDI registry: %v", err)
+	if err := gpuCdihelpers.AddDetectedDevicesToCDIRegistry(cdiCache, detectedDevices); err != nil {
+		fmt.Printf("unable to add detected devices to CDI registry: %v", err)
 		return err
 	}
 
@@ -193,9 +190,8 @@ func handleGaudiDevices(cdiCache *cdiapi.Cache, namingStyle string, dryRun bool)
 		return nil
 	}
 
-	// syncDetectedDevicesWithCdiRegistry overrides uid in detecteddevices from existing cdi spec
-	if err := gaudiCdihelpers.AddDetectedDevicesToCDIRegistry(cdiCache, detectedDevices, true); err != nil {
-		fmt.Printf("unable to sync detected devices to CDI registry: %v", err)
+	if err := gaudiCdihelpers.AddDetectedDevicesToCDIRegistry(cdiCache, detectedDevices); err != nil {
+		fmt.Printf("unable to add detected devices to CDI registry: %v", err)
 		return err
 	}
 

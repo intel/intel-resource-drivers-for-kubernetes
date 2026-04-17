@@ -51,12 +51,25 @@ You may also run `helm show values` on this chart's dependencies for additional 
 | image.repository | string | `intel` |
 | image.name | string | `"intel-gaudi-resource-driver"` |
 | image.pullPolicy | string | `"IfNotPresent"` |
-| image.tag | string | `"v0.6.1"` |
+| image.tag | string | `"v0.7.0"` |
 
 > [!Note]
 > If you change the image tag to be used in Helm chart deployment, ensure that the version of the container image is consistent with deployment YAMLs - they might change between releases.
 
 ## Deploying to RedHat OpenShift Container Platform
+
+### OpenShift 4.20
+```console
+helm install \
+    --set openshift.enabled=true \
+    --set openshift.version=4.20 \
+    --namespace intel-gaudi-resource-driver \
+    --create-namespace \
+    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver-chart
+```
+
+### OpenShift 4.21+
+The default value for `openshift.version` is `4.21`, so specifying a version is not necessary. Older versions than 4.20 are not supported.
 
 ```console
 helm install \

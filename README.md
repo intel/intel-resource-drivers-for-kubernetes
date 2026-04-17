@@ -54,3 +54,9 @@ point to the newly created version.
 Patch releases (e.g. gaudi-v0.1.1) are done on a need basis if there are security issues or minor fixes
 for specific supported version. Fixes are always cherry-picked from the main branch to the release
 branches.
+
+## Licensing
+
+The sources are licensed under the "Apache 2.0" license. All the binaries except the `kubelet-gaudi-plugin` are licensed under the "Apache 2.0" license. The `kubelet-gaudi-plugin` binary
+links against `gohlml` which is licensed under (SPDX-License-Identifier) "GPL-2.0-or-later", and as
+a result of that the `kubelet-gaudi-plugin` binary is also licensed under "GPL-2.0-or-later".

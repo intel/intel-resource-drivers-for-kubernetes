@@ -26,8 +26,9 @@ import (
 
 var (
 	PciRegexp     = regexp.MustCompile(`[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$`)
-	CardRegexp    = regexp.MustCompile(`^card[0-9]+$`)
-	RenderdRegexp = regexp.MustCompile(`^renderD[0-9]+$`)
+	CardRegexp    = regexp.MustCompile(`^card[0-9]{1,3}$`)
+	RenderdRegexp = regexp.MustCompile(`^renderD[0-9]{1,3}$`)
+	MEIRegexp     = regexp.MustCompile(`^mei[0-9]+$`)
 )
 
 const (
@@ -39,11 +40,16 @@ const (
 	SysfsI915DriverName = "i915"
 	SysfsXeDriverName   = "xe"
 	SysfsDRMpath        = "class/drm/"
+	SysfsMEIpath        = "class/mei/"
 
-	CDIVendor  = "intel.com"
-	CDIClass   = "gpu"
-	CDIKind    = CDIVendor + "/" + CDIClass
-	DriverName = CDIClass + "." + CDIVendor
+	CDIVendor   = "intel.com"
+	CDIGPUClass = "gpu"
+	CDIGPUKind  = CDIVendor + "/" + CDIGPUClass
+	CDIClass    = CDIGPUClass
+	CDIKind     = CDIGPUKind
+	CDIMEIClass = "gpu-mei"
+	CDIMEIKind  = CDIVendor + "/" + CDIMEIClass
+	DriverName  = CDIGPUClass + "." + CDIVendor
 
 	UIDLength = len("0000-00-00-0-0x0000")
 
@@ -52,6 +58,10 @@ const (
 	DefaultNamingStyle = "machine"
 	GpuDeviceType      = "gpu"
 	VfDeviceType       = "vf"
+
+	HealthUnknown   = "Unknown"
+	HealthHealthy   = "Healthy"
+	HealthUnhealthy = "Unhealthy"
 )
 
 // VfAttributeFiles is a list of filenames that needs to be configured for a VF
@@ -128,29 +138,39 @@ var ModelDetails = map[string]map[string]string{
 type DeviceInfo struct {
 	// UID is a unique identifier on node, used in ResourceSlice K8s API object as RFC1123-compliant identifier.
 	// Consists of PCIAddress and Model with colons and dots replaced with hyphens, e.g. 0000-01-02-0-0x1234.
-	UID          string            `json:"uid"`
-	PCIAddress   string            `json:"pciaddress"`   // PCI address in Linux DBDF notation for use with sysfs, e.g. 0000:00:00.0
-	Model        string            `json:"model"`        // PCI device ID
-	ModelName    string            `json:"modelname"`    // SKU name, usually Series + Model, e.g. Flex 140
-	FamilyName   string            `json:"familyname"`   // SKU family name, usually Series, e.g. Flex or Max
-	CardIdx      uint64            `json:"cardidx"`      // card device number (e.g. 0 for /dev/dri/card0)
-	RenderdIdx   uint64            `json:"renderdidx"`   // renderD device number (e.g. 128 for /dev/dri/renderD128)
-	MemoryMiB    uint64            `json:"memorymib"`    // in MiB
-	Millicores   uint64            `json:"millicores"`   // [0-1000] where 1000 means whole GPU.
-	DeviceType   string            `json:"devicetype"`   // gpu, vf, any
-	MaxVFs       uint64            `json:"maxvfs"`       // if enabled, non-zero maximum amount of VFs
-	ParentUID    string            `json:"parentuid"`    // uid of gpu device where VF is
-	VFProfile    string            `json:"vfprofile"`    // name of the SR-IOV profile
-	VFIndex      uint64            `json:"vfindex"`      // 0-based PCI index of the VF on the GPU, DRM indexing starts with 1
-	Provisioned  bool              `json:"provisioned"`  // true if the SR-IOV VF is configured and enabled
-	Driver       string            `json:"driver"`       // i915 | xe
-	PCIRoot      string            `json:"pciroot"`      // PCI Root of the device
-	Healthy      bool              `json:"healthy"`      // Health status of the device
-	HealthStatus map[string]string `json:"healthstatus"` // Detailed per-category health status information
+	UID           string            `json:"uid"`
+	PCIAddress    string            `json:"pciaddress"`    // PCI address in Linux DBDF notation for use with sysfs, e.g. 0000:00:00.0
+	Model         string            `json:"model"`         // PCI device ID
+	ModelName     string            `json:"modelname"`     // SKU name, usually Series + Model, e.g. Flex 140
+	FamilyName    string            `json:"familyname"`    // SKU family name, usually Series, e.g. Flex or Max
+	MEIName       string            `json:"meiname"`       // MEI name discovered for this GPU, e.g. mei0 for /dev/mei0
+	CardIdx       uint64            `json:"cardidx"`       // card device number (e.g. 0 for /dev/dri/card0)
+	RenderdIdx    uint64            `json:"renderdidx"`    // renderD device number (e.g. 128 for /dev/dri/renderD128)
+	MemoryMiB     uint64            `json:"memorymib"`     // in MiB
+	Millicores    uint64            `json:"millicores"`    // [0-1000] where 1000 means whole GPU.
+	DeviceType    string            `json:"devicetype"`    // gpu, vf, any
+	MaxVFs        uint64            `json:"maxvfs"`        // if enabled, non-zero maximum amount of VFs
+	ParentUID     string            `json:"parentuid"`     // uid of gpu device where VF is
+	VFProfile     string            `json:"vfprofile"`     // name of the SR-IOV profile
+	VFIndex       uint64            `json:"vfindex"`       // 0-based PCI index of the VF on the GPU, DRM indexing starts with 1
+	Provisioned   bool              `json:"provisioned"`   // true if the SR-IOV VF is configured and enabled
+	Driver        string            `json:"driver"`        // i915 | xe
+	CurrentDriver string            `json:"currentdriver"` // Current bound driver: xe, i915, vfio-pci, xe-vfio-pci, or empty if unbound
+	PCIRoot       string            `json:"pciroot"`       // PCI Root of the device
+	Health        string            `json:"health"`        // Overall health status of the device. One of: Unknown, Healthy, Unhealthy.
+	HealthStatus  map[string]string `json:"healthstatus"`  // Detailed per-category health status information
 }
 
 func (g DeviceInfo) CDIName() string {
 	return fmt.Sprintf("%s=%s", CDIKind, g.UID)
+}
+
+func (g DeviceInfo) MEICDIName() string {
+	if g.MEIName == "" {
+		return ""
+	}
+
+	return fmt.Sprintf("%s=%s", CDIMEIKind, g.MEIName)
 }
 
 func (g *DeviceInfo) DeepCopy() *DeviceInfo {
@@ -183,6 +203,11 @@ func (g *DeviceInfo) SetModelInfo() {
 	g.FamilyName = "Unknown"
 }
 
+// IsDRMBound checks if the device is currently bound to its original DRM driver.
+func (g *DeviceInfo) IsDRMBound() bool {
+	return g.CurrentDriver == g.Driver
+}
+
 // DevicesInfo is a dictionary with DeviceInfo.uid being the key.
 type DevicesInfo map[string]*DeviceInfo
 
@@ -195,5 +220,5 @@ func (g *DevicesInfo) DeepCopy() DevicesInfo {
 }
 
 func GetDriDevPath() string {
-	return filepath.Join(helpers.GetDevRoot(helpers.DevfsEnvVarName, DevfsDriPath), DevfsDriPath)
+	return filepath.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, DevfsDriPath), DevfsDriPath)
 }

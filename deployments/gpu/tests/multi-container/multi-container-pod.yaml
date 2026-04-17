@@ -1,0 +1,36 @@
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: multi-container-claim
+  namespace: intel-gpu-resource-driver
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.intel.com
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multi-container-test
+  namespace: intel-gpu-resource-driver
+spec:
+  restartPolicy: Never
+  containers:
+  - name: first-container
+    image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+    command: ["sh", "-c", "echo 'First container with GPU' && ls -la /dev/dri/ && CARD_COUNT=$(ls -1 /dev/dri/card* 2>/dev/null | wc -l) && RENDER_COUNT=$(ls -1 /dev/dri/renderD[12][0-9][0-9] 2>/dev/null | wc -l) && echo \"Found $CARD_COUNT card device(s) and $RENDER_COUNT render device(s)\" && test $CARD_COUNT -eq 1 && test $RENDER_COUNT -eq 1 && echo 'First container sees GPU devices'"]
+    resources:
+      claims:
+      - name: resource
+  - name: second-container
+    image: registry.k8s.io/e2e-test-images/busybox:1.29-2
+    command: ["sh", "-c", "echo 'Second container with GPU' && ls -la /dev/dri/ && CARD_COUNT=$(ls -1 /dev/dri/card* 2>/dev/null | wc -l) && RENDER_COUNT=$(ls -1 /dev/dri/renderD[12][0-9][0-9] 2>/dev/null | wc -l) && echo \"Found $CARD_COUNT card device(s) and $RENDER_COUNT render device(s)\" && test $CARD_COUNT -eq 1 && test $RENDER_COUNT -eq 1 && echo 'Second container sees GPU devices'"]
+    resources:
+      claims:
+      - name: resource
+  resourceClaims:
+  - name: resource
+    resourceClaimTemplateName: multi-container-claim

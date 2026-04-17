@@ -12,21 +12,79 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.24.2@sha256:b51b7beeabe2e2d8438ba4295c59d584049873a480ba0e7b56d80db74b3e3a3a AS build
+# Get libc and sources from Ubuntu24, build libhlml, repackage hlml sources with shared lib build modifications
+FROM ubuntu:24.04@sha256:80dd3c3b9c6cecb9f1667e9290b3bc61b78c2678c02cbdae5f0fea92cc6734ab AS ubuntu
+RUN \
+cat /etc/apt/sources.list.d/ubuntu.sources && \
+sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources && \
+apt-get update && \
+apt-get install -y dpkg-dev cmake build-essential wget bison flex libyaml-dev pkg-config libudev-dev zlib1g-dev && \
+mkdir /tmp/src && \
+cd /tmp/src && \
+apt-get source libc6 coreutils dash && \
+wget https://vault.habana.ai/artifactory/misc/fw-tools-sources/1.23.0/hl-smi-SA.tgz && \
+mv hl-smi-SA.tgz hl-smi-SA.tar.gz && mkdir hl-smi-SA && cd hl-smi-SA && \
+tar -xf ../hl-smi-SA.tar.gz && \
+make 3rd-party && OPT_C='-O2 -DNDEBUG -fPIC -D_FORTIFY_SOURCE=2 -fstack-protector-strong' && \
+OPT_CXX='-O2 -DNDEBUG -fPIC -D_FORTIFY_SOURCE=2 -fstack-protector-strong' && \
+HARDEN_LD='-Wl,-O1,--as-needed,-z,relro,-z,now' && \
+make -C 3rd-parties/extract/pciutils-3.13.0 clean && \
+make -C 3rd-parties/extract/pciutils-3.13.0 SHARED=no HWDB=no CFLAGS="$OPT_C" && \
+make -C 3rd-parties/extract/lm-sensors-3-6-0 clean && \
+make -C 3rd-parties/extract/lm-sensors-3-6-0 CFLAGS="$OPT_C" BUILD_STATIC_LIB=1 && \
+cp -f 3rd-parties/extract/pciutils-3.13.0/lib/libpci.a 3rd-parties/extract/prod/libpci.a && \
+cp -f 3rd-parties/extract/lm-sensors-3-6-0/lib/libsensors.a 3rd-parties/extract/prod/libsensors.a && \
+cmake -S . -B build-shared -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_C_FLAGS_RELEASE="$OPT_C" -DCMAKE_CXX_FLAGS_RELEASE="$OPT_CXX" && \
+cmake --build build-shared --target hlml-raw && \
+gcc -shared -O2 $HARDEN_LD -Wl,--whole-archive \
+build-shared/make/hlml/libhlml-raw.a \
+3rd-parties/extract/prod/libsensors.a \
+3rd-parties/extract/prod/libeeprom-util.a \
+3rd-parties/extract/prod/libhl-thunk-static.a \
+3rd-parties/extract/prod/libhl-thunk-err_injection-static.a \
+3rd-parties/extract/prod/libpci.a \
+-Wl,--no-whole-archive -ldl -lm -lz -o libhlml.so
+
+FROM golang:1.25.8@sha256:dfae680962532eeea67ab297f1166c2c4e686edb9a8f05f9d02d96fc9191833e AS build
+
 ARG LOCAL_LICENSES
 WORKDIR /build
 COPY . .
 
+# install libhlml.so from deb for licenses
+RUN \
+curl -fsSL https://vault.habana.ai/artifactory/api/gpg/key/public | gpg --dearmor | tee /etc/apt/trusted.gpg.d/habanalabs.gpg > /dev/null && \
+wget -q -O /etc/apt/sources.list.d/habanalabs_synapseai.list "https://vault.habana.ai/artifactory/gaudi-installer/repos/1.23.0/ubuntu24.04/habanalabs_synapseai.list" > /dev/null && \
+sed -i "s/^deb/deb [trusted=yes]/" /etc/apt/sources.list.d/habanalabs_synapseai.list && \
+apt-get update && \
+apt-get download habanalabs-firmware-tools && \
+dpkg --force-all -i *.deb
+
+# Build Gaudi driver binary, copy original licenses and sources, and put the GPL license to the root of the container image
 RUN make gaudi && \
 mkdir -p /install_root && \
 if [ -z "$LOCAL_LICENSES" ]; then \
-    make licenses; \
+    make gaudi-licenses; \
 fi && \
 cp -r licenses /install_root/ && \
+mkdir /install_root/licenses/habanalabs && \
+cp /usr/share/doc/habanalabs-firmware-tools/* /install_root/licenses/habanalabs/ && \
+cp cmd/kubelet-gaudi-plugin/LICENSE /install_root/LICENSE && \
 cp bin/kubelet-gaudi-plugin /install_root/
 
 FROM scratch
 LABEL description="Intel Gaudi resource driver for Kubernetes"
 
-COPY --from=build /install_root/ /
-CMD ["/kubelet-gaudi-plugin"]
+COPY --from=build /install_root /
+COPY --from=ubuntu /tmp/src/hl-smi-SA/libhlml.so /usr/lib/habanalabs/libhlml.so
+COPY --from=ubuntu /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so.6
+COPY --from=ubuntu /lib64/ld-linux-x86-64.so.2 /lib64/ld-linux-x86-64.so.2
+COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libm.so.6 /usr/lib/x86_64-linux-gnu/libm.so.6
+COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so.2
+COPY --from=ubuntu /usr/lib/x86_64-linux-gnu/libz.so.1 /usr/lib/x86_64-linux-gnu/libz.so.1
+COPY --from=ubuntu /bin/cat /bin/cat
+COPY --from=ubuntu /bin/sh /bin/sh
+COPY --from=ubuntu /tmp/src/*tar.* /src/
+
+ENV LD_LIBRARY_PATH=/usr/lib/habanalabs:/lib/x86_64-linux-gnu:/lib64:/usr/lib/x86_64-linux-gnu
+ENV PATH=/bin

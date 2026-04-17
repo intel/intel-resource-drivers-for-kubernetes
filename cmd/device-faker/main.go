@@ -211,6 +211,7 @@ func createNewTemplate(deviceType string) error {
 				PCIAddress: "0000:03:00.0",
 				Model:      "0x56c0",
 				CardIdx:    0,
+				MEIName:    "mei0",
 				RenderdIdx: 128,
 				MemoryMiB:  1024,
 				Millicores: 1000,
@@ -218,13 +219,14 @@ func createNewTemplate(deviceType string) error {
 				Driver:     "i915",
 				MaxVFs:     8,
 				VFProfile:  "",
-				PCIRoot:    "01",
+				PCIRoot:    "pci0000:01",
 			},
 			"card1": {
 				UID:        "0000-04-00-1-0xe20b",
 				PCIAddress: "0000:04:00.1",
 				Model:      "0xe20b",
 				CardIdx:    1,
+				MEIName:    "mei1",
 				RenderdIdx: 129,
 				MemoryMiB:  2048,
 				Millicores: 1000,
@@ -233,7 +235,7 @@ func createNewTemplate(deviceType string) error {
 				MaxVFs:     0,
 				ParentUID:  "0000-04-00-0-0xe20b",
 				VFProfile:  "",
-				PCIRoot:    "02",
+				PCIRoot:    "pci0000:02",
 			},
 		}
 		templateText, err = json.MarshalIndent(templateData, "", "  ")
@@ -248,7 +250,7 @@ func createNewTemplate(deviceType string) error {
 				Model:      "0x1020",
 				DeviceIdx:  0,
 				ModuleIdx:  0,
-				PCIRoot:    "01",
+				PCIRoot:    "pci0000:01",
 			},
 			"accel1": {
 				UID:        "0000-b0-00-0-0x1020",
@@ -256,7 +258,7 @@ func createNewTemplate(deviceType string) error {
 				Model:      "0x1020",
 				DeviceIdx:  1,
 				ModuleIdx:  1,
-				PCIRoot:    "02",
+				PCIRoot:    "pci0000:02",
 			},
 		}
 		templateText, err = json.MarshalIndent(templateData, "", "  ")

@@ -11,13 +11,12 @@ import (
 	testhelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
 )
 
-func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
+func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 
 	tests := []struct {
 		name            string
 		existingSpecs   []*cdiapi.Spec
 		detectedDevices device.DevicesInfo
-		doCleanup       bool
 		expectedError   bool
 	}{
 		{
@@ -27,7 +26,6 @@ func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 				"device1": {DeviceIdx: 1},
 				"device2": {DeviceIdx: 2},
 			},
-			doCleanup:     false,
 			expectedError: false,
 		},
 		{
@@ -50,7 +48,6 @@ func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 				"device1": {DeviceIdx: 1},
 				"device2": {DeviceIdx: 2},
 			},
-			doCleanup:     false,
 			expectedError: false,
 		},
 		{
@@ -70,7 +67,6 @@ func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 				},
 			},
 			detectedDevices: device.DevicesInfo{},
-			doCleanup:       true,
 			expectedError:   false,
 		},
 	}
@@ -96,8 +92,8 @@ func TestSyncDetectedDevicesWithRegistry(t *testing.T) {
 
 			t.Logf("existing specs: %v", cdiCache.GetVendorSpecs(device.CDIVendor))
 
-			if err := AddDetectedDevicesToCDIRegistry(cdiCache, tt.detectedDevices, tt.doCleanup); (err != nil) != tt.expectedError {
-				t.Errorf("SyncDetectedDevicesWithRegistry() error = %v, expectedError %v", err, tt.expectedError)
+			if err := AddDetectedDevicesToCDIRegistry(cdiCache, tt.detectedDevices); (err != nil) != tt.expectedError {
+				t.Errorf("AddDetectedDevicesToCDIRegistry() error = %v, expectedError %v", err, tt.expectedError)
 			}
 		})
 	}

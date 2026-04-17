@@ -30,93 +30,50 @@ const (
 	PartitioningDefault            = false
 	HealthCareFlagDefault          = false
 	IgnoreHealthWarningFlagDefault = true
-	HealthcareIntervalFlagMin      = 1
-	HealthcareIntervalFlagMax      = 3600
-	HealthcareIntervalFlagDefault  = 5
-
-	// The following limits have no inherent default; a value of 0 means "flag not provided".
-	// We use *Unset naming instead of *Default to avoid implying a meaningful default value.
-	HealthCoreThermalLimitUnset   = 0
-	HealthCoreThermalLimitMin     = 1
-	HealthCoreThermalLimitMax     = 130
-	HealthMemoryThermalLimitUnset = 0
-	HealthMemoryThermalLimitMin   = 1
-	HealthMemoryThermalLimitMax   = 100
-	HealthPowerLimitUnset         = 0
-	HealthPowerLimitMin           = 1
-	HealthPowerLimitMax           = 300
+	HealthcheckPortDefault         = 51516
 )
 
 type GPUFlags struct {
-	Partitioning        bool
 	Healthcare          bool
 	IgnoreHealthWarning bool // true if Warning status means healthy, false otherwise. Default: true
-	HealthcareInterval  int
-	CoreThermalLimit    int
-	MemoryThermalLimit  int
-	PowerLimit          int
+	HealthcheckPort     int
+	XPUMDSocketFilePath string
 }
 
 func main() {
-	gpuFlags := GPUFlags{
-		Partitioning:       PartitioningDefault,
-		Healthcare:         HealthCareFlagDefault,
-		HealthcareInterval: HealthcareIntervalFlagDefault,
-	}
+	gpuFlags := GPUFlags{}
 	cliFlags := []cli.Flag{
 		&cli.BoolFlag{
 			Name:        "health-monitoring",
 			Aliases:     []string{"m"},
-			Usage:       "Actively monitor device health and update ResourceSlice. Requires privileges.",
+			Usage:       "Actively monitor device health information from XPUManager and update ResourceSlice.",
 			Value:       HealthCareFlagDefault,
 			Destination: &gpuFlags.Healthcare,
-			EnvVars:     []string{"HEALTH_MONITORING"},
+
+			EnvVars: []string{"HEALTH_MONITORING"},
 		},
 		&cli.BoolFlag{
-			Name:    "ignore-health-warning",
-			Aliases: []string{"w"},
-			// https://github.com/intel/xpumanager/blob/master/core/src/device/gpu/gpu_device_stub.cpp#L4142
+			Name:        "ignore-health-warning",
+			Aliases:     []string{"w"},
 			Usage:       "Ignore temperature & power thresholds and degraded memory health warnings (= react only to critical memory state). Default: true",
 			Value:       IgnoreHealthWarningFlagDefault,
 			Destination: &gpuFlags.IgnoreHealthWarning,
 			EnvVars:     []string{"IGNORE_HEALTH_WARNING"},
 		},
 		&cli.IntFlag{
-			Name:        "health-interval",
-			Aliases:     []string{"i"},
-			Usage:       fmt.Sprintf("Number of seconds between health-monitoring checks [%v ~ %v]", HealthcareIntervalFlagMin, HealthcareIntervalFlagMax),
-			Value:       HealthcareIntervalFlagDefault,
-			Destination: &gpuFlags.HealthcareInterval,
-			EnvVars:     []string{"HEALTH_INTERVAL"},
+			Name:        "healthcheck-port",
+			Usage:       "gRPC health check port. Set to -1 to disable.",
+			Value:       HealthcheckPortDefault,
+			Destination: &gpuFlags.HealthcheckPort,
+			EnvVars:     []string{"HEALTHCHECK_PORT"},
 		},
-		&cli.IntFlag{
-			Name:        "core-thermal-limit",
-			Usage:       fmt.Sprintf("Temperature threshold value [%v ~ %v] in degrees Celsius for xpu-smi health config", HealthCoreThermalLimitMin, HealthCoreThermalLimitMax),
-			Value:       HealthCoreThermalLimitUnset,
-			Destination: &gpuFlags.CoreThermalLimit,
-			EnvVars:     []string{"CORE_THERMAL_LIMIT"},
-		},
-		&cli.IntFlag{
-			Name:        "memory-thermal-limit",
-			Usage:       fmt.Sprintf("Temperature threshold value [%v ~ %v] in degrees Celsius for xpu-smi health config", HealthMemoryThermalLimitMin, HealthMemoryThermalLimitMax),
-			Value:       HealthMemoryThermalLimitUnset,
-			Destination: &gpuFlags.MemoryThermalLimit,
-			EnvVars:     []string{"MEMORY_THERMAL_LIMIT"},
-		},
-		&cli.IntFlag{
-			Name:        "power-limit",
-			Usage:       fmt.Sprintf("Power usage threshold value [%v ~ %v] in watts for the xpu-smi health config", HealthPowerLimitMin, HealthPowerLimitMax),
-			Value:       HealthPowerLimitUnset,
-			Destination: &gpuFlags.PowerLimit,
-			EnvVars:     []string{"POWER_LIMIT"},
-		},
-		&cli.BoolFlag{
-			Name:        "partitioning-management",
-			Aliases:     []string{"p"},
-			Usage:       "Manage partitioning physical devices into virtual. [Not Supported]",
-			Value:       PartitioningDefault,
-			Destination: &gpuFlags.Partitioning,
-			EnvVars:     []string{"PARTITIONING"},
+		&cli.StringFlag{
+			Name:        "xpumd-socket",
+			Aliases:     []string{"x"},
+			Usage:       "Path to XPUM daemon (v2.0+) socket file. Requires [-m|--health-monitoring] to be enabled.",
+			Value:       DefaultXPUMDSocketPath,
+			Destination: &gpuFlags.XPUMDSocketFilePath,
+			EnvVars:     []string{"XPUMD_SOCKET"},
 		},
 	}
 

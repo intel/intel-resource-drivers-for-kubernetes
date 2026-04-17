@@ -22,7 +22,8 @@ Supported Kubernetes versions are listed below:
 | v0.3.0            | Kubernetes v1.32+               | unsupported | Structured Parameters          |
 | v0.4.0            | Kubernetes v1.32+               | unsupported | Structured Parameters          |
 | v0.5.0            | Kubernetes v1.33-v1.34          | unsupported | Structured Parameters          |
-| v0.6.0            | Kubernetes v1.32+               | supported   | Structured Parameters          |
+| v0.6.0            | Kubernetes v1.32+               | unsupported | Structured Parameters          |
+| v0.7.0            | Kubernetes v1.34+               | supported   | Structured Parameters          |
 
 ## Documentation
 

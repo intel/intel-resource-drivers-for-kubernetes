@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2025-2026, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"time"
 
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 
+	hlml "github.com/HabanaAI/gohlml"
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/cdihelpers"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/discovery"
@@ -40,15 +42,24 @@ type driver struct {
 	client coreclientset.Interface
 	state  nodeState
 	helper *kubeletplugin.Helper
+	// If HLML monitoring is running - it will need to be stopped.
+	hlmlShutdown context.CancelFunc
 }
 
-func getGaudiFlags(someFlags any) (*GaudiFlags, error) {
-	switch v := someFlags.(type) {
-	case *GaudiFlags:
-		return v, nil
-	default:
-		return &GaudiFlags{}, fmt.Errorf("could not parse driver flags as GaudiFlags (got type: %T)", v)
+func getGaudiFlags(someFlags interface{}) (*GaudiFlags, error) {
+	gaudiFlags, OK := someFlags.(*GaudiFlags)
+	if !OK {
+		return &GaudiFlags{}, fmt.Errorf("could not parse driver flags as GaudiFlags")
 	}
+
+	klog.V(5).Infof("Gaudi parameters parsing OK: %+v", gaudiFlags)
+
+	if gaudiFlags.HealthcareInterval < HealthcareIntervalFlagMin || gaudiFlags.HealthcareInterval > HealthcareIntervalFlagMax {
+		return gaudiFlags, fmt.Errorf("unsupported health interval value %v. Should be [%v~%v]",
+			gaudiFlags.HealthcareInterval, HealthcareIntervalFlagMin, HealthcareIntervalFlagMax)
+	}
+
+	return gaudiFlags, nil
 }
 
 func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, error) {
@@ -98,8 +109,23 @@ PluginDataDirectoryPath: %v`,
 
 	driver.helper = helper
 
+	// Init HLML healthcare to get details needed for health monitor.
+	if gaudiFlags.Healthcare {
+		if err := driver.initHLML(); err != nil {
+			return nil, fmt.Errorf("failed to initialize HLML for health monitoring: %v", err)
+		}
+		klog.V(5).Info("HLML initialized successfully")
+	}
+
 	if err := driver.PublishResourceSlice(ctx); err != nil {
 		return nil, fmt.Errorf("startup error: %v", err)
+	}
+
+	if gaudiFlags.Healthcare {
+		// startHealthMonitor listens for unhealthy UIDs, has to run in a routine.
+		hlmlListenerContext, hlmlListenerCancel := context.WithCancel(ctx)
+		driver.hlmlShutdown = hlmlListenerCancel
+		go driver.startHealthMonitor(hlmlListenerContext, gaudiFlags.HealthcareInterval)
 	}
 
 	klog.V(3).Info("Finished creating new driver")
@@ -171,14 +197,6 @@ func (d *driver) PublishResourceSlice(ctx context.Context) error {
 	return nil
 }
 
-func (d *driver) Shutdown(ctx context.Context) error {
-	klog.V(5).Info("Shutting down driver")
-
-	d.helper.Stop()
-
-	return nil
-}
-
 // HandleError is called by Kubelet when an error occures asyncronously, and
 // needs to be communicated to the DRA driver.
 //
@@ -196,4 +214,26 @@ func (d *driver) HandleError(ctx context.Context, err error, message string) {
 	}
 
 	runtime.HandleErrorWithContext(ctx, err, message)
+}
+
+func (d *driver) Shutdown(ctx context.Context) error {
+	klog.V(5).Info("Shutting down driver")
+
+	d.helper.Stop()
+
+	// When health monitoring with HLML was initiated, d.hlmlShutdown will get
+	// context cancel function, which we can call to signal health monitoring
+	// goroutine to stop.
+	if d.hlmlShutdown != nil {
+		d.hlmlShutdown()
+
+		time.Sleep(1 * time.Second)
+
+		err := hlml.Shutdown()
+		if err != nil {
+			klog.Errorf("failed to shutdown HLML: %v", err)
+		}
+	}
+
+	return nil
 }

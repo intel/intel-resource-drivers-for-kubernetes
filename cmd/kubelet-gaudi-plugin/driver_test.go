@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
+ * Copyright (c) 2025-2026, Intel Corporation.  All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,9 +38,13 @@ import (
 	testhelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
 )
 
+const (
+	NoHealthcare   = false
+	WithHealthcare = true
+)
+
 func TestGaudiFakeSysfs(t *testing.T) {
 	testDirs, err := testhelpers.NewTestDirs(device.DriverName)
-	defer testhelpers.CleanupTest(t, "TestGaudiFakeSysfs", testDirs.TestRoot)
 	if err != nil {
 		t.Errorf("could not create fake system dirs: %v", err)
 		return
@@ -51,7 +55,12 @@ func TestGaudiFakeSysfs(t *testing.T) {
 		testDirs.SysfsRoot,
 		testDirs.DevfsRoot,
 		device.DevicesInfo{
-			"0000-0f-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:0f:00.0", DeviceIdx: 0, UID: "0000-0f-00-0-0x1020", PCIRoot: "01"},
+			"0000-0f-00-0-0x1020": {
+				Model:      "0x1020",
+				PCIAddress: "0000:0f:00.0",
+				DeviceIdx:  0,
+				UID:        "0000-0f-00-0-0x1020",
+				PCIRoot:    "pci0000:01"},
 		},
 		false,
 	); err != nil {
@@ -64,8 +73,15 @@ func TestGaudiFakeSysfs(t *testing.T) {
 	}
 }
 
-func getFakeDriver(testDirs testhelpers.TestDirsType) (*driver, error) {
+func getFakeDriver(testDirs testhelpers.TestDirsType, healthcare bool) (*driver, error) {
 	nodeName := "node1"
+	gaudiFlags := GaudiFlags{
+		Healthcare:         healthcare,
+		HealthcareInterval: 1,
+		GaudiHookPath:      path.Join(testDirs.TestRoot, "hookbin"),
+		GaudinetPath:       path.Join(testDirs.TestRoot, "gaudinet"),
+	}
+
 	config := &helpers.Config{
 		CommonFlags: &helpers.Flags{
 			NodeName:                  nodeName,
@@ -73,8 +89,8 @@ func getFakeDriver(testDirs testhelpers.TestDirsType) (*driver, error) {
 			KubeletPluginDir:          testDirs.KubeletPluginDir,
 			KubeletPluginsRegistryDir: testDirs.KubeletPluginRegistryDir,
 		},
-		Coreclient:  kubefake.NewSimpleClientset(),
-		DriverFlags: &GaudiFlags{GaudiHookPath: path.Join(testDirs.TestRoot, "hookbin"), GaudinetPath: path.Join(testDirs.TestRoot, "gaudinet")},
+		Coreclient:  kubefake.NewClientset(),
+		DriverFlags: &gaudiFlags,
 	}
 
 	os.Setenv("SYSFS_ROOT", testDirs.SysfsRoot)
@@ -111,7 +127,7 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 		{
 			name: "one Gaudi success",
 			request: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim("default", "claim1", "uid1", "request1", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}),
+				testhelpers.NewClaim("default", "claim1", "uid1", "request1", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}, false),
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid1": {
@@ -132,7 +148,7 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 		{
 			name: "single Gaudi, already prepared claim",
 			request: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim("namespace2", "claim2", "uid2", "request2", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}),
+				testhelpers.NewClaim("namespace2", "claim2", "uid2", "request2", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}, false),
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid2": {
@@ -159,7 +175,7 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 		{
 			name: "single unavailable device",
 			request: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim("namespace3", "claim3", "uid3", "request3", "gaudi.intel.com", "node1", []string{"0000-00-05-0-0x1020"}),
+				testhelpers.NewClaim("namespace3", "claim3", "uid3", "request3", "gaudi.intel.com", "node1", []string{"0000-00-05-0-0x1020"}, false),
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid3": {Err: fmt.Errorf("could not find allocatable device 0000-00-05-0-0x1020 (pool node1)")},
@@ -169,7 +185,7 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 			name:              "no devices detected",
 			noDetectedDevices: true,
 			request: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim("default", "claim5", "uid5", "request5", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}),
+				testhelpers.NewClaim("default", "claim5", "uid5", "request5", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}, false),
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid5": {Err: fmt.Errorf("could not find allocatable device 0000-00-02-0-0x1020 (pool node1)")},
@@ -188,9 +204,9 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 		}
 
 		fakeGaudis := device.DevicesInfo{
-			"0000-00-02-0-0x1020": {Model: "0x1020", DeviceIdx: 0, PCIAddress: "0000:00:02.0", UID: "0000-00-02-0-0x1020", PCIRoot: "01"},
-			"0000-00-03-0-0x1020": {Model: "0x1020", DeviceIdx: 1, PCIAddress: "0000:00:03.0", UID: "0000-00-03-0-0x1020", PCIRoot: "01"},
-			"0000-00-04-0-0x1020": {Model: "0x1020", DeviceIdx: 2, PCIAddress: "0000:00:04.0", UID: "0000-00-04-0-0x1020", PCIRoot: "02"},
+			"0000-00-02-0-0x1020": {Model: "0x1020", DeviceIdx: 0, PCIAddress: "0000:00:02.0", UID: "0000-00-02-0-0x1020", PCIRoot: "pci0000:01"},
+			"0000-00-03-0-0x1020": {Model: "0x1020", DeviceIdx: 1, PCIAddress: "0000:00:03.0", UID: "0000-00-03-0-0x1020", PCIRoot: "pci0000:01"},
+			"0000-00-04-0-0x1020": {Model: "0x1020", DeviceIdx: 2, PCIAddress: "0000:00:04.0", UID: "0000-00-04-0-0x1020", PCIRoot: "pci0000:02"},
 		}
 
 		if testcase.noDetectedDevices {
@@ -208,7 +224,7 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 			continue
 		}
 
-		driver, driverErr := getFakeDriver(testDirs)
+		driver, driverErr := getFakeDriver(testDirs, NoHealthcare)
 		if driverErr != nil {
 			t.Errorf("could not create kubelet-plugin: %v\n", driverErr)
 			continue
@@ -317,8 +333,8 @@ func TestGaudiUnprepareResourceClaims(t *testing.T) {
 			testDirs.SysfsRoot,
 			testDirs.DevfsRoot,
 			device.DevicesInfo{
-				"0000-b3-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:b3:00.0", DeviceIdx: 0, UID: "0000-b3-00-0-0x1020", PCIRoot: "01"},
-				"0000-af-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:af:00.0", DeviceIdx: 1, UID: "0000-af-00-0-0x1020", PCIRoot: "01"},
+				"0000-b3-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:b3:00.0", DeviceIdx: 0, UID: "0000-b3-00-0-0x1020", PCIRoot: "pci0000:01"},
+				"0000-af-00-0-0x1020": {Model: "0x1020", PCIAddress: "0000:af:00.0", DeviceIdx: 1, UID: "0000-af-00-0-0x1020", PCIRoot: "pci0000:01"},
 			},
 			false,
 		); err != nil {
@@ -332,7 +348,7 @@ func TestGaudiUnprepareResourceClaims(t *testing.T) {
 			continue
 		}
 
-		driver, driverErr := getFakeDriver(testDirs)
+		driver, driverErr := getFakeDriver(testDirs, NoHealthcare)
 		if driverErr != nil {
 			t.Errorf("could not create kubelet-plugin: %v\n", driverErr)
 			continue

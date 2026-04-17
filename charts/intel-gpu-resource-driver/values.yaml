@@ -13,7 +13,7 @@ image:
   repository: ghcr.io/intel/intel-resource-drivers-for-kubernetes
   name: intel-gpu-resource-driver
   pullPolicy: IfNotPresent
-  tag: "v0.9.1"
+  tag: "v0.10.0"
 
 serviceAccount:
   create: true
@@ -23,14 +23,27 @@ serviceAccount:
 
 openshift:
   enabled: false
+  version: "4.21"
   sccName: intel-gpu-resource-driver
 
 kubeletPlugin:
+  healthcheckPort: 51516  # gRPC health check port. Set to -1 to disable.
   podAnnotations: {}
+  # Custom nodeSelector. Used only when nodeFeatureRules.enabled=false.
   nodeSelector: {}
-    # Label used when nfd.enabled is true.
-    # Changes to this are ignored when .Values.nodeFeatureRules.enabled or .Values.nfd.enabled .
-    #intel.feature.node.kubernetes.io/gpu: "true"
+  # When health monitoring is disabled, set this to true for GPU driver to query hardware details directly from devices.
+  # With health monitoring enabled, hardware details come from xpumd amd privileged mode is not required.
+  privileged: false
+
+
+  # Health monitoring configuration
+  healthMonitoring:
+    # Provide -m flag to kubelet-plugin to actively monitor GPU health via xpumd.
+    enabled: true
+    # Only critical errors should result in tainting the device and evicting Pods from using the GPU.
+    ignoreHealthWarning: true
+
+
   tolerations:
     - key: node-role.kubernetes.io/master
       operator: Exists
@@ -50,10 +63,14 @@ cdi:
   staticPath: /etc/cdi
   dynamicPath: /var/run/cdi
 
+# Requires a running NFD in the cluster.
+# Deploy rules that applies to nodes with Intel GPU (intel.feature.node.kubernetes.io/gpu=true).
 nodeFeatureRules:
   enabled: false
 
+# Install NFD as a dependency. Enable only if NFD is not already present in the cluster.
+# This is not creating labels on nodes.
 nfd:
-  enabled: false # change to true to install NFD to the cluster
+  enabled: false
   nameOverride: intel-gpu-nfd
   enableNodeFeatureApi: true

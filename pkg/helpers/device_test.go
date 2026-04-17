@@ -108,7 +108,7 @@ func TestGetDevRoot(t *testing.T) {
 				defer os.RemoveAll(tt.envVarValue)
 			}
 
-			result := GetDevRoot(tt.envVarName, tt.devPath)
+			result := GetDevfsRoot(tt.envVarName, tt.devPath)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}

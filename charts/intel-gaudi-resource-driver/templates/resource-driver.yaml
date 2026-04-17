@@ -71,7 +71,7 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if or .Values.nodeFeatureRules.enabled .Values.nfd.enabled }}
+      {{- if .Values.nodeFeatureRules.enabled }}
       nodeSelector:
         intel.feature.node.kubernetes.io/gaudi: "true"
       {{- else }}

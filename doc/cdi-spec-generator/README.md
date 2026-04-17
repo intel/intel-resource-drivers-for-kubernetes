@@ -29,11 +29,5 @@ intel-cdi-specs-generator gpu
 ```
 This command will detect supported GPUs on the system, and ensure that there is a CDI device record for each of them.
 
-
 ## Building
 - [How to build CDI Spec Generator](BUILD.md)
-
-## Releases
-The binary is available for download in the releases section:
-- [Intel Resource Drivers for Kubernetes releases](https://github.com/intel/intel-resource-drivers-for-kubernetes/releases)
-- [CDI Spec Generator v0.1.0](https://github.com/intel/intel-resource-drivers-for-kubernetes/releases/tag/specs-generator-v0.1.0)

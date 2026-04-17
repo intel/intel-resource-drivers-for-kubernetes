@@ -36,14 +36,44 @@ func TestCDIName(t *testing.T) {
 	}
 }
 
+func TestMEICDIName(t *testing.T) {
+	tests := []struct {
+		name     string
+		device   DeviceInfo
+		expected string
+	}{
+		{
+			name: "Valid MEI name",
+			device: DeviceInfo{
+				MEIName: "mei1",
+			},
+			expected: "intel.com/gpu-mei=mei1",
+		},
+		{
+			name:     "Missing MEI name",
+			device:   DeviceInfo{},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.device.MEICDIName()
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
 func TestDevicesInfoDeepCopy(t *testing.T) {
 	original := DevicesInfo{
 		"0000-01-02-0-0x1234": {
 			UID:          "0000-01-02-0-0x1234",
 			PCIAddress:   "0000:01:02.0",
 			DeviceType:   "GPU",
+			Health:       HealthHealthy,
 			HealthStatus: map[string]string{"CoreThermal": "OK"},
-			Healthy:      true,
 		},
 	}
 
@@ -166,5 +196,14 @@ func TestGetDriDevPath(t *testing.T) {
 				t.Errorf("expected %v, got %v", tt.expectedPath, result)
 			}
 		})
+	}
+}
+
+func TestGetDevfsRoot(t *testing.T) {
+	testDevfsRoot := t.TempDir()
+	t.Setenv(helpers.DevfsEnvVarName, testDevfsRoot)
+	result := helpers.GetDevfsRoot(helpers.DevfsEnvVarName, "")
+	if result != testDevfsRoot {
+		t.Errorf("expected %v, got %v", testDevfsRoot, result)
 	}
 }

@@ -36,6 +36,8 @@ const (
 	DefaultKubeletPath               = "/var/lib/kubelet/"
 	DefaultKubeletPluginDir          = DefaultKubeletPath + "plugins/"
 	DefaultKubeletPluginsRegistryDir = DefaultKubeletPath + "plugins_registry/"
+
+	DRADeviceAttributePCIBusIDSuffix = "pciBusID"
 )
 
 var (

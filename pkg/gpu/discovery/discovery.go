@@ -25,9 +25,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/goxpusmi"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/drm"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/mei"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 
 	"k8s.io/klog/v2"
@@ -37,16 +37,12 @@ const (
 	initialMillicores = 1000
 )
 
-var (
-	xpuDeviceDetails = make(map[string]goxpusmi.XPUSMIDeviceDetails)
-)
-
-// Detect devices from sysfs.
-func DiscoverDevices(sysfsDir, namingStyle string, verbose bool, withXpuSmi bool) map[string]*device.DeviceInfo {
-	if withXpuSmi {
-		populateXpuDeviceDetails(verbose)
-	}
-
+// DiscoverDevices detects devices from sysfs and devfs if it can, and returns a map of
+// device UID:deviceInfo and a bool indicating if device details were successfully discovered.
+// When DRA driver runs in privileged mode, device details are fetched from devfs. Otherwise the
+// xpumd device info stream will be used to get device details including health and memory when
+// xpumd starts later.
+func DiscoverDevices(sysfsDir, namingStyle string, xpumdEnabled bool) map[string]*device.DeviceInfo {
 	sysfsDRMDir := path.Join(sysfsDir, device.SysfsDRMpath)
 	devices := make(map[string]*device.DeviceInfo)
 
@@ -67,20 +63,26 @@ func DiscoverDevices(sysfsDir, namingStyle string, verbose bool, withXpuSmi bool
 		maps.Copy(devices, moreDevices)
 	}
 
+	if err := populateDevicesInfoMemory(devices); err != nil && !xpumdEnabled {
+		klog.Error("Could not get device details. Enable privileged mode or health monitoring for device capability discovery.")
+	}
+
 	return devices
 }
 
-func populateXpuDeviceDetails(verbose bool) {
-	klog.V(5).Info("Initializing xpu-smi")
-	var err error
-
-	klog.V(5).Info("Querying xpu-smi for devices information")
-	xpuDeviceDetails, err = goxpusmi.Discover(verbose)
-	if err != nil {
-		klog.Errorf("failed to discover devices with xpu-smi: %v", err)
-	} else {
-		klog.V(5).Infof("Discovered %d devices with xpu-smi: %+v", len(xpuDeviceDetails), xpuDeviceDetails)
+// populateDevicesInfoMemory tries to query amount of memory from DRM devices /dev/cardX, and returns
+// error as soon as any request fails, or nil otherwise. When DRA driver runs in privileged mode,
+// this should succeed.
+func populateDevicesInfoMemory(devices map[string]*device.DeviceInfo) error {
+	for _, deviceInfo := range devices {
+		memoryMiB, err := getLocalMemoryAmountMiB(deviceInfo.CardIdx, deviceInfo.Driver)
+		if err != nil {
+			return err
+		}
+		deviceInfo.MemoryMiB = memoryMiB
 	}
+
+	return nil
 }
 
 func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDir string, sysfsDRMDir string, namingStyle string) map[string]*device.DeviceInfo {
@@ -95,14 +97,15 @@ func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDi
 		klog.V(5).Infof("Found GPU PCI device: %s", devicePCIAddress)
 
 		newDeviceInfo := &device.DeviceInfo{
-			PCIAddress: devicePCIAddress,
-			MemoryMiB:  0,
-			Millicores: initialMillicores,
-			DeviceType: device.GpuDeviceType, // presume GPU, detect the physfn / parent later
-			CardIdx:    0,
-			RenderdIdx: 0,
-			Driver:     driverName,
-			Healthy:    true, // presume healthy until proven otherwise
+			PCIAddress:    devicePCIAddress,
+			MemoryMiB:     0,
+			Millicores:    initialMillicores,
+			DeviceType:    device.GpuDeviceType, // presume GPU, detect the physfn / parent later
+			CardIdx:       0,
+			RenderdIdx:    0,
+			Driver:        driverName,
+			CurrentDriver: driverName,
+			Health:        device.HealthHealthy, // Presume healthy until proven otherwise. If healthcare is disabled, after discovery the driver will set this to HealthUnknown.
 		}
 
 		sysfsDeviceDir := path.Join(sysfsDriverDir, devicePCIAddress)
@@ -126,10 +129,15 @@ func processSysfsDriverDir(files []os.DirEntry, driverName string, sysfsDriverDi
 
 		newDeviceInfo.CardIdx = cardIdx
 		newDeviceInfo.RenderdIdx = renderdIdx
-		newDeviceInfo.MemoryMiB = getLocalMemoryAmountMiB(devicePCIAddress)
+		newDeviceInfo.MEIName = mei.DiscoverMEIDeviceForGPU(sysfsDriverDir, sysfsDeviceDir)
 
-		link := path.Join(sysfsDriverDir, devicePCIAddress)
-		newDeviceInfo.PCIRoot = helpers.DeterminePCIRoot(link)
+		linkSource := path.Join(sysfsDriverDir, devicePCIAddress)
+		pciRoot, err := helpers.DeterminePCIRoot(linkSource)
+		if err != nil {
+			klog.Warningf("could not detect PCI root complex for %v: %v", devicePCIAddress, err)
+		} else {
+			newDeviceInfo.PCIRoot = pciRoot
+		}
 
 		detectSRIOV(newDeviceInfo, sysfsDriverDir, devicePCIAddress, deviceId)
 		devices[determineDeviceName(newDeviceInfo, namingStyle)] = newDeviceInfo
@@ -245,12 +253,15 @@ func deduceVfIdx(sysfsDriverDir string, parentDBDF string, vfDBDF string) (uint6
 	return 0, fmt.Errorf("could not find PF %v symlink to VF %v", parentDBDF, vfDBDF)
 }
 
-// Return the amount of local memory the GPU has in MiB from libxpum discovery results.
-func getLocalMemoryAmountMiB(pciAddress string) uint64 {
-	if deviceDetails, found := xpuDeviceDetails[pciAddress]; found {
-		return deviceDetails.MemoryMiB
+// Return the amount of local memory the GPU has in MiB.
+func getLocalMemoryAmountMiB(cardIdx uint64, driver string) (uint64, error) {
+	klog.V(5).Infof("Getting local memory for card%d with driver %v", cardIdx, driver)
+	switch driver {
+	case device.SysfsXeDriverName:
+		return GetXeDeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, device.DevfsDriPath), device.DevfsDriPath, fmt.Sprintf("card%d", cardIdx)))
+	case device.SysfsI915DriverName:
+		return GetI915DeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, device.DevfsDriPath), device.DevfsDriPath, fmt.Sprintf("card%d", cardIdx)))
 	}
-	klog.Warningf("missing libxpum info for device %v: ignoring local memory if any", pciAddress)
-	klog.V(5).Infof("xpuDeviceDetails: %+v", xpuDeviceDetails)
-	return 0
+
+	return 0, fmt.Errorf("unknown driver %v, cannot query local memory", driver)
 }

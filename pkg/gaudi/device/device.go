@@ -38,6 +38,7 @@ var (
 		"0x1060": "Gaudi3",
 		"0x1061": "Gaudi3",
 		"0x1062": "Gaudi3",
+		"0x1063": "Gaudi3",
 	}
 )
 
@@ -90,6 +91,8 @@ type DeviceInfo struct {
 	ModuleIdx  uint64 `json:"moduleidx"`  // OAM slot number, needed for Habana Runtime to set networking
 	PCIRoot    string `json:"pciroot"`    // PCI Root complex ID
 	UVerbsIdx  uint64 `json:"uverbsidx"`  // InfiniBand device uverbs ID
+	Serial     string `json:"serial"`     // Serial number obtained through HLML library
+	Healthy    bool   `json:"healthy"`    // True if device is usable, false otherwise
 }
 
 func (g DeviceInfo) CDIName() string {
@@ -121,9 +124,9 @@ func (g *DevicesInfo) DeepCopy() DevicesInfo {
 }
 
 func GetAccelDevfsPath() string {
-	return filepath.Join(helpers.GetDevRoot(helpers.DevfsEnvVarName, DevfsAccelPath), DevfsAccelPath)
+	return filepath.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, DevfsAccelPath), DevfsAccelPath)
 }
 
 func GetInfinibandDevfsPath() string {
-	return filepath.Join(helpers.GetDevRoot(helpers.DevfsEnvVarName, DevfsInfiniBandPath), DevfsInfiniBandPath)
+	return filepath.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, DevfsInfiniBandPath), DevfsInfiniBandPath)
 }

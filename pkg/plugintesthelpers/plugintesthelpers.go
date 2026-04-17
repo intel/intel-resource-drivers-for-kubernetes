@@ -97,7 +97,7 @@ func CleanupTest(t *testing.T, testname string, testRoot string) {
 }
 
 func NewMonitoringClaim(claimNs, claimName, claimUID, requestName, driverName, pool string, allocatedDevices []string) *resourcev1.ResourceClaim {
-	claim := NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, allocatedDevices)
+	claim := NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, allocatedDevices, true)
 	claim.Spec.Devices.Requests[0].Exactly.AdminAccess = &[]bool{true}[0]
 	claim.Spec.Devices.Requests[0].Exactly.AllocationMode = "All"
 
@@ -108,14 +108,15 @@ func NewMonitoringClaim(claimNs, claimName, claimUID, requestName, driverName, p
 // See: https://pkg.go.dev/k8s.io/api/resource/v1#DeviceRequest
 // TODO: Test also >1 Count and different AlloctionModes + Selectors.
 // See: https://pkg.go.dev/k8s.io/api/resource/v1#ExactDeviceRequest
-func NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool string, allocatedDevices []string) *resourcev1.ResourceClaim {
+func NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool string, allocatedDevices []string, adminAccess bool) *resourcev1.ResourceClaim {
 	allocationResults := []resourcev1.DeviceRequestAllocationResult{}
 	for _, deviceUID := range allocatedDevices {
 		newDevice := resourcev1.DeviceRequestAllocationResult{
-			Device:  deviceUID,
-			Request: requestName,
-			Driver:  driverName,
-			Pool:    pool,
+			Device:      deviceUID,
+			Request:     requestName,
+			Driver:      driverName,
+			Pool:        pool,
+			AdminAccess: &adminAccess,
 		}
 		allocationResults = append(allocationResults, newDevice)
 	}
@@ -152,7 +153,7 @@ func NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool string
 }
 
 func NewClaimWithAlienDevice(claimNs, claimName, claimUID, requestName, driverName, pool string, allocatedDevices []string) *resourcev1.ResourceClaim {
-	claim := NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, allocatedDevices)
+	claim := NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, allocatedDevices, false)
 
 	alienDevice := resourcev1.DeviceRequestAllocationResult{
 		Device:  "numberOne",

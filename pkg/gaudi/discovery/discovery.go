@@ -97,9 +97,18 @@ func scanDevicesFromDriverDirFiles(driverDirFiles []os.DirEntry, sysfsDriverDir 
 			Model:      deviceId,
 			DeviceIdx:  deviceIdx,
 			ModuleIdx:  moduleIdx,
-			PCIRoot:    helpers.DeterminePCIRoot(driverDeviceDir),
 			UVerbsIdx:  uverbsIdx,
+			Healthy:    true,
 		}
+
+		linkSource := path.Join(sysfsDriverDir, devicePCIAddress)
+		pciRoot, err := helpers.DeterminePCIRoot(linkSource)
+		if err != nil {
+			klog.Warningf("could not detect PCI root complex for %v: %v", devicePCIAddress, err)
+		} else {
+			newDeviceInfo.PCIRoot = pciRoot
+		}
+
 		// Set user-friendly ModelName field.
 		newDeviceInfo.SetModelName()
 
