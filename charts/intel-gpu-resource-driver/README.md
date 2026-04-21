@@ -17,6 +17,11 @@ helm install \
 ```
 
 > [!NOTE]
+> Starting v0.10.0, [XPUM Daemon](https://github.com/intel/xpumanager/tree/v2.x/xpumd) is used for health monitoring and devices' details discovery.
+> It is not currently part of this chart, and needs to be installed separately.
+
+
+> [!NOTE]
 > For Kubernetes clusters using [Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/),
 > pre-create the namespace with the respective label allowing to use HostPath Volumes.
 
@@ -46,12 +51,14 @@ helm show values oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel
 
 You may also run `helm show values` on this chart's dependencies for additional options.
 
-| Key | Type | Default |
-|-----|------|---------|
-| image.repository | string | `intel` |
-| image.name | string | `"intel-gpu-resource-driver"` |
-| image.pullPolicy | string | `"IfNotPresent"` |
-| image.tag | string | `"v0.10.0"` |
+| Key | Type | Default | Comment |
+|-----|------|---------|---------|
+| image.repository | string | `intel` ||
+| image.name | string | `"intel-gpu-resource-driver"` ||
+| image.pullPolicy | string | `"IfNotPresent"` ||
+| image.tag | string | `"v0.10.1"` ||
+| kubeletPlugin.healthMonitoring.enabled | bool | true | Enable (default) GPU details discovery method. Also, [health monitoring](../../doc/gpu/USAGE.md#health-monitoring-support). Requires [xpumd](https://github.com/intel/xpumanager/tree/v2.x/xpumd) |
+| kubeletPlugin.privileged | bool | false | Enable alternative method for discovering GPU details when health monitoring is disabled |
 
 ## Deploying to RedHat OpenShift Container Platform
 

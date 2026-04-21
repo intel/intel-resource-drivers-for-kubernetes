@@ -4,14 +4,26 @@
 - Container runtime needs to support CDI:
   - CRI-O v1.23.0 or newer
   - Containerd v1.7 or newer with CDI enabled
-  - Optional (Recommended): [XPUM Daemon](https://github.com/intel/xpumanager/blob/v2.x/xpumd/charts/xpumd/README.md) - can be installed after Intel GPU DRA driver.
+- Optional (recommended): [XPUM Daemon](https://github.com/intel/xpumanager/tree/v2.x/xpumd) (`xpumd`) is required for health monitoring and non-privileged discovery mode. It  can be installed ([Helm chart](https://github.com/intel/xpumanager/blob/v2.x/xpumd/charts/xpumd/README.md)) after Intel GPU DRA driver.
 
 ## Deploy resource-driver
+
+### Discovery modes
+
+There are three modes of device details discovery:
+- **non-privileged, with xpumd (Recommended)**: the DRA driver publishes the `ResourceSlice` with zero `memory` attribute initially, later when the xpumd is deployed and reports device details (e.g. GPU memory size) - the `ResourceSlice` is updated with populated device attributes.
+- **privileged, without xpumd**: the DRA driver queries the device details (e.g. memory size) directly from the GPU kernel driver, and announces them in `ResourceSlice` with all the available attributes populated. The xpumd is not necessary in this case.
+- **non-privileged, without xpumd**: the DRA driver has no source of device details (e.g. memory), the devices are announced in `ResourceSlice` as-is, without details - it is still possible to use the devices, but selectors in `ResourceClaim` should take into account missing attributes values.
 
 ### Helm Chart
 
 The [Intel GPU Resource Driver Helm Chart](../../charts/intel-gpu-resource-driver) is published
 as a package to GitHub OCI registry, and can be installed directly with Helm.
+
+> [!NOTE]
+> Starting from v0.10.0, [XPUM Daemon](https://github.com/intel/xpumanager/tree/v2.x/xpumd) is used for health monitoring and devices' details discovery,
+> and is enabled by default. It is not currently part of this chart, and needs to be installed separaterly.
+> XPUM Daemon can be installed either before or after the Intel GPU Resource Driver.
 
 ```console
 helm install \
@@ -27,7 +39,7 @@ See [details](../../charts/intel-gpu-resource-driver/README.md) in the chart dir
 ```bash
 kubectl apply -k 'https://github.com/intel/intel-resource-drivers-for-kubernetes/deployments/gpu?ref=<RELEASE_VERSION>'
 ```
-Example RELEASE_VERSION: `gpu-v0.10.0`.
+Example RELEASE_VERSION: `gpu-v0.10.1`.
 
 By default, the kubelet-plugin is deployed on _all_ nodes in the cluster, as no nodeSelector is defined.
 To restrict the deployment to GPU-enabled nodes, follow these steps:
@@ -56,7 +68,7 @@ The GPU DRA driver will be deployed to nodes that have such labels.
 When deploying custom resource driver image, change `image:` lines in
 [resource-driver](../../deployments/gpu/base/resource-driver.yaml) to match its location.
 
-## deployment/ directory contains all required YAMLs:
+### deployment/ directory contains all required YAMLs:
 
 * `deployments/gpu/base/device-class.yaml` - pre-defined ResourceClasses that ResourceClaims can refer to.
 * `deployments/gpu/base/namespace.yaml` - Kubernetes namespace for GPU Resource Driver.
@@ -368,7 +380,7 @@ Unlike with normal GPU ResourceClaims:
 
 Starting from v0.10.0 GPU DRA driver supports health monitoring with `-m` command-line parameter
 (disabled in default deployments/ configuration, enabled by default in the [Helm chart](../../charts/intel-gpu-resource-driver/))
-through [XPUM Daemon](https://github.com/intel/xpumanager/xpumd). When it deems GPU accelerator as unhealthy,
+through [XPUM Daemon](https://github.com/intel/xpumanager/tree/v2.x/xpumd). When it deems GPU accelerator as unhealthy,
 `health` field for corresponding device in `ResourceSlice` is set as `false`. Additionally, if `DRADeviceTaints`
 feature gate is enabled in the cluster, health category [DeviceTaint](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/#device-taints-and-tolerations) will be added to the unhealthy device's entry in `ResourceSlice`, preventing
 workload Pods from using such GPU unless they have toleration specified in the `ResourceClaim`.
