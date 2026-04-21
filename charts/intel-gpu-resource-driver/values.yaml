@@ -13,7 +13,7 @@ image:
   repository: ghcr.io/intel/intel-resource-drivers-for-kubernetes
   name: intel-gpu-resource-driver
   pullPolicy: IfNotPresent
-  tag: "v0.10.0"
+  tag: "v0.10.1"
 
 serviceAccount:
   create: true
