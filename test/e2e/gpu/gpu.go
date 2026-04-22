@@ -151,4 +151,51 @@ func describeGpuDraDriver() {
 			})
 		}
 	})
+
+	ginkgo.Context("When GPU DRA driver is running in CRI simics", func() {
+		ginkgo.It("deploys a GPU sample application pod", func(ctx context.Context) {
+			gpuSampleAppKustomizeDir, err := utils.LocateRepoFile(gpuSampleAppKustomizationYaml)
+			if err != nil {
+				framework.Failf("unable to locate %q: %v", gpuSampleAppKustomizationYaml, err)
+			}
+			e2ekubectl.RunKubectlOrDie(gpuNamespace, "apply", "-k", filepath.Dir(gpuSampleAppKustomizeDir))
+
+			ginkgo.By("waiting the GPU sample app pod to finish successfully")
+			err = e2epod.WaitForPodSuccessInNamespaceTimeout(ctx, f.ClientSet, "gpu-sample-app", gpuNamespace, 300*time.Second)
+			gomega.Expect(err).To(gomega.BeNil(), utils.GetPodLogs(ctx, f, "gpu-sample-app", "gpu-sample-app"))
+		})
+
+		testCases := []struct {
+			testName      string
+			yamlFile      string
+			deployMsg     string
+			podName       string
+			containerName string
+		}{
+			{
+				testName:      "shares GPU between multiple containers",
+				yamlFile:      "deployments/gpu/tests/multi-container/multi-container-pod.yaml",
+				deployMsg:     "deploying pod with multiple containers sharing GPU",
+				podName:       "multi-container-test",
+				containerName: "first-container",
+			},
+		}
+
+		for _, tc := range testCases {
+			tc := tc
+			ginkgo.It(tc.testName, func(ctx context.Context) {
+				testFile, err := utils.LocateRepoFile(tc.yamlFile)
+				if err != nil {
+					framework.Failf("unable to locate test file %q: %v", tc.yamlFile, err)
+				}
+
+				ginkgo.By(tc.deployMsg)
+				e2ekubectl.RunKubectlOrDie(gpuNamespace, "apply", "-f", testFile)
+
+				ginkgo.By("waiting for " + tc.podName + " pod to finish successfully")
+				err = e2epod.WaitForPodSuccessInNamespaceTimeout(ctx, f.ClientSet, tc.podName, gpuNamespace, 300*time.Second)
+				gomega.Expect(err).To(gomega.BeNil(), utils.GetPodLogs(ctx, f, tc.podName, tc.containerName))
+			})
+		}
+	})
 }
