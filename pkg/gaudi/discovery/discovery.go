@@ -31,9 +31,9 @@ import (
 )
 
 // Detect devices from sysfs.
-func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo {
+func DiscoverDevices(sysfsRoot, namingStyle string) map[string]*device.DeviceInfo {
 
-	sysfsDriverDir := path.Join(sysfsDir, device.SysfsDriverPath)
+	sysfsDriverDir := path.Join(sysfsRoot, device.SysfsDriverPath)
 
 	devices := make(map[string]*device.DeviceInfo)
 
@@ -47,11 +47,11 @@ func DiscoverDevices(sysfsDir, namingStyle string) map[string]*device.DeviceInfo
 		return devices
 	}
 
-	return scanDevicesFromDriverDirFiles(driverDirFiles, sysfsDriverDir, namingStyle)
+	return scanDevicesFromDriverDirFiles(driverDirFiles, sysfsDriverDir, namingStyle, sysfsRoot)
 
 }
 
-func scanDevicesFromDriverDirFiles(driverDirFiles []os.DirEntry, sysfsDriverDir string, namingStyle string) map[string]*device.DeviceInfo {
+func scanDevicesFromDriverDirFiles(driverDirFiles []os.DirEntry, sysfsDriverDir, namingStyle, sysfsRoot string) map[string]*device.DeviceInfo {
 	devices := map[string]*device.DeviceInfo{}
 	for _, pciAddress := range driverDirFiles {
 		devicePCIAddress := pciAddress.Name()
@@ -71,13 +71,13 @@ func scanDevicesFromDriverDirFiles(driverDirFiles []os.DirEntry, sysfsDriverDir 
 		}
 		deviceId := strings.TrimSpace(string(deviceIdBytes))
 
-		deviceIdx, err := getAccelIndex(path.Join(driverDeviceDir, "accel"))
+		deviceIdx, err := getAccelIndex(driverDeviceDir, sysfsRoot)
 		if err != nil {
 			klog.Errorf("failed detecting device %v accel index: %v", devicePCIAddress, err)
 			continue
 		}
 
-		moduleIdx, err := getModuleId(driverDeviceDir)
+		moduleIdx, err := getModuleId(driverDeviceDir, sysfsRoot)
 		if err != nil {
 			klog.Errorf("failed detecting device %v module index: %v", devicePCIAddress, err)
 			continue
@@ -126,10 +126,12 @@ func determineDeviceName(info *device.DeviceInfo, namingStyle string) string {
 	return info.UID
 }
 
-func getAccelIndex(accelDir string) (uint64, error) {
+func getAccelIndex(driverDeviceDir, sysfsRoot string) (uint64, error) {
+	accelDir := path.Join(driverDeviceDir, "accel")
 	matches, _ := filepath.Glob(path.Join(accelDir, device.AccelDevicePattern))
 	if len(matches) != 1 {
-		return 0, fmt.Errorf("could not find matching accel device file")
+		klog.Errorf("could not find matching accel device dir in %v, falling back to virtual devices scanning", driverDeviceDir)
+		return fallbackGetAccelIndex(sysfsRoot, filepath.Base(driverDeviceDir))
 	}
 
 	accelFileName := filepath.Base(matches[0])
@@ -141,12 +143,13 @@ func getAccelIndex(accelDir string) (uint64, error) {
 	return deviceIdx, nil
 }
 
-func getModuleId(driverDeviceDir string) (uint64, error) {
+func getModuleId(driverDeviceDir, sysfsRoot string) (uint64, error) {
 	// Module index is an OAM slot number.
 	moduleIdFile := path.Join(driverDeviceDir, "module_id")
 	moduleIdBytes, err := os.ReadFile(moduleIdFile)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read device module_id file %s: %+v", moduleIdFile, err)
+		klog.Errorf("failed to read device module_id file in %v, falling back to virtual devices scanning", driverDeviceDir)
+		return fallbackGetModuleIndex(sysfsRoot, filepath.Base(driverDeviceDir))
 	}
 
 	moduleIdx, err := strconv.ParseUint(strings.TrimSpace(string(moduleIdBytes)), 10, 64)
