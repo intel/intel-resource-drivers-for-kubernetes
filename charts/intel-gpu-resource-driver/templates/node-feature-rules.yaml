@@ -21,7 +21,7 @@ spec:
         - matchFeatures:
           - feature: kernel.enabledmodule
             matchExpressions:
-              i915: {op: Exists}
+              xe: {op: Exists}
 ---
 apiVersion: nfd.k8s-sigs.io/v1alpha1
 kind: NodeFeatureRule
