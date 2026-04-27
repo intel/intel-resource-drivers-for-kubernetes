@@ -76,7 +76,7 @@ const (
 
 	// From device-plugin.
 	DefaultHabanaHookPath = "/usr/local/habana/bin/habana-container-hook"
-	DefaultGaudinetPath   = "/etc/habanalabs/gaudinet.json"
+	GaudinetPath          = "/etc/habanalabs/gaudinet.json"
 )
 
 // DeviceInfo is an internal structure type to store info about discovered device.

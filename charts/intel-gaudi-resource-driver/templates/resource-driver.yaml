@@ -38,6 +38,8 @@ spec:
           mountPath: /var/lib/kubelet/plugins
         - name: cdi
           mountPath: /etc/cdi
+        - name: etc-habanalabs
+          mountPath: /etc/habanalabs
         - name: varruncdi
           mountPath: /var/run/cdi
         # when using fake sysfs - mount at the same place as on host
@@ -58,6 +60,9 @@ spec:
       - name: plugins
         hostPath:
           path: /var/lib/kubelet/plugins
+      - name: etc-habanalabs
+        hostPath:
+          path: /etc/habanalabs
       - name: cdi
         hostPath:
           path: {{ .Values.cdi.staticPath }}

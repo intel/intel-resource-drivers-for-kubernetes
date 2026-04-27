@@ -39,6 +39,8 @@ spec:
           mountPath: /var/lib/kubelet/plugins
         - name: cdi
           mountPath: /etc/cdi
+        - name: etc-habanalabs
+          mountPath: /etc/habanalabs
         - name: varruncdi
           mountPath: /var/run/cdi
         - name: sysfs
@@ -63,6 +65,9 @@ spec:
       - name: cdi
         hostPath:
           path: /etc/cdi
+      - name: etc-habanalabs
+        hostPath:
+          path: /etc/habanalabs
       - name: varruncdi
         hostPath:
           path: /var/run/cdi

@@ -28,7 +28,6 @@ import (
 
 type GaudiFlags struct {
 	GaudiHookPath      string
-	GaudinetPath       string
 	Healthcare         bool
 	HealthcareInterval int
 }
@@ -43,7 +42,6 @@ const (
 func main() {
 	gaudiFlags := GaudiFlags{
 		GaudiHookPath:      gaudi.DefaultHabanaHookPath,
-		GaudinetPath:       gaudi.DefaultGaudinetPath,
 		Healthcare:         HealthCareFlagDefault,
 		HealthcareInterval: HealthcareIntervalFlagDefault,
 	}
@@ -55,14 +53,6 @@ func main() {
 			Value:       gaudi.DefaultHabanaHookPath,
 			Destination: &gaudiFlags.GaudiHookPath,
 			EnvVars:     []string{"GAUDI_HOOK_PATH"},
-		},
-		&cli.StringFlag{
-			Name:        "gaudinet-path",
-			Aliases:     []string{"n"},
-			Usage:       "full path to the network configuration file",
-			Value:       gaudi.DefaultGaudinetPath,
-			Destination: &gaudiFlags.GaudinetPath,
-			EnvVars:     []string{"GAUDINET_PATH"},
 		},
 		&cli.BoolFlag{
 			Name:        "health-monitoring",

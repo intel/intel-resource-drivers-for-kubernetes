@@ -79,7 +79,6 @@ func getFakeDriver(testDirs testhelpers.TestDirsType, healthcare bool) (*driver,
 		Healthcare:         healthcare,
 		HealthcareInterval: 1,
 		GaudiHookPath:      path.Join(testDirs.TestRoot, "hookbin"),
-		GaudinetPath:       path.Join(testDirs.TestRoot, "gaudinet"),
 	}
 
 	config := &helpers.Config{
