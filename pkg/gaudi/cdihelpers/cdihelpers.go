@@ -22,6 +22,8 @@ import (
 	"path"
 	"path/filepath"
 
+	coreDiscovery "k8s.io/client-go/discovery"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdiparser "tags.cncf.io/container-device-interface/pkg/parser"
@@ -209,4 +211,25 @@ func DeleteBlankDevices(cdiCache *cdiapi.Cache, claimUID string) error {
 	specName := path.Base(cdiSpec.GetPath())
 
 	return writeSpec(cdiCache, cdiSpec.Spec, specName)
+}
+
+func IsRHOCP(restClient rest.Interface) bool {
+	discoveryClient := coreDiscovery.NewDiscoveryClient(restClient)
+	apiGroups, err := discoveryClient.ServerGroups()
+	if err != nil {
+		klog.Errorf("failed to get server groups: %v", err)
+		return false
+	}
+	openShiftGroups := map[string]bool{
+		"config.openshift.io":   true,
+		"operator.openshift.io": true,
+		"security.openshift.io": true,
+		"project.openshift.io":  true,
+	}
+	for _, group := range apiGroups.Groups {
+		if _, found := openShiftGroups[group.Name]; found {
+			return true
+		}
+	}
+	return false
 }

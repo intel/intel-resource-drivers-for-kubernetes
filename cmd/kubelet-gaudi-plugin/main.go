@@ -50,7 +50,7 @@ func main() {
 			Name:        "gaudi-hook-path",
 			Aliases:     []string{"p"},
 			Usage:       "full path to the habana-container-hook",
-			Value:       gaudi.DefaultHabanaHookPath,
+			Value:       "", // Default value is set in getGaudiFlags().
 			Destination: &gaudiFlags.GaudiHookPath,
 			EnvVars:     []string{"GAUDI_HOOK_PATH"},
 		},
