@@ -12,6 +12,11 @@ spec:
         - name: sysfs
           mountPath: /sys
           $patch: delete
+        - name: etc-habanalabs
+          mountPath: /etc/habanalabs
+          $patch: delete
       volumes:
       - name: sysfs
+        $patch: delete
+      - name: etc-habanalabs
         $patch: delete

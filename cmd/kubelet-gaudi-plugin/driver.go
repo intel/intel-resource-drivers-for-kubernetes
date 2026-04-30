@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	coreclientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 
@@ -46,7 +47,7 @@ type driver struct {
 	hlmlShutdown context.CancelFunc
 }
 
-func getGaudiFlags(someFlags interface{}) (*GaudiFlags, error) {
+func getGaudiFlags(someFlags interface{}, restClient rest.Interface) (*GaudiFlags, error) {
 	gaudiFlags, OK := someFlags.(*GaudiFlags)
 	if !OK {
 		return &GaudiFlags{}, fmt.Errorf("could not parse driver flags as GaudiFlags")
@@ -59,6 +60,16 @@ func getGaudiFlags(someFlags interface{}) (*GaudiFlags, error) {
 			gaudiFlags.HealthcareInterval, HealthcareIntervalFlagMin, HealthcareIntervalFlagMax)
 	}
 
+	// Set the default gaudiHookPath based on whether cluster is vanilla or OCP.
+	if gaudiFlags.GaudiHookPath == "" {
+		if cdihelpers.IsRHOCP(restClient) {
+			gaudiFlags.GaudiHookPath = device.OCPHabanaHookPath
+		} else {
+			gaudiFlags.GaudiHookPath = device.DefaultHabanaHookPath
+		}
+		klog.V(5).Infof("Gaudi hook path is set to %v", gaudiFlags.GaudiHookPath)
+	}
+
 	return gaudiFlags, nil
 }
 
@@ -67,7 +78,7 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 	sysfsDir := helpers.GetSysfsRoot(device.SysfsDriverPath)
 	preparedClaimsFilePath := path.Join(config.CommonFlags.KubeletPluginDir, device.PreparedClaimsFileName)
 
-	gaudiFlags, err := getGaudiFlags(config.DriverFlags)
+	gaudiFlags, err := getGaudiFlags(config.DriverFlags, config.Coreclient.CoreV1().RESTClient())
 	if err != nil {
 		return nil, fmt.Errorf("getGaudiFlags: %w", err)
 	}
@@ -78,7 +89,7 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 	}
 
 	klog.V(3).Info("Creating new NodeState")
-	state, err := newNodeState(detectedDevices, config.CommonFlags.CdiRoot, preparedClaimsFilePath, config.CommonFlags.NodeName, gaudiFlags.GaudiHookPath, gaudiFlags.GaudinetPath)
+	state, err := newNodeState(detectedDevices, config.CommonFlags.CdiRoot, preparedClaimsFilePath, config.CommonFlags.NodeName, gaudiFlags.GaudiHookPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new NodeState: %v", err)
 	}

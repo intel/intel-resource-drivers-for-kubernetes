@@ -120,8 +120,8 @@ func TestGetAccelIndex(t *testing.T) {
 				}
 			}
 
-			deviceAccelDir := path.Join(testDirs.SysfsRoot, "bus/pci/drivers/habanalabs/0000:0f:00.0/accel")
-			idx, err := getAccelIndex(deviceAccelDir)
+			driverDeviceDir := path.Join(testDirs.SysfsRoot, "bus/pci/drivers/habanalabs/0000:0f:00.0")
+			idx, err := getAccelIndex(driverDeviceDir, testDirs.SysfsRoot)
 			if !tt.shouldFail && tt.expectedIdx != idx {
 				t.Errorf("%v: expected idx %v, got %v, error: %v", tt.name, tt.expectedIdx, idx, err)
 			}

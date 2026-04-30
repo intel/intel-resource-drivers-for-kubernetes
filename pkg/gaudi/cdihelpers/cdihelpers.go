@@ -18,9 +18,12 @@ package cdihelpers
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 
+	coreDiscovery "k8s.io/client-go/discovery"
+	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 	cdiparser "tags.cncf.io/container-device-interface/pkg/parser"
@@ -150,7 +153,7 @@ func writeSpec(cdiCache *cdiapi.Cache, spec *cdiSpecs.Spec, specName string) err
 // Gaudi-specific env variables that span multiple devices, and cannot be in a
 // particular Gaudi CDI device. This "blank" device is mutated before saving:
 // a CID hook entry for Gaudi NICs is added here.
-func NewBlankDevice(cdiCache *cdiapi.Cache, newDevice cdiSpecs.Device, hookPath, gaudinetPath string) error {
+func NewBlankDevice(cdiCache *cdiapi.Cache, newDevice cdiSpecs.Device, hookPath string) error {
 	vendorSpecs := cdiCache.GetVendorSpecs(device.CDIVendor)
 	if len(vendorSpecs) == 0 {
 		return fmt.Errorf("no %v CDI specs found", device.CDIVendor)
@@ -169,12 +172,14 @@ func NewBlankDevice(cdiCache *cdiapi.Cache, newDevice cdiSpecs.Device, hookPath,
 	}
 
 	// Add gaudinet mount if it exists.
-	newDevice.ContainerEdits.Mounts = []*cdiSpecs.Mount{
-		{
-			HostPath:      gaudinetPath,
-			ContainerPath: gaudinetPath,
-			Options:       []string{"bind"},
-		},
+	if _, err := os.Stat(device.GaudinetPath); err == nil {
+		newDevice.ContainerEdits.Mounts = []*cdiSpecs.Mount{
+			{
+				HostPath:      device.GaudinetPath,
+				ContainerPath: device.GaudinetPath,
+				Options:       []string{"bind"},
+			},
+		}
 	}
 
 	cdiSpec.Devices = append(cdiSpec.Devices, newDevice)
@@ -206,4 +211,25 @@ func DeleteBlankDevices(cdiCache *cdiapi.Cache, claimUID string) error {
 	specName := path.Base(cdiSpec.GetPath())
 
 	return writeSpec(cdiCache, cdiSpec.Spec, specName)
+}
+
+func IsRHOCP(restClient rest.Interface) bool {
+	discoveryClient := coreDiscovery.NewDiscoveryClient(restClient)
+	apiGroups, err := discoveryClient.ServerGroups()
+	if err != nil {
+		klog.Errorf("failed to get server groups: %v", err)
+		return false
+	}
+	openShiftGroups := map[string]bool{
+		"config.openshift.io":   true,
+		"operator.openshift.io": true,
+		"security.openshift.io": true,
+		"project.openshift.io":  true,
+	}
+	for _, group := range apiGroups.Groups {
+		if _, found := openShiftGroups[group.Name]; found {
+			return true
+		}
+	}
+	return false
 }

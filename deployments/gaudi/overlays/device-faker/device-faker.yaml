@@ -14,7 +14,7 @@ spec:
         # which allows proper fake root cleanup.
         restartPolicy: Always
         # TODO: switch to CI image when public CI is in place
-        image: registry.local/intel-device-faker:v0.5.0
+        image: registry.local/intel-device-faker:v0.6.0
         imagePullPolicy: Always
         command: ["/device-faker", "gaudi", "-t", "/opt/templates/gaudi-template.json", "-r", "-d", "/tmp/gaudi-fake-root", "-c", "-p"]
         volumeMounts:
@@ -29,7 +29,7 @@ spec:
       containers:
       - name: kubelet-plugin
         # Disable health monitoring, HLML will fail to initialize otherwise.
-        command: ["/kubelet-gaudi-plugin", "-v", "5", "-n", "/tmp/gaudi-fake-root/gaudinet", "-p", "/tmp/gaudi-fake-root/hookbin", "-m=0"]
+        command: ["/kubelet-gaudi-plugin", "-v", "5", "-p", "/tmp/gaudi-fake-root/hookbin", "-m=0"]
         # TODO: change to :devel when public CI is in place
         image: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver:latest
         # TODO: pull policy is needed when :devel is used instead of :latest
@@ -49,6 +49,10 @@ spec:
         - name: gaudi-fake-root
           mountPath: /tmp/gaudi-fake-root/dev
           subPath: dev
+        # For gaudinet.json file
+        - name: gaudi-fake-root
+          mountPath: /etc/habanalabs
+          readOnly: true
         # Host dir for system's dynamic CDI dir. Containerd & CRI-O default value.
         - name: dynamic-cdi
           mountPath: /var/run/cdi

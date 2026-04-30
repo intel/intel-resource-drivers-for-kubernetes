@@ -43,7 +43,7 @@ type nodeState struct {
 	gaudiNetPath  string
 }
 
-func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot, preparedClaimsFilePath, nodeName, gaudiHookPath, gaudiNetPath string) (*nodeState, error) {
+func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot, preparedClaimsFilePath, nodeName, gaudiHookPath string) (*nodeState, error) {
 	for ddev := range detectedDevices {
 		klog.V(3).Infof("new device: %+v", ddev)
 	}
@@ -84,7 +84,6 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot, prepar
 			NodeName:               nodeName,
 		},
 		gaudiHookPath: gaudiHookPath,
-		gaudiNetPath:  gaudiNetPath,
 	}
 
 	allocatableDevices, ok := state.Allocatable.(map[string]*device.DeviceInfo)
@@ -178,7 +177,7 @@ func (s *nodeState) cdiHabanaEnvVar(claimUID string, visibleDevices string, visi
 		},
 	}
 
-	if err := cdihelpers.NewBlankDevice(s.CdiCache, newDevice, s.gaudiHookPath, s.gaudiNetPath); err != nil {
+	if err := cdihelpers.NewBlankDevice(s.CdiCache, newDevice, s.gaudiHookPath); err != nil {
 		return fmt.Errorf("could not add CDI device into CDI registry: %v", err)
 	}
 

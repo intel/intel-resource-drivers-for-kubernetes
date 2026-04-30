@@ -75,8 +75,9 @@ const (
 	UverbsMissingIdx = 1024
 
 	// From device-plugin.
-	DefaultHabanaHookPath = "/usr/local/habana/bin/habana-container-hook"
-	DefaultGaudinetPath   = "/etc/habanalabs/gaudinet.json"
+	DefaultHabanaHookPath = "/usr/bin/habana-container-hook"
+	OCPHabanaHookPath     = "/usr/local/habana/bin/habana-container-hook"
+	GaudinetPath          = "/etc/habanalabs/gaudinet.json"
 )
 
 // DeviceInfo is an internal structure type to store info about discovered device.
