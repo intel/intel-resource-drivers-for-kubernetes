@@ -47,6 +47,11 @@ kubeletPlugin:
       effect: "NoSchedule"
   affinity: {}
 
+  # Health monitoring configuration
+  healthMonitoring:
+    # Provide -m flag to kubelet-plugin to actively monitor Gaudi health via HLML.
+    enabled: true
+
 cdi:
   staticPath: /etc/cdi
   dynamicPath: /var/run/cdi
