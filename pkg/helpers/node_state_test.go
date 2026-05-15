@@ -97,7 +97,7 @@ func TestWritePreparedClaimsToFile(t *testing.T) {
 				},
 			},
 			expectedError:  false,
-			expectedOutput: `{"claim1":{"Devices":[{"DeviceName":"device1","PoolName":"","Requests":null,"CDIDeviceIDs":null,"ShareID":null}], "Err":null}}`,
+			expectedOutput: `{"claim1":{"Devices":[{"DeviceName":"device1","Metadata":null,"PoolName":"","Requests":null,"CDIDeviceIDs":null,"ShareID":null}], "Err":null}}`,
 		},
 		{
 			name:           "EmptyClaims",
