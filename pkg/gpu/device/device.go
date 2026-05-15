@@ -132,6 +132,10 @@ var ModelDetails = map[string]map[string]string{
 		"model":  "Raptor Lake-P",
 		"family": "Iris Xe",
 	},
+	"0x46a6": {
+		"model":  "Alder Lake-P",
+		"family": "Iris Xe",
+	},
 }
 
 // DeviceInfo is an internal structure type to store info about discovered device.
