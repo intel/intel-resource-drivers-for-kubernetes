@@ -14,7 +14,7 @@
 
 ARG LOCAL_LICENSES
 
-FROM golang:1.25.8@sha256:dfae680962532eeea67ab297f1166c2c4e686edb9a8f05f9d02d96fc9191833e AS build
+FROM golang:1.26.3@sha256:6b3de2e6b4ccfc5fae404042cb1a025b1de13c73458e50455e3143bf12e98eae AS build
 WORKDIR /build
 COPY . .
 
