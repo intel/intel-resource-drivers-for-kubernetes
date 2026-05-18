@@ -92,6 +92,26 @@ var ModelDetails = map[string]map[string]string{
 		"model":  "A40/A50",
 		"family": "Arc Pro",
 	},
+	"0xe20b": {
+		"model":  "B580",
+		"family": "Arc",
+	},
+	"0xe20c": {
+		"model":  "B570",
+		"family": "Arc",
+	},
+	"0xe212": {
+		"model":  "Pro B50",
+		"family": "Arc Pro",
+	},
+	"0xe222": {
+		"model":  "Pro B65",
+		"family": "Arc Pro",
+	},
+	"0xe223": {
+		"model":  "Pro B70",
+		"family": "Arc Pro",
+	},
 	"0x56c0": {
 		"model":  "Flex 170",
 		"family": "Data Center Flex",
@@ -127,6 +147,10 @@ var ModelDetails = map[string]map[string]string{
 	"0x0bdb": {
 		"model":  "Max 1100",
 		"family": "Data Center Max",
+	},
+	"0x4626": {
+		"model":  "Alder Lake-P",
+		"family": "Iris Xe",
 	},
 	"0xa7a0": {
 		"model":  "Raptor Lake-P",
