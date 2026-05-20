@@ -150,7 +150,7 @@ func TestSetModelInfo(t *testing.T) {
 				Model: "0x56a0",
 			},
 			expectedName:   "A770",
-			expectedFamily: "Arc",
+			expectedFamily: "Arc A-Series",
 		},
 		{
 			name: "Unknown model ID",
