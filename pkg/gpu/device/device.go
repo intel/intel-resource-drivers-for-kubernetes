@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
@@ -36,11 +37,15 @@ const (
 
 	// driver.sysfsI915Dir and driver.sysfsDRMDir are sysfsI915path and sysfsDRMpath
 	// respectively prefixed with $SYSFS_ROOT.
-	SysfsPCIBuspath     = "bus/pci/drivers/"
-	SysfsI915DriverName = "i915"
-	SysfsXeDriverName   = "xe"
-	SysfsDRMpath        = "class/drm/"
-	SysfsMEIpath        = "class/mei/"
+	SysfsPCIDevicesPath   = "bus/pci/devices"
+	SysfsPCIDriversPath   = "bus/pci/drivers"
+	SysfsI915DriverName   = "i915"
+	SysfsXeDriverName     = "xe"
+	SysfsVFIODriverName   = "vfio-pci"
+	SysfsXeVFIODriverName = "xe-vfio-pci"
+	SysfsDRMpath          = "class/drm/"
+	SysfsMEIpath          = "class/mei/"
+	DevfsVFIOPath         = "vfio"
 
 	CDIVendor   = "intel.com"
 	CDIGPUClass = "gpu"
@@ -51,6 +56,8 @@ const (
 	CDIMEIKind  = CDIVendor + "/" + CDIMEIClass
 	DriverName  = CDIGPUClass + "." + CDIVendor
 
+	VFIODeviceClassName = "gpu-vfio" + "." + CDIVendor
+
 	UIDLength = len("0000-00-00-0-0x0000")
 
 	PreparedClaimsFileName = "preparedClaims.json"
@@ -59,9 +66,18 @@ const (
 	GpuDeviceType      = "gpu"
 	VfDeviceType       = "vf"
 
-	HealthUnknown   = "Unknown"
-	HealthHealthy   = "Healthy"
-	HealthUnhealthy = "Unhealthy"
+	DriverChangeDelay = 500 * time.Millisecond
+
+	HealthUnknown                = "Unknown"
+	HealthHealthy                = "Healthy"
+	HealthUnhealthy              = "Unhealthy"
+	HealthStatusDeviceAbsent     = "DeviceAbsent"
+	HealthStatusUnexpectedDriver = "UnexpectedDriver"
+
+	PCIVendorId       = "0x8086"
+	PCIVendorIdDec    = "8086"
+	PCIVGAClassID     = "0x030000"
+	PCIDisplayClassID = "0x038000"
 )
 
 // VfAttributeFiles is a list of filenames that needs to be configured for a VF
@@ -89,7 +105,7 @@ type DeviceInfo struct {
 	RenderDName   string            `json:"renderdname"`   // renderD device name (e.g. renderD128 for /dev/dri/renderD128)
 	MemoryMiB     uint64            `json:"memorymib"`     // in MiB
 	Millicores    uint64            `json:"millicores"`    // [0-1000] where 1000 means whole GPU.
-	DeviceType    string            `json:"devicetype"`    // gpu, vf, any
+	DeviceType    string            `json:"devicetype"`    // gpu, vf
 	MaxVFs        uint64            `json:"maxvfs"`        // if enabled, non-zero maximum amount of VFs
 	ParentUID     string            `json:"parentuid"`     // uid of gpu device where VF is
 	VFProfile     string            `json:"vfprofile"`     // name of the SR-IOV profile
@@ -100,6 +116,8 @@ type DeviceInfo struct {
 	PCIRoot       string            `json:"pciroot"`       // PCI Root of the device
 	Health        string            `json:"health"`        // Overall health status of the device. One of: Unknown, Healthy, Unhealthy.
 	HealthStatus  map[string]string `json:"healthstatus"`  // Detailed per-category health status information
+	VFIODevice    string            `json:"vfiodevice"`    // VFIO device name, e.g. vfio0
+	IOMMUGroup    string            `json:"iommugroup"`    // IOMMU group of the device, e.g. 12
 }
 
 func (g DeviceInfo) CDIName() string {
@@ -144,13 +162,27 @@ func (g *DeviceInfo) SetModelInfo() {
 	g.FamilyName = "Unknown"
 }
 
-// IsDRMBound checks if the device is currently bound to its original DRM driver.
+// IsDRMBound checks if the device is currently bound to its a DRM driver.
 func (g *DeviceInfo) IsDRMBound() bool {
-	return g.CurrentDriver == g.Driver
+	return g.CurrentDriver == SysfsI915DriverName || g.CurrentDriver == SysfsXeDriverName
+}
+
+// IsVFIOBound checks if the device is currently bound to any VFIO kernel driver.
+func (g *DeviceInfo) IsVFIOBound() bool {
+	return g.CurrentDriver == SysfsVFIODriverName || g.CurrentDriver == SysfsXeVFIODriverName
 }
 
 // DevicesInfo is a dictionary with DeviceInfo.uid being the key.
 type DevicesInfo map[string]*DeviceInfo
+
+func (g DevicesInfo) GetDeviceByCDIName(cdiName string) *DeviceInfo {
+	for _, device := range g {
+		if device.CDIName() == cdiName {
+			return device
+		}
+	}
+	return nil
+}
 
 func (g *DevicesInfo) DeepCopy() DevicesInfo {
 	devicesInfoCopy := DevicesInfo{}
@@ -162,4 +194,8 @@ func (g *DevicesInfo) DeepCopy() DevicesInfo {
 
 func GetDriDevPath() string {
 	return filepath.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, DevfsDriPath), DevfsDriPath)
+}
+
+func IsGPUClass(classId string) bool {
+	return classId == PCIVGAClassID || classId == PCIDisplayClassID
 }

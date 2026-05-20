@@ -24,14 +24,15 @@ func TestConsumeXPUMDDeviceDetails(t *testing.T) {
 
 	testDevices := gpudevice.DevicesInfo{
 		"0000-00-02-0-0x56c0": {
-			UID:         "0000-00-02-0-0x56c0",
-			Model:       "0x56c0",
-			DeviceType:  "gpu",
-			Driver:      "i915",
-			CardName:    "card0",
-			RenderDName: "renderD128",
-			MemoryMiB:   8192,
-			MaxVFs:      16,
+			UID:           "0000-00-02-0-0x56c0",
+			Model:         "0x56c0",
+			DeviceType:    "gpu",
+			Driver:        "i915",
+			CurrentDriver: "i915",
+			CardName:      "card0",
+			RenderDName:   "renderD128",
+			MemoryMiB:     8192,
+			MaxVFs:        16,
 		},
 	}
 	if err := fakesysfs.FakeSysFsGpuContents(testDirs.SysfsRoot, testDirs.DevfsRoot, testDevices, false); err != nil {
@@ -46,7 +47,10 @@ func TestConsumeXPUMDDeviceDetails(t *testing.T) {
 
 	//nolint:forcetypeassert // We want the code to panic if our assumption turns out to be wrong.
 	allocatable := drv.state.Allocatable.(map[string]*gpudevice.DeviceInfo)
-	dev := allocatable["0000-00-02-0-0x56c0"]
+	dev, found := allocatable["0000-00-02-0-0x56c0"]
+	if !found {
+		t.Fatal("device 0000-00-02-0-0x56c0 not found in allocatable")
+	}
 	// Health becomes gpudevice.HealthUnknown when health monitoring is not enabled.
 	dev.Health = gpudevice.HealthHealthy
 

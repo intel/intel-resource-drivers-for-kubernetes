@@ -39,7 +39,10 @@ var perDeviceIdTilesDirs = map[string][]string{
 	"0x0bd9": {"gt0"}, // Ponte Vecchio XT (1 Tile) [Data Center GPU Max 1100] 48G
 	"0x0bda": {"gt0"}, // Ponte Vecchio XT (1 Tile) [Data Center GPU Max 1100] 48G
 	"0x0bdb": {"gt0"}, // Ponte Vecchio XT (1 Tile) [Data Center GPU Max 1100] 48G
-	"0x0000": {},      // No-tile dummy to simulate discovery issues
+
+	"0xe211": {"gt0"}, // Arc Pro B60
+
+	"0x0000": {}, // No-tile dummy to simulate discovery issues
 }
 
 // deduceHighestCardAndRenderDIndexes returns current highest DRM card and renderD indexes.
@@ -127,13 +130,17 @@ func createFakeSysfsForVFs(prelimIovDir string, gpu *device.DeviceInfo) error {
 	return nil
 }
 
-func fakeGpuDRI(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, i915DevDir string, realDevices bool) error {
+func fakeGpuDRI(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, realDevices bool) error {
+	if gpu.CardName == "" {
+		return fmt.Errorf("CardName must be specified for DRI-bound GPU %v", gpu.UID)
+	}
 
-	if err := os.MkdirAll(path.Join(i915DevDir, "drm", gpu.CardName), 0750); err != nil {
+	pciDeviceDir := path.Join(sysfsRoot, device.SysfsPCIDevicesPath, gpu.PCIAddress)
+	if err := os.MkdirAll(path.Join(pciDeviceDir, "drm", gpu.CardName), 0750); err != nil {
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
 	}
 	if gpu.RenderDName != "" { // some GPUs do not have render device
-		if err := os.MkdirAll(path.Join(i915DevDir, "drm", gpu.RenderDName), 0750); err != nil {
+		if err := os.MkdirAll(path.Join(pciDeviceDir, "drm", gpu.RenderDName), 0750); err != nil {
 			return fmt.Errorf("creating fake sysfs, err: %v", err)
 		}
 	}
@@ -145,27 +152,13 @@ func fakeGpuDRI(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, i915
 	}
 
 	drmDirLinkSource := path.Join(sysfsDRMClassDir, gpu.CardName)
-	drmDirLinkTarget := path.Join(i915DevDir, "drm", gpu.CardName)
-
+	drmDirLinkTarget := path.Join(pciDeviceDir, "drm", gpu.CardName)
 	if err := os.Symlink(drmDirLinkTarget, drmDirLinkSource); err != nil {
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
 	}
 
-	localMemoryStr := fmt.Sprint(gpu.MemoryMiB * 1024 * 1024)
-	if writeErr := helpers.WriteFile(path.Join(drmDirLinkTarget, "lmem_total_bytes"), localMemoryStr); writeErr != nil {
-		return fmt.Errorf("creating fake sysfs, err: %v", writeErr)
-	}
-
-	if err := os.MkdirAll(path.Join(devfsRoot, "dri/by-path"), 0750); err != nil {
-		return fmt.Errorf("creating card symlink, err: %v", err)
-	}
-
 	// devfs setup
-	if err := fakeGpuDRIDevices(devfsRoot, gpu.CardName, gpu.RenderDName, realDevices); err != nil {
-		return fmt.Errorf("creating fake devfs: %v", err)
-	}
-
-	return createDevfsSymlinks(devfsRoot, gpu.CardName, gpu.RenderDName, gpu.PCIAddress)
+	return fakeGpuDRIDevices(devfsRoot, gpu.CardName, gpu.RenderDName, gpu.PCIAddress, realDevices)
 }
 
 func fakeGpuMEI(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, realDevices bool) error {
@@ -207,6 +200,49 @@ func fakeGpuMEI(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, real
 	return nil
 }
 
+func fakeGpuVFIO(sysfsRoot string, devfsRoot string, gpu *device.DeviceInfo, realDevices bool) error {
+	if gpu.VFIODevice == "" || gpu.IOMMUGroup == "" {
+		return fmt.Errorf("VFIO device and IOMMU group must be specified for VFIO-bound GPU %v", gpu.UID)
+	}
+
+	pciDeviceDir := path.Join(sysfsRoot, device.SysfsPCIDevicesPath, gpu.PCIAddress)
+	if err := os.MkdirAll(path.Join(pciDeviceDir, "vfio-dev", gpu.VFIODevice), 0750); err != nil {
+		return fmt.Errorf("creating fake sysfs, err: %v", err)
+	}
+
+	iommuDirLinkSource := path.Join(path.Join(pciDeviceDir, "iommu"))
+	iommuDirLinkTarget := "../../virtual/iommu/dmar1"
+	if err := os.Symlink(iommuDirLinkTarget, iommuDirLinkSource); err != nil {
+		return fmt.Errorf("creating fake sysfs, err: %v", err)
+	}
+
+	iommuGroupDirLinkSource := path.Join(path.Join(pciDeviceDir, "iommu_group"))
+	iommuGroupDirLinkTarget := fmt.Sprintf("../../../kernel/iommu_groups/%v", gpu.IOMMUGroup)
+	if err := os.Symlink(iommuGroupDirLinkTarget, iommuGroupDirLinkSource); err != nil {
+		return fmt.Errorf("creating fake sysfs, err: %v", err)
+	}
+
+	// VFIO setup
+	sysfsVFIOClassDir := path.Join(sysfsRoot, "class/vfio")
+	if err := os.MkdirAll(sysfsVFIOClassDir, 0750); err != nil {
+		return fmt.Errorf("creating directory %v: %v", sysfsVFIOClassDir, err)
+	}
+
+	sysfsDevicesVirtualVFIODir := path.Join(sysfsRoot, "devices/virtual/vfio", gpu.VFIODevice)
+	if err := os.MkdirAll(sysfsDevicesVirtualVFIODir, 0750); err != nil {
+		return fmt.Errorf("creating directory %v: %v", sysfsDevicesVirtualVFIODir, err)
+	}
+
+	vfioDirLinkSource := path.Join(sysfsVFIOClassDir, gpu.VFIODevice)
+	vfioDirLinkTarget := fmt.Sprintf("../../devices/virtual/vfio/%v", gpu.VFIODevice)
+	if err := os.Symlink(vfioDirLinkTarget, vfioDirLinkSource); err != nil {
+		return fmt.Errorf("creating fake sysfs, err: %v", err)
+	}
+
+	// devfs setup
+	return fakeGpuVFIODevices(devfsRoot, gpu.VFIODevice, gpu.IOMMUGroup, realDevices)
+}
+
 func createRelativeSymlink(targetPath string, linkPath string) error {
 	relTarget, err := filepath.Rel(path.Dir(linkPath), targetPath)
 	if err != nil {
@@ -223,7 +259,7 @@ func createRelativeSymlink(targetPath string, linkPath string) error {
 	return nil
 }
 
-func createDevfsSymlinks(devfsRoot, cardName, renderdName, pciAddress string) error {
+func createDevfsBypathSymlinks(devfsRoot, cardName, renderdName, pciAddress string) error {
 	if err := os.Symlink(fmt.Sprintf("../%v", cardName), path.Join(devfsRoot, "dri/by-path/", fmt.Sprintf("pci-%v-card", pciAddress))); err != nil {
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
 	}
@@ -241,7 +277,7 @@ func createDevfsSymlinks(devfsRoot, cardName, renderdName, pciAddress string) er
 // fakeSysFsGpuDevices creates PCI and DRM devices layout in existing fake sysfsRoot.
 // This will be called when fake sysfs is being created and when more devices added
 // to existing fake sysfs.
-func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.DevicesInfo, realDevices bool) error {
+func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.DevicesInfo, realDevices bool) error { // nolint:cyclop
 	for _, gpu := range gpus {
 		if gpu.PCIAddress == "" {
 			gpu.PCIAddress, _ = helpers.PciInfoFromDeviceUID(gpu.UID)
@@ -260,40 +296,60 @@ func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.Devices
 			return fmt.Errorf("creating fake sysfs PCI driver dir, err: %v", err)
 		}
 
-		linkDst := fmt.Sprintf("../../../../devices/%v/%v", gpu.PCIRoot, gpu.PCIAddress)
-		if err := os.Symlink(linkDst, driverDeviceDir); err != nil {
+		driverDeviceLinkDst := fmt.Sprintf("../../../../devices/%v/%v", gpu.PCIRoot, gpu.PCIAddress)
+		if err := os.Symlink(driverDeviceLinkDst, driverDeviceDir); err != nil {
 			return fmt.Errorf("creating fake sysfs PCI driver device symlink to PCI device, err: %v", err)
 		}
 
-		if writeErr := helpers.WriteFile(path.Join(driverDeviceDir, "device"), gpu.Model); writeErr != nil {
-			return fmt.Errorf("creating fake sysfs driver device contents, err: %v", writeErr)
+		fileWrites := map[string]string{
+			path.Join(driverDeviceDir, "device"): gpu.Model,
+			path.Join(driverDeviceDir, "vendor"): device.PCIVendorId,
+			path.Join(driverDeviceDir, "class"):  device.PCIVGAClassID,
+			path.Join(pciDriverDir, "bind"):      "",
+			path.Join(pciDriverDir, "unbind"):    "",
 		}
 
-		if err := fakeGpuDRI(sysfsRoot, devfsRoot, gpu, driverDeviceDir, realDevices); err != nil {
-			return fmt.Errorf("creating fake sysfs DRI devices, err: %v", err)
-		}
-
-		if gpu.DeviceType == device.GpuDeviceType {
-			if err := fakeGpuMEI(sysfsRoot, devfsRoot, gpu, realDevices); err != nil {
-				return fmt.Errorf("creating fake mei sysfs: %v", err)
+		for filePath, content := range fileWrites {
+			if writeErr := helpers.WriteFile(filePath, content); writeErr != nil {
+				return fmt.Errorf("creating fake sysfs file %v content, err: %v", filePath, writeErr)
 			}
 		}
 
-		if writeErr := helpers.WriteFile(path.Join(pciDriverDir, "bind"), ""); writeErr != nil {
-			return fmt.Errorf("writing PCI device file: %v", writeErr)
+		driverLinkDst := fmt.Sprintf("../../../bus/pci/drivers/%v", gpu.Driver)
+		driverLinkSrc := path.Join(driverDeviceDir, "driver")
+		if err := os.Symlink(driverLinkDst, driverLinkSrc); err != nil {
+			return fmt.Errorf("creating fake sysfs device driver symlink, err: %v", err)
 		}
 
+		if gpu.IsDRMBound() {
+			if err := fakeGpuDRI(sysfsRoot, devfsRoot, gpu, realDevices); err != nil {
+				return fmt.Errorf("creating fake sysfs DRI devices, err: %v", err)
+			}
+			if gpu.DeviceType == device.GpuDeviceType {
+				if err := fakeGpuMEI(sysfsRoot, devfsRoot, gpu, realDevices); err != nil {
+					return fmt.Errorf("creating fake mei sysfs: %v", err)
+				}
+			}
+		} else if gpu.IsVFIOBound() {
+			if err := fakeGpuVFIO(sysfsRoot, devfsRoot, gpu, realDevices); err != nil {
+				return fmt.Errorf("creating fake sysfs VFIO devices, err: %v", err)
+			}
+		}
 	}
 
 	return fakeSysfsSRIOVContents(sysfsRoot, gpus)
 }
 
-func fakeGpuDRIDevices(devfsRoot, cardName, renderdName string, real bool) error {
+func fakeGpuDRIDevices(devfsRoot, cardName, renderdName, pciAddress string, real bool) error {
 	devices := []string{
 		path.Join(devfsRoot, "dri", cardName),
 	}
 	if renderdName != "" { // some GPUs do not have render device
 		devices = append(devices, path.Join(devfsRoot, "dri", renderdName))
+	}
+
+	if err := os.MkdirAll(path.Join(devfsRoot, "dri/by-path"), 0750); err != nil {
+		return fmt.Errorf("creating dri/by-path dir, err: %v", err)
 	}
 
 	for _, device := range devices {
@@ -302,6 +358,28 @@ func fakeGpuDRIDevices(devfsRoot, cardName, renderdName string, real bool) error
 		}
 	}
 
+	return createDevfsBypathSymlinks(devfsRoot, cardName, renderdName, pciAddress)
+}
+
+func fakeGpuVFIODevices(devfsRoot, deviceName, iommuGroupName string, real bool) error {
+	if deviceName == "" || iommuGroupName == "" {
+		return fmt.Errorf("deviceName and iommuGroupName must be provided for fakeGpuVFIODevices")
+	}
+	devices := []string{
+		path.Join(devfsRoot, "vfio", iommuGroupName),
+		path.Join(devfsRoot, "vfio/vfio"),
+		path.Join(devfsRoot, "vfio/devices", deviceName),
+	}
+
+	if err := os.MkdirAll(path.Join(devfsRoot, "vfio/devices"), 0750); err != nil {
+		return fmt.Errorf("creating vfio devices dir, err: %v", err)
+	}
+
+	for _, device := range devices {
+		if err := createDevice(device, real); err != nil {
+			return fmt.Errorf("creating device: %v", err)
+		}
+	}
 	return nil
 }
 

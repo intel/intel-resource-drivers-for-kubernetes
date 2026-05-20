@@ -38,7 +38,7 @@ import (
 
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/drm"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/discovery"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
 )
 
@@ -302,39 +302,77 @@ func (s *nodeState) IsDeviceDRMBound(deviceUID string) bool {
 	return gpu.IsDRMBound()
 }
 
-func (s *nodeState) RefreshDeviceOnDriverEvent(deviceUID, currentDriver string) error {
+// RefreshDeviceOnDriverEvent rediscovers the device information and returns bool indicating
+// if the device was updated and an updated ResourceSlice needs to be published.
+func (s *nodeState) RefreshDeviceOnDriverEvent(pciAddress, expectedDriver string) (bool, error) {
 	s.Lock()
 	defer s.Unlock()
+	needToPublish := false
+	needToUpdateCDI := false
 
-	// nolint:forcetypeassert
-	allocatable := s.Allocatable.(map[string]*device.DeviceInfo)
-	gpu := allocatable[deviceUID]
-	gpu.CurrentDriver = currentDriver
-	if gpu.CurrentDriver == "" {
-		return nil
+	discoveredDeviceInfo, discoveredDeviceInfoErr := discovery.DiscoverPCIDevice(path.Join(s.SysfsRoot, device.SysfsPCIDevicesPath, pciAddress))
+	cachedDeviceInfo, cachedDeviceInfoErr := s.getAllocatableByPCIAddress(pciAddress)
+	// cachedDeviceInfoErr, discoveredDeviceInfoErr
+	// 0 - 0 : compare fields
+	// 0 - 1 : device disappeared?
+	// 1 - 0 : new device appeared with this PCI address? (can this happen without old device disappearing first?)
+	// 1 - 1 : what is happening in udev?!!1!
+	//         do we lack permission to discover or sysfs mismounted / mistargeted via env var ?! Just log the error.
+	switch {
+	case cachedDeviceInfoErr != nil && discoveredDeviceInfoErr != nil:
+		klog.Errorf("Device with PCI address %s is not discoverable and was not in allocatable devices: %v. Is sysfs mounted correctly at %v?", pciAddress, discoveredDeviceInfoErr, s.SysfsRoot)
+	case cachedDeviceInfoErr == nil && discoveredDeviceInfoErr != nil:
+		klog.Warningf("Previously discoverable device with PCI address %s is no longer discoverable, tainting it.", pciAddress)
+		cachedDeviceInfo.HealthStatus[device.HealthStatusDeviceAbsent] = device.HealthUnhealthy
+		needToPublish = true
+	case cachedDeviceInfoErr != nil && discoveredDeviceInfoErr == nil:
+		klog.Infof("Previously undiscoverable device with PCI address %s found. Adding to allocatable devices. Device info: %+v", pciAddress, discoveredDeviceInfo)
+		// Add to allocatable, CDI, indicate need to publish ResourceSlice.
+		needToUpdateCDI = true
+		needToPublish = true
+		allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
+		allocatableDevices[discovery.DetermineDeviceName(discoveredDeviceInfo, device.DefaultNamingStyle)] = discoveredDeviceInfo
+	default: // if cachedDeviceInfoErr == nil && discoveredDeviceInfoErr == nil
+		// Untaint if the device was observed as absent before.
+		if healthStatus, found := cachedDeviceInfo.HealthStatus[device.HealthStatusDeviceAbsent]; found && healthStatus == device.HealthUnhealthy {
+			cachedDeviceInfo.HealthStatus[device.HealthStatusDeviceAbsent] = device.HealthHealthy
+			needToPublish = true
+		}
+
+		if discoveredDeviceInfo.CurrentDriver != expectedDriver {
+			// TODO: FIXME: expectedDriver is from udev event. Was there too much lag / lock wait that the next udev already too place and is in queue,
+			// and we're processing old event? Ignore the change.
+			klog.Warningf("Device %s has unexpected driver after udev event. Expected: %s, actual: %s.", pciAddress, expectedDriver, discoveredDeviceInfo.CurrentDriver)
+		} else if cachedDeviceInfo.CurrentDriver != discoveredDeviceInfo.CurrentDriver {
+			// Something else than the DRA driver has changed the driver.
+			// - If the device was not prepared for workload Pod:
+			//   - just update the cached info, no need to taint it
+			// - If the device was prepared for workload Pod:
+			//   - update cached info
+			//   - taint the device
+			cachedDeviceInfo.CurrentDriver = discoveredDeviceInfo.CurrentDriver
+			cachedDeviceInfo.CardName = discoveredDeviceInfo.CardName
+			cachedDeviceInfo.RenderDName = discoveredDeviceInfo.RenderDName
+			cachedDeviceInfo.MemoryMiB = discoveredDeviceInfo.MemoryMiB
+			cachedDeviceInfo.MEIName = discoveredDeviceInfo.MEIName
+			cachedDeviceInfo.VFIODevice = discoveredDeviceInfo.VFIODevice
+			cachedDeviceInfo.IOMMUGroup = discoveredDeviceInfo.IOMMUGroup
+			cachedDeviceInfo.VFIndex = discoveredDeviceInfo.VFIndex
+			if s.isDeviceUsedExclusivelyAlready(cachedDeviceInfo.UID, s.NodeName, "") {
+				// This taint is removed when the device is unprepared.
+				cachedDeviceInfo.HealthStatus[device.HealthStatusUnexpectedDriver] = device.HealthUnhealthy
+			}
+			needToPublish = true
+		}
 	}
 
-	sysfsDriverDeviceDir := path.Join(s.SysfsRoot, device.SysfsPCIBuspath, gpu.Driver, gpu.PCIAddress)
-	cardName, renderDName, err := drm.DeduceCardAndRenderDNames(sysfsDriverDeviceDir)
-	if err != nil {
-		return fmt.Errorf("could not deduce card/render device names for PCI address %s: %v", gpu.PCIAddress, err)
+	if needToUpdateCDI {
+		if err := cdihelpers.UpdateGPUDevices(s.CdiCache, []*device.DeviceInfo{discoveredDeviceInfo}); err != nil {
+			return needToPublish, fmt.Errorf("failed to add detected devices to CDI registry: %v", err)
+		}
 	}
 
-	// If the GPU is already DRM bound and the device names haven't changed, no need to refresh the CDI registry.
-	if gpu.CardName == cardName && gpu.RenderDName == renderDName {
-		return nil
-	}
-
-	gpu.CardName = cardName
-	gpu.RenderDName = renderDName
-
-	// Refreshing the CDI registry with updated device information
-	cdiCache := cdiapi.GetDefaultCache()
-	if err := cdihelpers.AddDetectedDevicesToCDIRegistry(cdiCache, allocatable); err != nil {
-		return fmt.Errorf("failed to add detected devices to CDI registry: %v", err)
-	}
-
-	return nil
+	return needToPublish, nil
 }
 
 func (s *nodeState) Unprepare(ctx context.Context, claimUID types.UID) error {
@@ -377,33 +415,17 @@ func (s *nodeState) isDevicePrepared(deviceUID string) bool {
 	return false
 }
 
-func (s *nodeState) getDeviceUIDFromPCIAddress(pciAddress string) (string, error) {
-	s.Lock()
-	defer s.Unlock()
+func (s *nodeState) getAllocatableByPCIAddress(pciAddress string) (*device.DeviceInfo, error) {
 	// nolint:forcetypeassert
 	allocatable := s.Allocatable.(map[string]*device.DeviceInfo)
 
-	for deviceUID, deviceInfo := range allocatable {
+	for _, deviceInfo := range allocatable {
 		if deviceInfo.PCIAddress == pciAddress {
-			return deviceUID, nil
+			return deviceInfo, nil
 		}
 	}
 
-	return "", fmt.Errorf("no device found with PCI address %s", pciAddress)
-}
-
-func (s *nodeState) devpathContainsGPUPCIAddress(devpath string) bool {
-	s.Lock()
-	defer s.Unlock()
-
-	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
-
-	for _, gpu := range allocatableDevices {
-		if strings.Contains(devpath, gpu.PCIAddress) {
-			return true
-		}
-	}
-	return false
+	return nil, fmt.Errorf("no device found with PCI address %s", pciAddress)
 }
 
 // applyDeviceUpdates processes XPUMD-supplied device details and health, and
