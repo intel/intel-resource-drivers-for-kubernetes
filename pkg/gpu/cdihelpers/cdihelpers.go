@@ -151,7 +151,7 @@ func addMeiDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
 				DeviceNodes: []*specs.DeviceNode{
 					{
 						Path:     path.Join(containerDevPath, gpuDevice.MEIName),
-						HostPath: path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, ""), gpuDevice.MEIName),
+						HostPath: path.Join(helpers.GetDevfsRoot(""), gpuDevice.MEIName),
 						Type:     "c",
 					},
 				},
@@ -181,7 +181,7 @@ func addDeviceContainerEdits(newdevice *device.DeviceInfo, cdiDevice *specs.Devi
 }
 
 func addVFIOEdits(newDevice *device.DeviceInfo, cdiDevice *specs.Device) {
-	devVFIOPath := path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, device.DevfsVFIOPath), device.DevfsVFIOPath)
+	devVFIOPath := path.Join(helpers.GetDevfsRoot(device.DevfsVFIOPath), device.DevfsVFIOPath)
 
 	cdiDevice.ContainerEdits = specs.ContainerEdits{
 		DeviceNodes: []*specs.DeviceNode{

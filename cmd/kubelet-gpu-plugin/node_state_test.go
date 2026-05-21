@@ -64,7 +64,7 @@ func errorCheck(t *testing.T, name, substr string, err error) {
 	}
 }
 
-func TestGetResourcesTaintsOnlyUnpreparedNonDRMBoundDevices(t *testing.T) {
+func TestGetResourcesTaintsUnboundUnmanagedDevice(t *testing.T) {
 	state := &nodeState{
 		Allocatable: map[string]*device.DeviceInfo{
 			"gpu-unprepared": {
@@ -75,7 +75,7 @@ func TestGetResourcesTaintsOnlyUnpreparedNonDRMBoundDevices(t *testing.T) {
 				FamilyName:    "Data Center Flex",
 				MemoryMiB:     16384,
 				Driver:        "xe",
-				CurrentDriver: "vfio-pci",
+				CurrentDriver: "",
 				Health:        device.HealthHealthy,
 			},
 			"gpu-prepared": {
@@ -86,7 +86,9 @@ func TestGetResourcesTaintsOnlyUnpreparedNonDRMBoundDevices(t *testing.T) {
 				FamilyName:    "Data Center Flex",
 				MemoryMiB:     16384,
 				Driver:        "xe",
-				CurrentDriver: "vfio-pci",
+				CurrentDriver: "xe-vfio-pci",
+				IOMMUGroup:    "15",
+				VFIODevice:    "vfio0",
 				Health:        device.HealthHealthy,
 			},
 		},
@@ -102,7 +104,8 @@ func TestGetResourcesTaintsOnlyUnpreparedNonDRMBoundDevices(t *testing.T) {
 				},
 			},
 		},
-		NodeName: "test-node",
+		NodeName:      "test-node",
+		ManageBinding: false,
 	}
 
 	resources := state.GetResources()
@@ -116,89 +119,12 @@ func TestGetResourcesTaintsOnlyUnpreparedNonDRMBoundDevices(t *testing.T) {
 		deviceByName[dev.Name] = dev
 	}
 
-	if len(deviceByName["gpu-unprepared"].Taints) != 1 {
-		t.Fatalf("expected gpu-unprepared to have 1 taint, got %d", len(deviceByName["gpu-unprepared"].Taints))
-	}
-
-	if got := deviceByName["gpu-unprepared"].Taints[0].Key; got != "NotDRMBound-vfio-pci" {
-		t.Fatalf("unexpected taint key for gpu-unprepared: %s", got)
+	if len(deviceByName["gpu-unprepared"].Taints) != 1 || deviceByName["gpu-unprepared"].Taints[0].Key != device.UnboundUnmanagedTaintKey {
+		t.Fatalf("unexpected taints: expected 1 x %v taint, got: %v", device.UnboundUnmanagedTaintKey, deviceByName["gpu-unprepared"].Taints)
 	}
 
 	if len(deviceByName["gpu-prepared"].Taints) != 0 {
-		t.Fatalf("expected gpu-prepared to have no taints, got %d", len(deviceByName["gpu-prepared"].Taints))
-	}
-}
-
-func TestIsDevicePrepared(t *testing.T) {
-	state := &nodeState{
-		Allocatable: map[string]*device.DeviceInfo{
-			"gpu-prepared": {
-				UID:        "gpu-prepared",
-				PCIAddress: "0000:00:02.0",
-			},
-			"gpu-free": {
-				UID:        "gpu-free",
-				PCIAddress: "0000:00:03.0",
-			},
-			"gpu-prepared-with-admin-access": {
-				UID:        "gpu-prepared-with-admin-access",
-				PCIAddress: "0000:00:02.0",
-			},
-		},
-		Prepared: ClaimPreparations{
-			"claim-1": {
-				PreparedDevices: []PreparedDevice{
-					{
-						KubeletpluginDevice: kubeletplugin.Device{
-							DeviceName: "gpu-prepared",
-						},
-					},
-				},
-			},
-			"claim-2": {
-				PreparedDevices: []PreparedDevice{
-					{
-						KubeletpluginDevice: kubeletplugin.Device{
-							DeviceName: "gpu-prepared-with-admin-access",
-						},
-						AdminAccess: true,
-					},
-				},
-			},
-		},
-	}
-
-	testcases := []struct {
-		name        string
-		uid         string
-		expected    bool
-		expectError bool
-	}{
-		{
-			name:     "prepared device",
-			uid:      "gpu-prepared",
-			expected: true,
-		},
-		{
-			name:     "unprepared device",
-			uid:      "gpu-free",
-			expected: false,
-		},
-		{
-			name:     "unknown device",
-			uid:      "gpu-unknown",
-			expected: false,
-		},
-	}
-
-	for _, testcase := range testcases {
-		t.Run(testcase.name, func(t *testing.T) {
-			got := state.IsDevicePrepared(testcase.uid)
-
-			if got != testcase.expected {
-				t.Fatalf("expected IsDevicePrepared()=%v, got %v", testcase.expected, got)
-			}
-		})
+		t.Fatalf("unexpected taints: expected gpu-prepared to have no taints, got: %v", deviceByName["gpu-prepared"].Taints)
 	}
 }
 

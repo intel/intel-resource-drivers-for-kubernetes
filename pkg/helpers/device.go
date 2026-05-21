@@ -42,31 +42,23 @@ func GetSysfsRoot(sysfsPath string) string {
 
 	if found {
 		if _, err := os.Stat(path.Join(sysfsRoot, sysfsPath)); err == nil {
-			klog.V(5).Infof("using custom sysfs location: %v\n", sysfsRoot)
 			return sysfsRoot
-		} else {
-			klog.V(5).Infof("could not find sysfs at '%v' from %v env var: %v\n", sysfsPath, SysfsEnvVarName, err)
 		}
 	}
 
-	klog.V(5).Infof("using default sysfs location: %v\n", sysfsDefaultRoot)
 	// If /sys is not available, devices discovery will fail gracefully.
 	return sysfsDefaultRoot
 }
 
-func GetDevfsRoot(devfsRootEnvVarName string, devPath string) string {
-	devfsRoot, found := os.LookupEnv(devfsRootEnvVarName)
+func GetDevfsRoot(devPath string) string {
+	devfsRoot, found := os.LookupEnv(DevfsEnvVarName)
 
 	if found {
 		if _, err := os.Stat(path.Join(devfsRoot, devPath)); err == nil {
-			klog.V(5).Infof("using custom devfs location: %v\n", devfsRoot)
 			return devfsRoot
-		} else {
-			klog.V(5).Infof("could not find devfs at '%v' from %v env var: %v\n", devPath, devfsRootEnvVarName, err)
 		}
 	}
 
-	klog.V(5).Infof("using default devfs root: %v\n", devfsDefaultRoot)
 	return devfsDefaultRoot
 }
 

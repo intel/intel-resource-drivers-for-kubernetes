@@ -31,6 +31,7 @@ const (
 	HealthCareFlagDefault          = false
 	IgnoreHealthWarningFlagDefault = true
 	HealthcheckPortDefault         = 51516
+	DefaultManageBinding           = true
 )
 
 type GPUFlags struct {
@@ -38,6 +39,7 @@ type GPUFlags struct {
 	IgnoreHealthWarning bool // true if Warning status means healthy, false otherwise. Default: true
 	HealthcheckPort     int
 	XPUMDSocketFilePath string
+	ManageBinding       bool
 }
 
 func main() {
@@ -74,6 +76,14 @@ func main() {
 			Value:       DefaultXPUMDSocketPath,
 			Destination: &gpuFlags.XPUMDSocketFilePath,
 			EnvVars:     []string{"XPUMD_SOCKET"},
+		},
+		&cli.BoolFlag{
+			Name:        "manage-binding",
+			Aliases:     []string{"b"},
+			Usage:       "Actively bind the GPU to DRM or VFIO driver based on requested DeviceClass.",
+			Value:       DefaultManageBinding,
+			Destination: &gpuFlags.ManageBinding,
+			EnvVars:     []string{"MANAGE_BINDING"},
 		},
 	}
 

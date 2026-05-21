@@ -75,7 +75,9 @@ func getGaudiFlags(someFlags interface{}, restClient rest.Interface) (*GaudiFlag
 
 func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, error) {
 	driverVersion.PrintDriverVersion(device.DriverName)
-	sysfsDir := helpers.GetSysfsRoot(device.SysfsDriverPath)
+	sysfsRoot := helpers.GetSysfsRoot(device.SysfsDriverPath)
+	klog.Infof("sysfs root: %v", sysfsRoot)
+	klog.Infof("devfs root: %v", helpers.GetDevfsRoot(device.DevfsAccelPath))
 	preparedClaimsFilePath := path.Join(config.CommonFlags.KubeletPluginDir, device.PreparedClaimsFileName)
 
 	gaudiFlags, err := getGaudiFlags(config.DriverFlags, config.Coreclient.CoreV1().RESTClient())
@@ -83,7 +85,7 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 		return nil, fmt.Errorf("getGaudiFlags: %w", err)
 	}
 
-	detectedDevices := discovery.DiscoverDevices(sysfsDir, device.DefaultNamingStyle)
+	detectedDevices := discovery.DiscoverDevices(sysfsRoot, device.DefaultNamingStyle)
 	if len(detectedDevices) == 0 {
 		klog.Info("No supported devices detected")
 	}

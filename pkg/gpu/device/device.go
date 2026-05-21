@@ -193,7 +193,7 @@ func (g *DevicesInfo) DeepCopy() DevicesInfo {
 }
 
 func GetDriDevPath() string {
-	return filepath.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, DevfsDriPath), DevfsDriPath)
+	return filepath.Join(helpers.GetDevfsRoot(DevfsDriPath), DevfsDriPath)
 }
 
 func IsGPUClass(classId string) bool {

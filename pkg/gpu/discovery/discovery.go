@@ -78,9 +78,9 @@ func getLocalMemoryAmountMiB(cardName string, driver string) (uint64, error) {
 	klog.V(5).Infof("Getting local memory for %s with driver %v", cardName, driver)
 	switch driver {
 	case device.SysfsXeDriverName:
-		return GetXeDeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, device.DevfsDriPath), device.DevfsDriPath, cardName))
+		return GetXeDeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(device.DevfsDriPath), device.DevfsDriPath, cardName))
 	case device.SysfsI915DriverName:
-		return GetI915DeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, device.DevfsDriPath), device.DevfsDriPath, cardName))
+		return GetI915DeviceMemoryMiB(path.Join(helpers.GetDevfsRoot(device.DevfsDriPath), device.DevfsDriPath, cardName))
 	}
 
 	return 0, fmt.Errorf("unknown DRM driver %v (device %v), cannot query local memory", driver, cardName)

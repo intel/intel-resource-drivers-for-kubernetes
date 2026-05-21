@@ -202,7 +202,7 @@ func TestGetDriDevPath(t *testing.T) {
 func TestGetDevfsRoot(t *testing.T) {
 	testDevfsRoot := t.TempDir()
 	t.Setenv(helpers.DevfsEnvVarName, testDevfsRoot)
-	result := helpers.GetDevfsRoot(helpers.DevfsEnvVarName, "")
+	result := helpers.GetDevfsRoot("")
 	if result != testDevfsRoot {
 		t.Errorf("expected %v, got %v", testDevfsRoot, result)
 	}

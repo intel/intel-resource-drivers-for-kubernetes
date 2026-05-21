@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	coreclientset "k8s.io/client-go/kubernetes"
+	devicemetadata "k8s.io/dynamic-resource-allocation/api/metadata/v1alpha1"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/klog/v2"
 	drahealthv1alpha1 "k8s.io/kubelet/pkg/apis/dra-health/v1alpha1"
@@ -67,6 +68,9 @@ func getGPUFlags(someFlags any) (*GPUFlags, error) {
 
 func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, error) {
 	driverVersion.PrintDriverVersion(device.DriverName)
+	sysfsRoot := helpers.GetSysfsRoot("bus/pci")
+	klog.Infof("sysfs root: %v", sysfsRoot)
+	klog.Infof("devfs root: %v", helpers.GetDevfsRoot("dri"))
 
 	gpuFlags, err := getGPUFlags(config.DriverFlags)
 	if err != nil {
@@ -77,7 +81,7 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 		client: config.Coreclient,
 		state: &nodeState{
 			PreparedClaimsFilePath: path.Join(config.CommonFlags.KubeletPluginDir, device.PreparedClaimsFileName),
-			SysfsRoot:              helpers.GetSysfsRoot(device.SysfsDRMpath),
+			SysfsRoot:              sysfsRoot,
 			NodeName:               config.CommonFlags.NodeName,
 		},
 		healthStreams:       make(map[int]chan *drahealthv1alpha1.NodeWatchResourcesResponse),
@@ -99,7 +103,7 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 	}
 
 	klog.V(3).Info("Creating new NodeState")
-	driver.state, err = newNodeState(detectedDevices, config.CommonFlags.CdiRoot, driver.state.PreparedClaimsFilePath, driver.state.SysfsRoot, driver.state.NodeName)
+	driver.state, err = newNodeState(detectedDevices, config.CommonFlags.CdiRoot, driver.state.PreparedClaimsFilePath, driver.state.SysfsRoot, driver.state.NodeName, gpuFlags.ManageBinding)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new NodeState: %v", err)
 	}
@@ -118,6 +122,8 @@ PluginDataDirectoryPath: %v`,
 		kubeletplugin.DriverName(device.DriverName),
 		kubeletplugin.RegistrarDirectoryPath(config.CommonFlags.KubeletPluginsRegistryDir),
 		kubeletplugin.PluginDataDirectoryPath(config.CommonFlags.KubeletPluginDir),
+		kubeletplugin.EnableDeviceMetadata(true),
+		kubeletplugin.MetadataVersions(devicemetadata.SchemeGroupVersion),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start kubelet-plugin: %v", err)
@@ -139,12 +145,12 @@ PluginDataDirectoryPath: %v`,
 	}
 	driver.healthcheck = hc
 
-	// Enable monitoring health stream from xpumd 2.0+.
 	if gpuFlags.Healthcare {
+		// Enable monitoring health stream from xpumd 2.0+.
 		klog.Info("Starting health monitoring")
 		go driver.xpumdListen(ctx, gpuFlags.XPUMDSocketFilePath)
 
-		// Start device change watcher
+		// Start udev device events listener.
 		go driver.watchDevices(ctx)
 	}
 
@@ -165,44 +171,61 @@ func (d *driver) PublishResourceSlice(ctx context.Context) error {
 }
 
 func (d *driver) PrepareResourceClaims(ctx context.Context, claims []*resourceapi.ResourceClaim) (map[types.UID]kubeletplugin.PrepareResult, error) {
-	klog.V(5).Infof("NodePrepareResource is called: number of claims: %d", len(claims))
-
+	klog.V(5).Infof("PrepareResourceClaims is called: number of claims: %d", len(claims))
 	response := map[types.UID]kubeletplugin.PrepareResult{}
 
+	var needToPublishSlice bool
+
 	for _, claim := range claims {
-		response[claim.UID] = d.prepareResourceClaim(ctx, claim)
-	}
-
-	return response, nil
-}
-
-func (d *driver) prepareResourceClaim(ctx context.Context, claim *resourceapi.ResourceClaim) kubeletplugin.PrepareResult {
-	klog.V(5).Infof("NodePrepareResource is called for claim %v", claim.UID)
-
-	if claimPreparation, found := d.state.Prepared[claim.UID]; found {
-		klog.V(3).Infof("Claim %v was already prepared, nothing to do", claim.UID)
-		return claimPreparation.PrepareResult()
-	}
-
-	prepareResult, err := d.state.Prepare(ctx, claim)
-	if err != nil {
-		return kubeletplugin.PrepareResult{
-			Err: fmt.Errorf("error preparing devices for claim %v: %v", claim.UID, err),
+		var needToPublish bool
+		needToPublish, response[claim.UID] = d.prepareResourceClaim(ctx, claim)
+		if needToPublish {
+			needToPublishSlice = true
 		}
 	}
 
-	return prepareResult
+	if needToPublishSlice {
+		if err := d.PublishResourceSlice(ctx); err != nil {
+			klog.Errorf("Failed to publish resource slice: %v", err)
+		}
+	}
+	return response, nil
+}
+
+func (d *driver) prepareResourceClaim(ctx context.Context, claim *resourceapi.ResourceClaim) (bool, kubeletplugin.PrepareResult) {
+	klog.V(5).Infof("prepareResourceClaim is called for claim %v", claim.UID)
+
+	// TODO: check all devices anyway?
+	if claimPreparation, found := d.state.Prepared[claim.UID]; found {
+		klog.V(3).Infof("Claim %v was already prepared, nothing to do", claim.UID)
+		return false, claimPreparation.PrepareResult()
+	}
+
+	return d.state.Prepare(ctx, claim)
 }
 
 func (d *driver) UnprepareResourceClaims(ctx context.Context, claims []kubeletplugin.NamespacedObject) (map[types.UID]error, error) {
-	klog.V(5).Infof("NodeUnprepareResource is called: number of claims: %d", len(claims))
+	klog.V(5).Infof("UnprepareResourceClaims is called: number of claims: %d", len(claims))
 	response := map[types.UID]error{}
 
+	var needToPublishSlice bool
+
 	for _, claim := range claims {
-		if err := d.state.Unprepare(ctx, claim.UID); err != nil {
+		needToPublish, err := d.state.Unprepare(ctx, claim.UID)
+		if needToPublish {
+			needToPublishSlice = true
+		}
+		if err != nil {
 			response[claim.UID] = fmt.Errorf("could not unprepare resource: %v", err)
-		} else {
-			response[claim.UID] = nil
+			klog.V(5).Infof("claim %v: %v", claim.UID, response[claim.UID])
+			continue
+		}
+		response[claim.UID] = nil
+	}
+
+	if needToPublishSlice {
+		if err := d.PublishResourceSlice(ctx); err != nil {
+			klog.Errorf("Failed to publish resource slice: %v", err)
 		}
 	}
 
