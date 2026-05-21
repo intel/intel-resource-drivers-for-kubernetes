@@ -120,7 +120,7 @@ func (d *driver) xpumdListen(ctx context.Context, socketFilePath string) {
 			}
 		}
 
-		klog.V(5).Infof("xpumd-client: received %d device info items", len(msg.Devices))
+		klog.V(6).Infof("xpumd-client: received %d device info items", len(msg.Devices))
 		d.ConsumeXPUMDDeviceDetails(ctx, msg.GetDevices())
 
 		if d.stopXPUMDListener {
@@ -170,12 +170,12 @@ func xpumDevicesToAllocatableDevicesInfo(xpumDevice []*xpumapi.DeviceHealth, ign
 		xpumDeviceHealth := xpumDevice.GetHealth()
 		overallHealth := device.HealthHealthy
 
-		klog.V(5).Infof("xpumd-client: processing device %s: %v\n%v", xpumDeviceInfo.Pci.Bdf, xpumDeviceInfo, xpumDeviceHealth)
+		klog.V(6).Infof("xpumd-client: processing device %s: %v\n%v", xpumDeviceInfo.Pci.Bdf, xpumDeviceInfo, xpumDeviceHealth)
 		deviceHealthStatus := make(map[string]string)
 		for _, health := range xpumDeviceHealth {
 			healthValue := device.HealthHealthy
 			if health.GetSeverity() >= unhealthyThreshold {
-				klog.V(5).Infof("xpumd-client: device %s health issue: %s severity: %s", xpumDeviceInfo.Pci.Bdf, health.GetName(), health.GetSeverity().String())
+				klog.V(6).Infof("xpumd-client: device %s health issue: %s severity: %s", xpumDeviceInfo.Pci.Bdf, health.GetName(), health.GetSeverity().String())
 				healthValue = device.HealthUnhealthy
 				overallHealth = device.HealthUnhealthy
 			}
@@ -196,11 +196,11 @@ func xpumDevicesToAllocatableDevicesInfo(xpumDevice []*xpumapi.DeviceHealth, ign
 			Health:       overallHealth,
 		}
 
-		klog.V(5).Infof("xpumd-client: device %s has memory info: %v", deviceInfo.UID, xpumDeviceInfo.Memory)
+		klog.V(6).Infof("xpumd-client: device %s has memory info: %v", deviceInfo.UID, xpumDeviceInfo.Memory)
 		if len(xpumDeviceInfo.Memory) > 0 {
 			deviceInfo.MemoryMiB = xpumDeviceInfo.Memory[0].Size / (1024 * 1024)
 		} else {
-			klog.V(5).Infof("xpumd-client: device %s has no memory info", deviceInfo.UID)
+			klog.V(6).Infof("xpumd-client: device %s has no memory info", deviceInfo.UID)
 		}
 
 		devicesInfo[deviceInfo.UID] = deviceInfo

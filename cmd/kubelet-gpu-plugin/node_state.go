@@ -441,7 +441,7 @@ func (s *nodeState) applyDeviceUpdates(newDevicesInfo device.DevicesInfo) (bool,
 	allocatable := s.Allocatable.(map[string]*device.DeviceInfo)
 
 	for deviceUID, newDeviceInfo := range newDevicesInfo {
-		klog.V(5).Infof("Checking device %v info", deviceUID)
+		klog.V(6).Infof("Checking device %v info", deviceUID)
 		foundDevice, found := allocatable[deviceUID]
 		if !found {
 			// TODO: re-discover to check if new device was hot-plugged.
@@ -485,7 +485,7 @@ func (s *nodeState) applyDeviceUpdates(newDevicesInfo device.DevicesInfo) (bool,
 		foundDevice.HealthStatus = newDeviceInfo.HealthStatus
 		foundDevice.Health = newDeviceInfo.Health
 
-		klog.V(5).Infof("Updated health status for device: %v to: overall: %v; details: %v", deviceUID, foundDevice.Health, foundDevice.HealthStatus)
+		klog.V(6).Infof("Updated health status for device: %v to: overall: %v; details: %v", deviceUID, foundDevice.Health, foundDevice.HealthStatus)
 	}
 
 	return needToPublish, nil
