@@ -17,6 +17,11 @@
 package device
 
 var ModelDetails = map[string]map[string]string{
+	"0x4626": {
+		"model":  "Alder Lake-P",
+		"family": "Iris Xe",
+		"driver": "i915",
+	},
 	"0x56a0": {
 		"model":  "A770",
 		"family": "Arc A-Series",
@@ -70,6 +75,11 @@ var ModelDetails = map[string]map[string]string{
 	"0x56c1": {
 		"model":  "Flex 140",
 		"family": "Data Center Flex",
+		"driver": "i915",
+	},
+	"0x7d67": {
+		"model":  "Arrow Lake-S",
+		"family": "Intel Graphics",
 		"driver": "i915",
 	},
 	"0x0b69": {

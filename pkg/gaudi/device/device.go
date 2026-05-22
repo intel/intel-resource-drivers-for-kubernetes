@@ -125,9 +125,9 @@ func (g *DevicesInfo) DeepCopy() DevicesInfo {
 }
 
 func GetAccelDevfsPath() string {
-	return filepath.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName), DevfsAccelPath)
+	return filepath.Join(helpers.GetDevfsRoot(DevfsAccelPath), DevfsAccelPath)
 }
 
 func GetInfinibandDevfsPath() string {
-	return filepath.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName), DevfsInfiniBandPath)
+	return filepath.Join(helpers.GetDevfsRoot(DevfsInfiniBandPath), DevfsInfiniBandPath)
 }

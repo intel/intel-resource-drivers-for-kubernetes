@@ -79,6 +79,7 @@ func OverrideDeviceDriver(pciAddress, newDriver string) error {
 		return fmt.Errorf("driver override path %v does not exist", overridePath)
 	}
 
+	klog.V(5).Infof("override location: %v", overridePath)
 	if err := writeSysfsFile(overridePath, newDriver); err != nil {
 		return fmt.Errorf("failed to override driver for device %v to %v: %v", pciAddress, newDriver, err)
 	}
@@ -92,7 +93,7 @@ func BindDeviceToDriver(pciAddress, driver string) error {
 
 	driver_override := driver
 	if driver != SysfsVFIODriverName && driver != SysfsXeVFIODriverName {
-		driver_override = ""
+		driver_override = "\n"
 	}
 
 	if err := OverrideDeviceDriver(pciAddress, driver_override); err != nil {
@@ -100,8 +101,9 @@ func BindDeviceToDriver(pciAddress, driver string) error {
 		return fmt.Errorf("failed to override driver for device %v to %v: %v", pciAddress, driver, err)
 	}
 
-	klog.V(5).Info("sleeping 0.5s")
-	time.Sleep(500 * time.Millisecond)
+	// TODO: replace with reading the driver_override to ensure it was changed.
+	klog.V(5).Info("sleeping 1s")
+	time.Sleep(1 * time.Second)
 
 	bindPath := path.Join(helpers.GetSysfsRoot("/bus/pci/drivers"), "/bus/pci/drivers", driver, "bind")
 	if _, err := os.Stat(bindPath); os.IsNotExist(err) {
@@ -125,15 +127,15 @@ func writeSysfsFile(filePath, content string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open %v file: %v", filePath, err)
 	}
+	defer fhandle.Close()
 
-	_, err = fhandle.WriteString(content)
-	if err != nil {
+	if _, err = fhandle.WriteString(content); err != nil {
 		return fmt.Errorf("could not write to file %v: %v", filePath, err)
 	}
 
-	if err = fhandle.Close(); err != nil {
-		klog.Errorf("(ignored) could not close file %v: %v", filePath, err)
-		// Do not fail here, main job is done by now.
+	if err = fhandle.Sync(); err != nil {
+		return fmt.Errorf("could not sync file %v to storage: %v", filePath, err)
 	}
+
 	return nil
 }

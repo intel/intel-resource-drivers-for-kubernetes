@@ -96,7 +96,7 @@ func updateTestRootOnDriverBindUnbindWrite(t *testing.T, sysfsRoot, devfsRoot, b
 
 	// Truncate fhe file immediately, real sysfs file is written with appending,
 	// so the values will accumulate over time if it's not truncated.
-	f, err := os.OpenFile(bindUnbindFilePath, os.O_TRUNC, os.ModeAppend)
+	f, err := os.OpenFile(bindUnbindFilePath, os.O_TRUNC|os.O_WRONLY, os.ModeAppend)
 	if err != nil {
 		t.Errorf("could not open file %v for truncation: %v", bindUnbindFilePath, err)
 		// Do not do anything else, fake sysfs is not alright.

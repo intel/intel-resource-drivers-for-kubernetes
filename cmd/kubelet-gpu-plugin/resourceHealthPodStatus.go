@@ -27,6 +27,52 @@ import (
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 )
 
+// NodeWatchResources implements the DRAResourceHealth gRPC service.
+// It streams health status updates for all devices managed by this driver.
+// The implementation logic is in healthcare.go.
+func (d *driver) NodeWatchResources(
+	req *drahealthv1alpha1.NodeWatchResourcesRequest,
+	stream drahealthv1alpha1.DRAResourceHealth_NodeWatchResourcesServer,
+) error {
+	ctx := stream.Context()
+	klog.Info("NodeWatchResources stream started")
+
+	streamCh := make(chan *drahealthv1alpha1.NodeWatchResourcesResponse, 10)
+
+	// Register the stream (implemented in healthcare.go).
+	streamID := d.registerHealthStream(streamCh)
+	defer d.unregisterHealthStream(streamID)
+
+	// Send initial health status for all devices.
+	if err := d.sendCurrentHealthStatus(ctx, stream); err != nil {
+		klog.Errorf("Failed to send initial health status: %v", err)
+		return err
+	}
+
+	// Keep the stream open and send updates.
+	for {
+		select {
+		case <-ctx.Done():
+			klog.Info("NodeWatchResources stream closed by client")
+			return ctx.Err()
+		case response, ok := <-streamCh:
+			if !ok {
+				klog.Info("Health stream channel closed")
+				// prevent closing closed channel un unregisterHealthStream
+				d.healthStreamsMutex.Lock()
+				delete(d.healthStreams, streamID)
+				d.healthStreamsMutex.Unlock()
+				return nil
+			}
+			if err := stream.Send(response); err != nil {
+				klog.Errorf("Failed to send health update: %v", err)
+				return err
+			}
+			klog.V(5).Infof("Sent health update, devices: %d", len(response.Devices))
+		}
+	}
+}
+
 // registerHealthStream registers a new health stream to push health info into.
 // This is used for reporting allocated device's health to Kubelet for Pod status.
 func (d *driver) registerHealthStream(ch chan *drahealthv1alpha1.NodeWatchResourcesResponse) int {

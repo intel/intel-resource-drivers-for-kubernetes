@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,7 +31,8 @@ import (
 // fakeHealthStream implements drahealthv1alpha1.DRAResourceHealth_NodeWatchResourcesServer
 // (grpc.ServerStreamingServer[NodeWatchResourcesResponse]) for unit tests.
 type fakeHealthStream struct {
-	sent []*drahealthv1alpha1.NodeWatchResourcesResponse
+	sent    []*drahealthv1alpha1.NodeWatchResourcesResponse
+	context context.Context
 }
 
 func (f *fakeHealthStream) Send(r *drahealthv1alpha1.NodeWatchResourcesResponse) error {
@@ -41,9 +43,14 @@ func (f *fakeHealthStream) Send(r *drahealthv1alpha1.NodeWatchResourcesResponse)
 func (f *fakeHealthStream) SetHeader(metadata.MD) error  { return nil }
 func (f *fakeHealthStream) SendHeader(metadata.MD) error { return nil }
 func (f *fakeHealthStream) SetTrailer(metadata.MD)       {}
-func (f *fakeHealthStream) Context() context.Context     { return context.Background() }
-func (f *fakeHealthStream) SendMsg(any) error            { return nil }
-func (f *fakeHealthStream) RecvMsg(any) error            { return nil }
+func (f *fakeHealthStream) Context() context.Context {
+	if f.context != nil {
+		return f.context
+	}
+	return context.Background()
+}
+func (f *fakeHealthStream) SendMsg(any) error { return nil }
+func (f *fakeHealthStream) RecvMsg(any) error { return nil }
 
 func newDriverForHealthTests(allocatable map[string]*device.DeviceInfo) *driver {
 	return &driver{
@@ -142,4 +149,40 @@ func TestSendCurrentHealthStatus(t *testing.T) {
 	if len(stream.sent) != 1 || len(stream.sent[0].Devices) != 1 {
 		t.Errorf("expected one response with 1 device, got %+v", stream.sent)
 	}
+}
+
+// nodeWatchResourceCallerRoutine calls drv.NodeWatchResources and waits while it exits when the
+// stream context is cancelled.
+func nodeWatchResourceCallerRoutine(t *testing.T, drv *driver, stream *fakeHealthStream, expectedErr string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	err := drv.NodeWatchResources(&drahealthv1alpha1.NodeWatchResourcesRequest{}, stream)
+	if (err == nil && expectedErr != "") || (err != nil && err.Error() != expectedErr) {
+		t.Errorf("expected error %v, got %v", expectedErr, err)
+	}
+}
+
+func TestNodeWatchResources(t *testing.T) {
+	var wg sync.WaitGroup
+	drv := newDriverForHealthTests(map[string]*device.DeviceInfo{
+		"uid1": {UID: "uid1", Health: device.HealthHealthy},
+	})
+
+	shortLivedContext, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	stream := &fakeHealthStream{context: shortLivedContext}
+	wg.Add(1)
+	go nodeWatchResourceCallerRoutine(t, drv, stream, "", &wg)
+
+	time.Sleep(200 * time.Millisecond) // wait for initial health status to be sent
+	streamCh, found := drv.healthStreams[drv.healthStreamID]
+	if !found {
+		t.Fatalf("expected stream to be registered with id %v", drv.healthStreamID)
+	}
+	close(streamCh)
+
+	if len(stream.sent) != 1 || len(stream.sent[0].Devices) != 1 {
+		t.Errorf("expected one response with 1 device, got %+v", stream.sent)
+	}
+
+	wg.Wait() // wait for routine to exit without panicing if Testing logged an error
 }

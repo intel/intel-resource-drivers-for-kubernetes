@@ -126,7 +126,7 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 		{
 			name: "one Gaudi success",
 			request: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim("default", "claim1", "uid1", "request1", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}, false),
+				testhelpers.NewClaim("default", "claim1", "uid1", "request1", "gaudi.intel.com", "node1", "gaudi.intel.com", []string{"0000-00-02-0-0x1020"}, false),
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid1": {
@@ -147,7 +147,7 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 		{
 			name: "single Gaudi, already prepared claim",
 			request: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim("namespace2", "claim2", "uid2", "request2", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}, false),
+				testhelpers.NewClaim("namespace2", "claim2", "uid2", "request2", "gaudi.intel.com", "node1", "gaudi.intel.com", []string{"0000-00-02-0-0x1020"}, false),
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid2": {
@@ -174,7 +174,7 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 		{
 			name: "single unavailable device",
 			request: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim("namespace3", "claim3", "uid3", "request3", "gaudi.intel.com", "node1", []string{"0000-00-05-0-0x1020"}, false),
+				testhelpers.NewClaim("namespace3", "claim3", "uid3", "request3", "gaudi.intel.com", "node1", "gaudi.intel.com", []string{"0000-00-05-0-0x1020"}, false),
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid3": {Err: fmt.Errorf("could not find allocatable device 0000-00-05-0-0x1020 (pool node1)")},
@@ -184,7 +184,7 @@ func TestGaudiPrepareResourceClaims(t *testing.T) {
 			name:              "no devices detected",
 			noDetectedDevices: true,
 			request: []*resourcev1.ResourceClaim{
-				testhelpers.NewClaim("default", "claim5", "uid5", "request5", "gaudi.intel.com", "node1", []string{"0000-00-02-0-0x1020"}, false),
+				testhelpers.NewClaim("default", "claim5", "uid5", "request5", "gaudi.intel.com", "node1", "gaudi.intel.com", []string{"0000-00-02-0-0x1020"}, false),
 			},
 			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
 				"uid5": {Err: fmt.Errorf("could not find allocatable device 0000-00-02-0-0x1020 (pool node1)")},
