@@ -104,14 +104,14 @@ func fakePCIDeviceSymlink(sysfsRoot, pciRoot, pciAddress string) error {
 	}
 
 	sysfsPCIDevices := path.Join(sysfsRoot, "bus/pci/devices")
-	sysfsDevices := path.Join(sysfsRoot, "devices", pciRoot, pciAddress)
+	sysfsDeviceDir := path.Join(sysfsRoot, "devices", pciRoot, pciAddress)
 	// e.g. /sys/bus/pci/devices/0000:00:1f.0 -> /sys/devices/pci0000:01/...<intermediate PCI devices>.../0000:00:1f.0
 	linkSrc := path.Join(sysfsPCIDevices, pciAddress)
 	linkDst := fmt.Sprintf("../../../devices/%v/%v", pciRoot, pciAddress)
 	if err := os.MkdirAll(sysfsPCIDevices, 0750); err != nil {
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
 	}
-	if err := os.MkdirAll(sysfsDevices, 0750); err != nil {
+	if err := os.MkdirAll(sysfsDeviceDir, 0750); err != nil {
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
 	}
 	if err := os.Symlink(linkDst, linkSrc); err != nil {

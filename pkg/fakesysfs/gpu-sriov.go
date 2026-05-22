@@ -294,7 +294,7 @@ func fakeSysfsSRIOVContents(sysfsRoot string, gpus device.DevicesInfo) error {
 	perDeviceNumvfs := countVFs(gpus)
 	for deviceUID, gpu := range gpus {
 		if gpu.PCIAddress == "" {
-			// attempt gettinging it from UID
+			// attempt getting it from UID
 			if len(gpu.UID) != device.UIDLength {
 				return fmt.Errorf("cannot determine PCI address for device: %v. Neither PCIAddress nor UID contain valid PCI address", gpu)
 			}
@@ -304,7 +304,7 @@ func fakeSysfsSRIOVContents(sysfsRoot string, gpus device.DevicesInfo) error {
 
 		switch gpu.DeviceType {
 		case "gpu":
-			if err := fakeSysfsPF(deviceUID, gpu, perDeviceNumvfs[deviceUID], driverDevDir); err != nil {
+			if err := fakeSysfsPF(gpu, perDeviceNumvfs[deviceUID], driverDevDir); err != nil {
 				return fmt.Errorf("error creating fake sysfs, err: %v", err)
 			}
 		case "vf":

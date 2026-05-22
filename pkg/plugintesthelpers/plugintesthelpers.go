@@ -97,7 +97,7 @@ func CleanupTest(t *testing.T, testname string, testRoot string) {
 }
 
 func NewMonitoringClaim(claimNs, claimName, claimUID, requestName, driverName, pool string, allocatedDevices []string) *resourcev1.ResourceClaim {
-	claim := NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, allocatedDevices, true)
+	claim := NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, driverName, allocatedDevices, true)
 	claim.Spec.Devices.Requests[0].Exactly.AdminAccess = &[]bool{true}[0]
 	claim.Spec.Devices.Requests[0].Exactly.AllocationMode = "All"
 
@@ -108,7 +108,7 @@ func NewMonitoringClaim(claimNs, claimName, claimUID, requestName, driverName, p
 // See: https://pkg.go.dev/k8s.io/api/resource/v1#DeviceRequest
 // TODO: Test also >1 Count and different AlloctionModes + Selectors.
 // See: https://pkg.go.dev/k8s.io/api/resource/v1#ExactDeviceRequest
-func NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool string, allocatedDevices []string, adminAccess bool) *resourcev1.ResourceClaim {
+func NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, deviceClass string, allocatedDevices []string, adminAccess bool) *resourcev1.ResourceClaim {
 	allocationResults := []resourcev1.DeviceRequestAllocationResult{}
 	for _, deviceUID := range allocatedDevices {
 		newDevice := resourcev1.DeviceRequestAllocationResult{
@@ -135,7 +135,7 @@ func NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool string
 		Spec: resourcev1.ResourceClaimSpec{
 			Devices: resourcev1.DeviceClaim{
 				Requests: []resourcev1.DeviceRequest{
-					{Name: requestName, Exactly: &resourcev1.ExactDeviceRequest{DeviceClassName: driverName, Count: 1}},
+					{Name: requestName, Exactly: &resourcev1.ExactDeviceRequest{DeviceClassName: deviceClass, Count: 1}},
 					{Name: "complimentaryRequest", Exactly: &resourcev1.ExactDeviceRequest{DeviceClassName: "NonExistent"}},
 				},
 			},
@@ -148,21 +148,6 @@ func NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool string
 			},
 		},
 	}
-
-	return claim
-}
-
-func NewClaimWithAlienDevice(claimNs, claimName, claimUID, requestName, driverName, pool string, allocatedDevices []string) *resourcev1.ResourceClaim {
-	claim := NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, allocatedDevices, false)
-
-	alienDevice := resourcev1.DeviceRequestAllocationResult{
-		Device:  "numberOne",
-		Request: "complimentaryRequest",
-		Driver:  "NonExistent",
-		Pool:    pool,
-	}
-	allocationDevices := &claim.Status.Allocation.Devices
-	allocationDevices.Results = append(allocationDevices.Results, alienDevice)
 
 	return claim
 }

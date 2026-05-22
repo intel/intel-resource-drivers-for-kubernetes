@@ -434,6 +434,7 @@ func (s *nodeState) prepareVFIODevice(allocatableDevice *device.DeviceInfo) (boo
 	if err != nil {
 		return needToPublishSlice, fmt.Errorf("failed to change driver for device %v: %v", allocatableDevice.PCIAddress, err)
 	}
+	time.Sleep(device.DriverChangeDelay)
 
 	// update current driver in device info after successful driver change
 	allocatableDevice.CurrentDriver = targetDriver
@@ -475,6 +476,7 @@ func (s *nodeState) prepareDRMDevice(allocatableDevice *device.DeviceInfo) (bool
 	if err != nil {
 		return needToPublishSlice, fmt.Errorf("failed to change driver for device %v: %v", allocatableDevice.PCIAddress, err)
 	}
+	time.Sleep(device.DriverChangeDelay)
 
 	// update current driver in device info after successful driver change
 	allocatableDevice.CurrentDriver = allocatableDevice.Driver
