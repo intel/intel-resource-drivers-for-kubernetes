@@ -27,6 +27,9 @@ spec:
         {{- if not .Values.kubeletPlugin.healthMonitoring.ignoreHealthWarning }}
         - --ignore-health-warning=false
         {{- end }}
+        {{- if not .Values.kubeletPlugin.manageBinding.enabled }}
+        - --manage-binding=false
+        {{- end }}
         {{- end }}
         {{- if gt (int .Values.kubeletPlugin.healthcheckPort) 0 }}
         ports:
