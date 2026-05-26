@@ -213,7 +213,7 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 	if claim.Status.Allocation == nil {
 		return false, kubeletplugin.PrepareResult{Err: fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)}
 	}
-
+	var err error
 	needToPublishSlice := false
 	preparedDevices := []PreparedDevice{}
 	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
@@ -242,13 +242,13 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		klog.V(5).Infof("Device class name for request %v: %v", allocatedDevice.Request, deviceClassName)
 		if deviceClassName == device.VFIODeviceClassName {
 			klog.V(5).Infof("Device %v is requested as VFIO device, preparing with VFIO driver", allocatableDevice.PCIAddress)
-			needToPublishSlice, err := s.prepareVFIODevice(allocatableDevice)
+			needToPublishSlice, err = s.prepareVFIODevice(allocatableDevice)
 			if err != nil {
 				return needToPublishSlice, kubeletplugin.PrepareResult{Err: fmt.Errorf("failed to prepare VFIO device %v: %v", allocatableDevice.PCIAddress, err)}
 			}
 		} else {
 			klog.V(5).Infof("Device %v is requested as regular GPU device, preparing with DRM driver", allocatableDevice.PCIAddress)
-			needToPublishSlice, err := s.prepareDRMDevice(allocatableDevice)
+			needToPublishSlice, err = s.prepareDRMDevice(allocatableDevice)
 			if err != nil {
 				return needToPublishSlice, kubeletplugin.PrepareResult{Err: fmt.Errorf("failed to prepare DRM device %v: %v", allocatableDevice.PCIAddress, err)}
 			}
@@ -281,8 +281,7 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 
 	s.Prepared[claim.UID] = ClaimPreparation{PreparedDevices: preparedDevices}
 
-	err := WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared)
-	if err != nil {
+	if err = WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared); err != nil {
 		klog.Errorf("Error writing prepared claims to file: %v", err)
 		return needToPublishSlice, kubeletplugin.PrepareResult{Err: fmt.Errorf("failed to write prepared claims to file: %v", err)}
 	}
@@ -434,6 +433,8 @@ func (s *nodeState) prepareVFIODevice(allocatableDevice *device.DeviceInfo) (boo
 
 	// update current driver in device info after successful driver change
 	allocatableDevice.CurrentDriver = targetDriver
+	needToPublishSlice = true
+
 	vfioDevice, err := discovery.GetVFIODevice(allocatableDevice.PCIAddress)
 	if err != nil {
 		return needToPublishSlice, fmt.Errorf("failed to get VFIO device for PCI address %v: %v", allocatableDevice.PCIAddress, err)
