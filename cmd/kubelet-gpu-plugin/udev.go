@@ -26,7 +26,7 @@ import (
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 )
 
-/* Cheat sheet from v7.0 kernel udev events:
+/* Cheat sheet from v7.0 kernel observed udev events:
 - unbind event: {
 	Header:unbind@/devices/pci0000:00/0000:00:06.0/0000:02:00.0/0000:03:01.0/0000:04:00.0
 	Subsystem:pci
@@ -64,19 +64,86 @@ import (
 		SUBSYSTEM:pci
 	]
 }
+
+- remove event: {
+	Header:remove@/devices/pci0000:00/0000:00:06.0/0000:02:00.0/0000:03:01.0/0000:04:00.1
+	Subsystem:pci
+	Action:remove
+	Devpath:/devices/pci0000:00/0000:00:06.0/0000:02:00.0/0000:03:01.0/0000:04:00.1
+	Seqnum:8371
+	Properties:map[
+		ACTION:remove
+		DEVPATH:/devices/pci0000:00/0000:00:06.0/0000:02:00.0/0000:03:01.0/0000:04:00.1
+		MODALIAS:pci:v00008086d0000E211sv00001849sd00006023bc03sc00i00
+		PCI_CLASS:30000
+		PCI_ID:8086:E211
+		PCI_SLOT_NAME:0000:04:00.1
+		PCI_SUBSYS_ID:1849:6023
+		SEQNUM:8371
+		SUBSYSTEM:pci
+	]
+}
+
+- change event {
+	Header:change@/devices/pci0000:00/0000:00:06.0/0000:02:00.0/0000:03:01.0/0000:04:00.0
+	Subsystem:pci
+	Action:change
+	Devpath:/devices/pci0000:00/0000:00:06.0/0000:02:00.0/0000:03:01.0/0000:04:00.0
+	Seqnum:8393
+	Properties:map[
+		ACTION:change
+		DEVPATH:/devices/pci0000:00/0000:00:06.0/0000:02:00.0/0000:03:01.0/0000:04:00.0
+		DRIVER:xe
+		MODALIAS:pci:v00008086d0000E211sv00001849sd00006023bc03sc00i00
+		PCI_CLASS:30000
+		PCI_ID:8086:E211
+		PCI_SLOT_NAME:0000:04:00.0
+		PCI_SUBSYS_ID:1849:6023
+		SEQNUM:8393
+		SUBSYSTEM:pci
+	]
+}
+
+- add event {
+	Header:add@/devices/pci0000:00/0000:00:06.0/0000:02:00.0/0000:03:01.0/0000:04:00.2
+	Subsystem:pci
+	Action:add
+	Devpath:/devices/pci0000:00/0000:00:06.0/0000:02:00.0/0000:03:01.0/0000:04:00.2
+	Seqnum:8384
+	Properties:map[
+		ACTION:add
+		DEVPATH:/devices/pci0000:00/0000:00:06.0/0000:02:00.0/0000:03:01.0/0000:04:00.2
+		MODALIAS:pci:v00008086d0000E211sv00001849sd00006023bc03sc00i00
+		PCI_CLASS:30000
+		PCI_ID:8086:E211
+		PCI_SLOT_NAME:0000:04:00.2
+		PCI_SUBSYS_ID:1849:6023
+		SEQNUM:8384
+		SUBSYSTEM:pci
+	]
+}
 */
 
 // watchDevices polls for GPU/DRI device changes and republishes ResourceSlices when needed.
 func (d *driver) watchDevices(ctx context.Context) {
 	klog.V(5).Info("Starting to watch for device changes (DRIVER=xe, DRIVER=i915)")
 
+	supportedEvents := map[string]bool{
+		"bind":   true, // Driver change.
+		"unbind": true, // Driver change.
+		"change": true, // SR-IOV change: PFs are updated when VFs are enabled / disabled.
+		"add":    true, // SR-IOV change: VFs appear this way.
+		"remove": true, // SR-IOV change: VFs disappear this way.
+	}
+
 	filters := []map[string]string{
 		{"DRIVER": "xe"},
 		{"DRIVER": "i915"},
 		{"DRIVER": "vfio-pci"},
 		{"DRIVER": "xe-vfio-pci"},
-		{"SUBSYSTEM": "pci", "PCI_CLASS": device.PCIDisplayClassID},
-		{"SUBSYSTEM": "pci", "PCI_CLASS": device.PCIVGAClassID},
+		{"SUBSYSTEM": "pci"},
+		{"SUBSYSTEM": "pci", "PCI_CLASS": device.UDEVPCIDisplayClassID},
+		{"SUBSYSTEM": "pci", "PCI_CLASS": device.UDEVPCIVGAClassID},
 	}
 	filteredEvents := make(chan *udev.Event, 64)
 
@@ -101,14 +168,17 @@ func (d *driver) watchDevices(ctx context.Context) {
 		case evt := <-filteredEvents:
 			// Ignore all events that are not binding / unbinding or that are for non Intel GPU class.
 			class := evt.Properties["PCI_CLASS"]
-			if class != device.PCIDisplayClassID && class != device.PCIVGAClassID {
+			if class != device.UDEVPCIDisplayClassID && class != device.UDEVPCIVGAClassID {
+				klog.V(5).Infof("Ignoring udev event for non-GPU PCI class device: %+v", evt)
 				continue
 			}
 			// No 0x prefix in PCI_ID.
-			if !strings.HasPrefix(evt.Properties["PCI_ID"], device.PCIVendorIdDec) {
+			if !strings.HasPrefix(evt.Properties["PCI_ID"], device.UDEVPCIVendorId) {
+				klog.V(5).Infof("Ignoring udev event for non-Intel PCI Vendor device: %+v", evt)
 				continue
 			}
-			if evt.Action != "bind" && evt.Action != "unbind" {
+			if !supportedEvents[evt.Action] {
+				klog.V(5).Infof("Ignoring udev event with unsupported action: %+v", evt)
 				continue
 			}
 			d.refreshDeviceOnDriverEvent(ctx, evt)

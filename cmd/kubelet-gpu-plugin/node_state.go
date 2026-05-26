@@ -335,6 +335,7 @@ func (s *nodeState) RefreshDeviceOnDriverEvent(pciAddress, expectedDriver string
 	case cachedDeviceInfoErr != nil && discoveredDeviceInfoErr != nil:
 		klog.Errorf("Device with PCI address %s is not discoverable and was not in allocatable devices: %v. Is sysfs mounted correctly at %v?", pciAddress, discoveredDeviceInfoErr, s.SysfsRoot)
 	case cachedDeviceInfoErr == nil && discoveredDeviceInfoErr != nil:
+		// TODO: check if it was a VF and remove from slice.
 		klog.Warningf("Previously discoverable device with PCI address %s is no longer discoverable, tainting it.", pciAddress)
 		cachedDeviceInfo.HealthStatus[device.HealthStatusDeviceAbsent] = device.HealthUnhealthy
 		needToPublish = true
@@ -376,7 +377,7 @@ func (s *nodeState) RefreshDeviceOnDriverEvent(pciAddress, expectedDriver string
 				cachedDeviceInfo.HealthStatus[device.HealthStatusUnexpectedDriver] = device.HealthUnhealthy
 			}
 			needToPublish = true
-		}
+		} // TODO: SR-IOV: handle number of VFs changed on PF.
 	}
 
 	if needToUpdateCDI {

@@ -78,10 +78,12 @@ const (
 	HealthStatusUnexpectedDriver = "UnexpectedDriver"
 	UnboundUnmanagedTaintKey     = "UnboundUnmanaged"
 
-	PCIVendorId       = "0x8086"
-	PCIVendorIdDec    = "8086"
-	PCIVGAClassID     = "0x030000"
-	PCIDisplayClassID = "0x038000"
+	PCIVendorId           = "0x8086"
+	PCIVGAClassID         = "0x030000"
+	PCIDisplayClassID     = "0x038000"
+	UDEVPCIVendorId       = "8086"
+	UDEVPCIVGAClassID     = "30000"
+	UDEVPCIDisplayClassID = "38000"
 )
 
 // VfAttributeFiles is a list of filenames that needs to be configured for a VF

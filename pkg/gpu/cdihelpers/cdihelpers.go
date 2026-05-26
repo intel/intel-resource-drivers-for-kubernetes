@@ -268,6 +268,10 @@ func UpdateGPUDevices(cdiCache *cdiapi.Cache, devicesToUpdate []*device.DeviceIn
 		return fmt.Errorf("failed to remove old GPU devices from CDI spec: %v", err)
 	}
 	for _, deviceToAdd := range devicesToUpdate {
+		if deviceToAdd.CurrentDriver == "" {
+			klog.V(5).Infof("Device %v is not bound to any no driver, skipping CDI creation", deviceToAdd.UID)
+			continue
+		}
 		if err := AddGPUDevice(cdiCache, deviceToAdd); err != nil {
 			return fmt.Errorf("failed to add updated GPU device to CDI spec: %v", err)
 		}
