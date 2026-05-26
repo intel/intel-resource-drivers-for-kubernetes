@@ -310,7 +310,7 @@ func (s *nodeState) RefreshDeviceOnDriverEvent(pciAddress, expectedDriver string
 	needToPublish := false
 	needToUpdateCDI := false
 
-	discoveredDeviceInfo, discoveredDeviceInfoErr := discovery.DiscoverPCIDevice(path.Join(s.SysfsRoot, device.SysfsPCIDevicesPath, pciAddress))
+	discoveredDeviceInfo, discoveredDeviceInfoErr := discovery.DiscoverPCIDevice(path.Join(s.SysfsRoot, device.SysfsPCIDevicesPath, pciAddress), s.SysfsRoot)
 	cachedDeviceInfo, cachedDeviceInfoErr := s.getAllocatableByPCIAddress(pciAddress)
 	// cachedDeviceInfoErr, discoveredDeviceInfoErr
 	// 0 - 0 : compare fields

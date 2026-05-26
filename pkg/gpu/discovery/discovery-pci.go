@@ -22,6 +22,7 @@ import (
 	"path"
 	"strings"
 
+	deviceAttribute "k8s.io/dynamic-resource-allocation/deviceattribute"
 	"k8s.io/klog/v2"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
@@ -54,7 +55,7 @@ func processSysfsPCIDevices(sysfsRoot, namingStyle string) map[string]*device.De
 		}
 
 		deviceSysfsDir := path.Join(sysfsDevicesDir, devicePCIAddress)
-		newDeviceInfo, err := DiscoverPCIDevice(deviceSysfsDir)
+		newDeviceInfo, err := DiscoverPCIDevice(deviceSysfsDir, sysfsRoot)
 		if err != nil {
 			continue
 		}
@@ -65,7 +66,7 @@ func processSysfsPCIDevices(sysfsRoot, namingStyle string) map[string]*device.De
 }
 
 // DiscoverPCIDevice scans single PCI device sysfs directory and returns DeviceInfo.
-func DiscoverPCIDevice(deviceSysfsDir string) (*device.DeviceInfo, error) {
+func DiscoverPCIDevice(deviceSysfsDir, sysfsRoot string) (*device.DeviceInfo, error) {
 	currentDriver := GetPCIDeviceDriver(deviceSysfsDir)
 	devicePCIAddress := path.Base(deviceSysfsDir)
 	vendorId, deviceId, classId := readPCIInfo(deviceSysfsDir)
@@ -131,11 +132,11 @@ func DiscoverPCIDevice(deviceSysfsDir string) (*device.DeviceInfo, error) {
 		newDeviceInfo.IOMMUGroup = iommuGroup
 	}
 
-	pciRoot, err := helpers.DeterminePCIRoot(deviceSysfsDir)
+	pciRootAttribute, err := deviceAttribute.GetPCIeRootAttributeByPCIBusID(devicePCIAddress, deviceAttribute.WithFSFromRoot(sysfsRoot))
 	if err != nil {
 		klog.Warningf("could not detect PCI root complex for %v: %v", devicePCIAddress, err)
 	} else {
-		newDeviceInfo.PCIRoot = pciRoot
+		newDeviceInfo.PCIRoot = *pciRootAttribute.Value.StringValue
 	}
 
 	sysfsDevicesDir := path.Dir(deviceSysfsDir)

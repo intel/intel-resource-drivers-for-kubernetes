@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"k8s.io/klog/v2"
@@ -91,33 +90,4 @@ func DeviceUIDFromPCIinfo(pciAddress string, pciid string) string {
 	newUID := fmt.Sprintf("%v-%v", rfc1123PCIaddress, deviceId)
 
 	return newUID
-}
-
-func DeterminePCIRoot(link string) (string, error) {
-	// e.g. /sys/devices/pci0000:16/0000:16:02.0/0000:17:00.0/0000:18:00.0/0000:19:00.0
-	linkTarget, err := filepath.EvalSymlinks(link)
-	if err != nil {
-		return "", fmt.Errorf("could not determine PCI root complex ID from '%v': %v", link, err)
-	}
-	klog.V(5).Infof("PCI device location: %v", linkTarget)
-	parts := strings.Split(linkTarget, "/")
-
-	// To support arbitrary sysfs location, discard leading path elements
-	// before devices minus one.
-	trueSysfsRootIdx := 0
-	for idx, pathElement := range parts {
-		if pathElement == "devices" && idx > 0 {
-			trueSysfsRootIdx = idx - 1
-			break
-		}
-	}
-	if trueSysfsRootIdx != 0 {
-		parts = parts[trueSysfsRootIdx:]
-	}
-
-	if len(parts) > 2 && parts[1] == "devices" {
-		return parts[2], nil
-	}
-
-	return "", fmt.Errorf("could not parse sysfs link target %v: %v", linkTarget, parts)
 }
