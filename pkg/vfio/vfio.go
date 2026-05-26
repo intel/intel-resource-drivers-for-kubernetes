@@ -30,8 +30,6 @@ import (
 const (
 	SysfsVFIODriverName   = "vfio-pci"
 	SysfsXeVFIODriverName = "xe-vfio-pci"
-	VFIOKMD               = "vfio_pci"
-	XeVFIOKMD             = "xe-vfio-pci"
 	DevVFIOPath           = "vfio"
 )
 

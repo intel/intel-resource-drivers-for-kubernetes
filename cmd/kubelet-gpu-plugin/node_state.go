@@ -417,21 +417,16 @@ func (s *nodeState) Unprepare(ctx context.Context, claimUID types.UID) (bool, er
 func (s *nodeState) prepareVFIODevice(allocatableDevice *device.DeviceInfo) (bool, error) {
 	klog.V(5).Info("prepareVFIODevice")
 	needToPublishSlice := false
-	targetDriver := vfio.SysfsVFIODriverName
-	if allocatableDevice.Driver == device.SysfsXeDriverName {
-		targetDriver = vfio.SysfsXeVFIODriverName
-	}
-
-	if err := vfio.EnsureKernelModuleLoaded(targetDriver); err != nil {
-		klog.Errorf("kernel module %v is not loaded", targetDriver)
-		return needToPublishSlice, fmt.Errorf("kernel module %v is not loaded", targetDriver)
+	targetDriver, err := deduceTargetVFIODriver(allocatableDevice.Driver)
+	if err != nil {
+		return needToPublishSlice, fmt.Errorf("failed to deduce target VFIO driver for device %v: %v", allocatableDevice.PCIAddress, err)
 	}
 
 	if allocatableDevice.CurrentDriver == targetDriver {
 		return needToPublishSlice, nil
 	}
 
-	needToPublishSlice, err := s.changeKernelDriver(allocatableDevice.PCIAddress, targetDriver)
+	needToPublishSlice, err = s.changeKernelDriver(allocatableDevice.PCIAddress, targetDriver)
 	if err != nil {
 		return needToPublishSlice, fmt.Errorf("failed to change driver for device %v: %v", allocatableDevice.PCIAddress, err)
 	}
@@ -457,6 +452,21 @@ func (s *nodeState) prepareVFIODevice(allocatableDevice *device.DeviceInfo) (boo
 	}
 
 	return needToPublishSlice, nil
+}
+
+func deduceTargetVFIODriver(defaultDriver string) (string, error) {
+	if defaultDriver == device.SysfsXeDriverName { // try xe-vfio-pci
+		if err := vfio.EnsureKernelModuleLoaded(device.SysfsXeVFIODriverName); err == nil {
+			return device.SysfsXeVFIODriverName, nil
+		}
+		klog.Warningf("preferred kernel module %v is not available, falling back to %v", device.SysfsXeVFIODriverName, device.SysfsVFIODriverName)
+	}
+
+	if err := vfio.EnsureKernelModuleLoaded(device.SysfsVFIODriverName); err == nil {
+		return device.SysfsVFIODriverName, nil
+	}
+
+	return "", fmt.Errorf("no suitable kernel module is available [%v, %v]", device.SysfsXeVFIODriverName, device.SysfsVFIODriverName)
 }
 
 // prepareDRMDevice is called when a GPU needs to be prepared to be used in a non-VM Pod.
@@ -577,10 +587,10 @@ func (s *nodeState) applyDeviceUpdates(newDevicesInfo device.DevicesInfo) (bool,
 func (s *nodeState) changeKernelDriver(pciAddress, driverName string) (bool, error) {
 	klog.V(5).Infof("Changing driver for device %v to %v", pciAddress, driverName)
 	supportedDrivers := map[string]struct{}{
-		device.SysfsI915DriverName: {},
-		device.SysfsXeDriverName:   {},
-		vfio.SysfsVFIODriverName:   {},
-		vfio.SysfsXeVFIODriverName: {},
+		device.SysfsI915DriverName:   {},
+		device.SysfsXeDriverName:     {},
+		device.SysfsVFIODriverName:   {},
+		device.SysfsXeVFIODriverName: {},
 	}
 	if _, found := supportedDrivers[driverName]; !found {
 		return false, fmt.Errorf("unsupported driver: %v", driverName)
