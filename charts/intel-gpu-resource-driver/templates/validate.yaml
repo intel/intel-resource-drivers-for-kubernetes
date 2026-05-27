@@ -1,0 +1,11 @@
+{{- /*
+xpumd is only useful when the GPU DRA driver runs health monitoring (-m). Deploying the xpumd
+subchart while health monitoring is off would create a daemon nobody talks to, so block it.
+The reverse (health monitoring on, xpumdEnabled off) is allowed, xpumd may be installed
+separately (its own chart).
+*/ -}}
+{{- $hm := (.Values.kubeletPlugin.healthMonitoring | default dict).enabled | default false -}}
+{{- $xpumd := .Values.xpumdEnabled | default false -}}
+{{- if and $xpumd (not $hm) -}}
+{{- fail "intel-gpu-resource-driver: xpumdEnabled=true requires kubeletPlugin.healthMonitoring.enabled=true — the xpumd subchart is only useful when the GPU DRA driver runs health monitoring (-m). Enable health monitoring, or set xpumdEnabled=false." -}}
+{{- end -}}

@@ -32,7 +32,7 @@ kubeletPlugin:
   # Custom nodeSelector. Used only when nodeFeatureRules.enabled=false.
   nodeSelector: {}
   # When health monitoring is disabled, set this to true for GPU driver to query hardware details directly from devices.
-  # With health monitoring enabled, hardware details come from xpumd amd privileged mode is not required.
+  # With health monitoring enabled, hardware details come from xpumd and privileged mode is not required.
   privileged: false
 
 
@@ -74,3 +74,8 @@ nfd:
   enabled: false
   nameOverride: intel-gpu-nfd
   enableNodeFeatureApi: true
+
+xpumdEnabled: false
+
+xpumd:
+  gpuAccess: dra

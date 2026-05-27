@@ -13,6 +13,10 @@ dependencies:
     version: "0.18.3"
     condition: nfd.enabled
     repository: https://kubernetes-sigs.github.io/node-feature-discovery/charts
+  - name: xpumd
+    version: "0.0.0-main"
+    condition: xpumdEnabled
+    repository: "oci://ghcr.io/intel/xpumanager/charts"
 
 annotations:
   org.opencontainers.image.url: "https://github.com/intel/intel-resource-drivers-for-kubernetes"

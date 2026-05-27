@@ -85,3 +85,29 @@ helm install \
 
 > [!NOTE]
 > Chart contains SecurityContextConstraints, which requires cluster admin privileges. Ensure the chart is installed by the cluster admin.
+
+
+### Enabling health monitoring
+
+The [Helm chart](../../charts/intel-gpu-resource-driver) controls health monitoring with two values:
+
+| Value | Default | Effect |
+|-------|---------|--------|
+| `kubeletPlugin.healthMonitoring.enabled` | `true` | run the GPU DRA driver with `-m` and mount the xpumd socket (`/run/xpumd`) |
+| `xpumdEnabled` | `false` | deploy the [xpumd](https://github.com/intel/xpumanager/blob/v2.x/xpumd/charts/xpumd/README.md) chart as a dependency together with the GPU DRA driver |
+
+When health monitoring is enabled, xpumd must be present in the cluster, either deployed by this
+chart (`xpumdEnabled=true`) or installed separately. If it is enabled but xpumd is not reachable,
+the kubelet-plugin exits about 5 minutes after start.
+
+xpumd monitors GPUs through a DRA `adminAccess` ResourceClaim, so the namespace it runs in must be
+labeled `resource.kubernetes.io/admin-access=true`. Pre-create and label that namespace before
+installing:
+
+```console
+kubectl create namespace intel-gpu-resource-driver
+kubectl label namespace intel-gpu-resource-driver resource.kubernetes.io/admin-access=true
+```
+
+With `xpumdEnabled=true` xpumd runs in the release namespace above. To install xpumd separately
+instead, follow the [xpumd chart documentation](https://github.com/intel/xpumanager/blob/v2.x/xpumd/charts/xpumd/README.md) (deploy with `gpuAccess=dra`) and label its namespace the same way.
