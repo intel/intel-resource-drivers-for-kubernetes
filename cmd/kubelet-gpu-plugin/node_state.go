@@ -106,6 +106,7 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 	return &state, nil
 }
 
+// GetResources returns resourceslice.DriverResources based on the current node state.
 func (s *nodeState) GetResources() resourceslice.DriverResources {
 	s.Lock()
 	defer s.Unlock()
@@ -206,15 +207,19 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 		s.NodeName: {Slices: []resourceslice.Slice{{Devices: devices}}}}}
 }
 
-func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim) (bool, kubeletplugin.PrepareResult) {
+// Prepare handles single ResourceClaim devices preparation, including changing
+// kernel driver if needed. Returns bool indicating if new ResourceSlice needs
+// to be published, and the PrepareResult that will be forwarded to the kubelet.
+func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim) (needToPublishSlice bool, prepareResult kubeletplugin.PrepareResult) {
 	s.Lock()
 	defer s.Unlock()
 
 	if claim.Status.Allocation == nil {
-		return false, kubeletplugin.PrepareResult{Err: fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)}
+		prepareResult.Err = fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
+		return
 	}
+
 	var err error
-	needToPublishSlice := false
 	preparedDevices := []PreparedDevice{}
 	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
 
@@ -228,14 +233,16 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		// Protection against force-deleted claims making cluster think the device is free.
 		adminAccess := ptr.Deref(allocatedDevice.AdminAccess, false)
 		if !adminAccess && s.isDeviceUsedExclusivelyAlready(allocatedDevice.Device, allocatedDevice.Pool, claim.UID) {
-			return needToPublishSlice, kubeletplugin.PrepareResult{Err: fmt.Errorf(
+			prepareResult.Err = fmt.Errorf(
 				"device %v (pool %v) is already allocated to another claim and cannot be prepared without adminAccess flag",
-				allocatedDevice.Device, allocatedDevice.Pool)}
+				allocatedDevice.Device, allocatedDevice.Pool)
+			return
 		}
 
 		allocatableDevice, found := allocatableDevices[allocatedDevice.Device]
 		if !found {
-			return needToPublishSlice, kubeletplugin.PrepareResult{Err: fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)}
+			prepareResult.Err = fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
+			return
 		}
 
 		deviceClassName := s.getRequestDeviceClassNameFromClaim(allocatedDevice.Request, claim)
@@ -244,13 +251,15 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 			klog.V(5).Infof("Device %v is requested as VFIO device, preparing with VFIO driver", allocatableDevice.PCIAddress)
 			needToPublishSlice, err = s.prepareVFIODevice(allocatableDevice)
 			if err != nil {
-				return needToPublishSlice, kubeletplugin.PrepareResult{Err: fmt.Errorf("failed to prepare VFIO device %v: %v", allocatableDevice.PCIAddress, err)}
+				prepareResult.Err = fmt.Errorf("failed to prepare VFIO device %v: %v", allocatableDevice.PCIAddress, err)
+				return
 			}
 		} else {
 			klog.V(5).Infof("Device %v is requested as regular GPU device, preparing with DRM driver", allocatableDevice.PCIAddress)
 			needToPublishSlice, err = s.prepareDRMDevice(allocatableDevice)
 			if err != nil {
-				return needToPublishSlice, kubeletplugin.PrepareResult{Err: fmt.Errorf("failed to prepare DRM device %v: %v", allocatableDevice.PCIAddress, err)}
+				prepareResult.Err = fmt.Errorf("failed to prepare DRM device %v: %v", allocatableDevice.PCIAddress, err)
+				return
 			}
 		}
 
@@ -283,11 +292,15 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 
 	if err = WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared); err != nil {
 		klog.Errorf("Error writing prepared claims to file: %v", err)
-		return needToPublishSlice, kubeletplugin.PrepareResult{Err: fmt.Errorf("failed to write prepared claims to file: %v", err)}
+		prepareResult.Err = fmt.Errorf("failed to write prepared claims to file: %v", err)
+
+		return
 	}
 
 	klog.V(5).Infof("Created prepared claim %v allocation", claim.UID)
-	return needToPublishSlice, s.Prepared[claim.UID].PrepareResult()
+	prepareResult = s.Prepared[claim.UID].PrepareResult()
+
+	return
 }
 
 // isDeviceUsedExclusivelyAlready returns true if the device is already in use in some other claim and
@@ -327,7 +340,7 @@ func (s *nodeState) RefreshDeviceOnDriverEvent(pciAddress, expectedDriver string
 	// cachedDeviceInfoErr, discoveredDeviceInfoErr
 	// 0 - 0 : compare fields
 	// 0 - 1 : device disappeared?
-	// 1 - 0 : new device appeared with this PCI address? (can this happen without old device disappearing first?)
+	// 1 - 0 : new device appeared (e.g. a VF)
 	// 1 - 1 : what is happening in udev?!!1!
 	//         do we lack permission to discover or sysfs mismounted / mistargeted via env var ?! Just log the error.
 	switch {
@@ -388,33 +401,35 @@ func (s *nodeState) RefreshDeviceOnDriverEvent(pciAddress, expectedDriver string
 	return needToPublish, nil
 }
 
-func (s *nodeState) Unprepare(ctx context.Context, claimUID types.UID) (bool, error) {
+// Unprepare handles single ResourceClaim devices unpreparation, including changing.
+func (s *nodeState) Unprepare(ctx context.Context, claimUID types.UID) (needToPublishSlice bool, err error) {
 	s.Lock()
 	defer s.Unlock()
+	var unwrappedErr error
 
 	if _, found := s.Prepared[claimUID]; !found {
-		return false, nil
+		return
 	}
 
-	needToPublish, err := s.unprepareDevices(ctx, claimUID)
-	if err != nil {
-		return needToPublish, fmt.Errorf("failed to unprepare devices for claim %v: %v", claimUID, err)
+	needToPublishSlice, unwrappedErr = s.unprepareDevices(ctx, claimUID)
+	if unwrappedErr != nil {
+		err = fmt.Errorf("failed to unprepare devices for claim %v: %v", claimUID, unwrappedErr)
+		return
 	}
 
 	klog.V(5).Infof("Freeing devices from claim %v", claimUID)
 	delete(s.Prepared, claimUID)
 
 	// write prepared claims to file
-	if err := WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared); err != nil {
-		return needToPublish, fmt.Errorf("failed to write prepared claims to file: %v", err)
+	if unwrappedErr = WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared); unwrappedErr != nil {
+		err = fmt.Errorf("failed to write prepared claims to file: %v", unwrappedErr)
 	}
 
-	return needToPublish, nil
+	return
 }
 
 // prepareVFIODevice is called when a GPU needs to be prepared to be used in a VM.
 func (s *nodeState) prepareVFIODevice(allocatableDevice *device.DeviceInfo) (bool, error) {
-	klog.V(5).Info("prepareVFIODevice")
 	needToPublishSlice := false
 	targetDriver, err := deduceTargetVFIODriver(allocatableDevice.Driver)
 	if err != nil {
@@ -471,22 +486,24 @@ func deduceTargetVFIODriver(defaultDriver string) (string, error) {
 }
 
 // prepareDRMDevice is called when a GPU needs to be prepared to be used in a non-VM Pod.
-func (s *nodeState) prepareDRMDevice(allocatableDevice *device.DeviceInfo) (bool, error) {
+func (s *nodeState) prepareDRMDevice(allocatableDevice *device.DeviceInfo) (needToPublishSlice bool, err error) {
 	klog.V(5).Info("prepareDRMDevice")
-	needToPublishSlice := false
+	var unwrappedErr error
 
-	if err := vfio.EnsureKernelModuleLoaded(allocatableDevice.Driver); err != nil {
+	if unwrappedErr := vfio.EnsureKernelModuleLoaded(allocatableDevice.Driver); unwrappedErr != nil {
 		klog.Errorf("kernel module %v is not loaded", allocatableDevice.Driver)
-		return needToPublishSlice, fmt.Errorf("kernel module %v is not loaded", allocatableDevice.Driver)
+		err = fmt.Errorf("kernel module %v is not loaded", allocatableDevice.Driver)
+		return
 	}
 
 	if allocatableDevice.CurrentDriver == allocatableDevice.Driver {
 		return needToPublishSlice, nil
 	}
 
-	needToPublishSlice, err := s.changeKernelDriver(allocatableDevice.PCIAddress, allocatableDevice.Driver)
-	if err != nil {
-		return needToPublishSlice, fmt.Errorf("failed to change driver for device %v: %v", allocatableDevice.PCIAddress, err)
+	needToPublishSlice, unwrappedErr = s.changeKernelDriver(allocatableDevice.PCIAddress, allocatableDevice.Driver)
+	if unwrappedErr != nil {
+		err = fmt.Errorf("failed to change driver for device %v: %v", allocatableDevice.PCIAddress, unwrappedErr)
+		return
 	}
 	time.Sleep(device.DriverChangeDelay)
 
@@ -494,19 +511,21 @@ func (s *nodeState) prepareDRMDevice(allocatableDevice *device.DeviceInfo) (bool
 	allocatableDevice.CurrentDriver = allocatableDevice.Driver
 
 	deviceSysfsDir := path.Join(s.SysfsRoot, device.SysfsPCIDevicesPath, allocatableDevice.PCIAddress)
-	cardName, renderDName, err := drm.DeduceCardAndRenderDNames(deviceSysfsDir)
-	if err != nil {
-		return needToPublishSlice, fmt.Errorf("failed to get DRM device for PCI address %v: %v", allocatableDevice.PCIAddress, err)
+	cardName, renderDName, unwrappedErr := drm.DeduceCardAndRenderDNames(deviceSysfsDir)
+	if unwrappedErr != nil {
+		err = fmt.Errorf("failed to get DRM device for PCI address %v: %v", allocatableDevice.PCIAddress, unwrappedErr)
+		return
 	}
 	allocatableDevice.CardName = cardName
 	allocatableDevice.RenderDName = renderDName
 
 	// Save new CDI device
-	if err := cdihelpers.UpdateGPUDevices(s.CdiCache, []*device.DeviceInfo{allocatableDevice}); err != nil {
-		return needToPublishSlice, fmt.Errorf("failed to add device %v to CDI registry: %v", allocatableDevice.PCIAddress, err)
+	if unwrappedErr := cdihelpers.UpdateGPUDevices(s.CdiCache, []*device.DeviceInfo{allocatableDevice}); unwrappedErr != nil {
+		err = fmt.Errorf("failed to add device %v to CDI registry: %v", allocatableDevice.PCIAddress, unwrappedErr)
+		return
 	}
 
-	return needToPublishSlice, nil
+	return
 }
 
 func (s *nodeState) getAllocatableByPCIAddress(pciAddress string) (*device.DeviceInfo, error) {

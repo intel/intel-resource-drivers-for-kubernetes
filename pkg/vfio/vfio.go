@@ -116,10 +116,6 @@ func BindDeviceToDriver(pciAddress, driver string) error {
 	return nil
 }
 
-func GetDevVFIOPath() string {
-	return path.Join(helpers.GetDevfsRoot(DevVFIOPath), DevVFIOPath)
-}
-
 func writeSysfsFile(filePath, content string) error {
 	fhandle, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
 	if err != nil {

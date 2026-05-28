@@ -21,8 +21,6 @@ import (
 	"os"
 	"path"
 	"strings"
-
-	"k8s.io/klog/v2"
 )
 
 const (
