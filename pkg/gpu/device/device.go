@@ -71,12 +71,13 @@ const (
 
 	DriverChangeDelay = 1000 * time.Millisecond
 
-	HealthUnknown                = "Unknown"
-	HealthHealthy                = "Healthy"
-	HealthUnhealthy              = "Unhealthy"
-	HealthStatusDeviceAbsent     = "DeviceAbsent"
-	HealthStatusUnexpectedDriver = "UnexpectedDriver"
-	UnboundUnmanagedTaintKey     = "UnboundUnmanaged"
+	HealthUnknown   = "Unknown"
+	HealthHealthy   = "Healthy"
+	HealthUnhealthy = "Unhealthy"
+	// These three are used manually in particular scenarios.
+	HealthStatusDeviceAbsent     = "DeviceAbsent"     // part of HealthCustomList
+	HealthStatusUnexpectedDriver = "UnexpectedDriver" // part of HealthCustomList
+	UnboundUnmanagedTaintKey     = "UnboundUnmanaged" // part of HealthCustomList
 
 	PCIVendorId           = "0x8086"
 	PCIVGAClassID         = "0x030000"
@@ -95,6 +96,18 @@ var VfAttributeFiles = []string{
 	"ggtt_quota",
 	"lmem_quota",
 	"preempt_timeout_us",
+}
+
+// HealthCustomList is a convenience lookup map for filtering out non xpumd-supplied health.
+// When new health info comes from xpumd - the list can be different from previous
+// messages, some categories can be no longer reported, and to clean DeviceInfo.HealthStatus
+// properly without leaving unreported categories lingering, we need to know which health status
+// keys not to delete. Every other category that is not in this list will be wiped in
+// nodeState.applyDeviceUpdates().
+var HealthCustomList = map[string]bool{
+	HealthStatusDeviceAbsent:     true,
+	HealthStatusUnexpectedDriver: true,
+	UnboundUnmanagedTaintKey:     true,
 }
 
 // DeviceInfo is an internal structure type to store info about discovered device.
@@ -120,7 +133,6 @@ type DeviceInfo struct {
 	Driver        string            `json:"driver"`        // i915 | xe
 	CurrentDriver string            `json:"currentdriver"` // Current bound driver: xe, i915, vfio-pci, xe-vfio-pci, or empty if unbound
 	PCIRoot       string            `json:"pciroot"`       // PCI Root of the device
-	Health        string            `json:"health"`        // Overall health status of the device. One of: Unknown, Healthy, Unhealthy.
 	HealthStatus  map[string]string `json:"healthstatus"`  // Detailed per-category health status information
 	VFIODevice    string            `json:"vfiodevice"`    // VFIO device name, e.g. vfio0
 	IOMMUGroup    string            `json:"iommugroup"`    // IOMMU group of the device, e.g. 12
@@ -168,6 +180,37 @@ func (g *DeviceInfo) SetModelInfo() {
 	g.FamilyName = "Unknown"
 }
 
+// Health method returns:
+// - HealthUnknown when g.HealthStatus has no entries,
+// - HealthUnhealthy when any entry in g.HealthStatus is unhealthy,
+// - HealthHealthy otherwise.
+func (g *DeviceInfo) Health() string {
+	if g.HealthStatus == nil {
+		g.HealthStatus = make(map[string]string)
+		return HealthUnknown // No health information available, treat as unknown.
+	}
+
+	if len(g.HealthStatus) == 0 {
+		return HealthUnknown // No health information available, treat as unknown.
+	}
+
+	unknownOnly := true // If any Healthy category found, and no unhealthy - report healthy.
+	for _, health := range g.HealthStatus {
+		if health == HealthUnhealthy {
+			return HealthUnhealthy
+		}
+		if health == HealthHealthy {
+			unknownOnly = false
+		}
+	}
+
+	if unknownOnly {
+		return HealthUnknown
+	}
+
+	return HealthHealthy
+}
+
 // IsDRMBound checks if the device is currently bound to its a DRM driver.
 func (g *DeviceInfo) IsDRMBound() bool {
 	return g.CurrentDriver == SysfsI915DriverName || g.CurrentDriver == SysfsXeDriverName
@@ -180,15 +223,6 @@ func (g *DeviceInfo) IsVFIOBound() bool {
 
 // DevicesInfo is a dictionary with DeviceInfo.uid being the key.
 type DevicesInfo map[string]*DeviceInfo
-
-func (g DevicesInfo) GetDeviceByCDIName(cdiName string) *DeviceInfo {
-	for _, device := range g {
-		if device.CDIName() == cdiName {
-			return device
-		}
-	}
-	return nil
-}
 
 func (g *DevicesInfo) DeepCopy() DevicesInfo {
 	devicesInfoCopy := DevicesInfo{}

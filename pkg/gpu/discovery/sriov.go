@@ -42,7 +42,7 @@ func detectSRIOV(newDeviceInfo *device.DeviceInfo, sysfsDevicesDir string, devic
 		physfnLink := path.Join(sysfsDeviceDir, "physfn")
 		parentLink, err := os.Readlink(physfnLink)
 		if err != nil {
-			klog.Errorf("Failed reading %v: %v. Ignoring SR-IOV for device %v", physfnLink, err, devicePCIAddress)
+			klog.V(5).Infof("Could not read %v: %v. Ignoring SR-IOV for device %v", physfnLink, err, devicePCIAddress)
 
 			return
 		}

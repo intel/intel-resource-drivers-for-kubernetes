@@ -72,7 +72,6 @@ func TestDevicesInfoDeepCopy(t *testing.T) {
 			UID:          "0000-01-02-0-0x1234",
 			PCIAddress:   "0000:01:02.0",
 			DeviceType:   "GPU",
-			Health:       HealthHealthy,
 			HealthStatus: map[string]string{"CoreThermal": "OK"},
 		},
 	}
@@ -205,5 +204,51 @@ func TestGetDevfsRoot(t *testing.T) {
 	result := helpers.GetDevfsRoot("")
 	if result != testDevfsRoot {
 		t.Errorf("expected %v, got %v", testDevfsRoot, result)
+	}
+}
+
+func TestDeviceHealth(t *testing.T) {
+	tests := []struct {
+		name         string
+		healthStatus map[string]string
+		expected     string
+	}{
+		{
+			name:         "Healthy status",
+			healthStatus: map[string]string{"CoreThermal": HealthHealthy},
+			expected:     HealthHealthy,
+		},
+		{
+			name:         "Unhealthy status",
+			healthStatus: map[string]string{"CoreThermal": HealthUnhealthy},
+			expected:     HealthUnhealthy,
+		},
+		{
+			name:         "Unknown status - no healthStatus entries",
+			healthStatus: map[string]string{},
+			expected:     HealthUnknown,
+		},
+		{
+			name:         "Unknown status - nil healthStatus",
+			healthStatus: nil,
+			expected:     HealthUnknown,
+		},
+		{
+			name:         "Unknown status - only healthStatus entries with UnknownValue",
+			healthStatus: map[string]string{"CoreThermal": "UnknownValue"},
+			expected:     HealthUnknown,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			device := DeviceInfo{
+				HealthStatus: tt.healthStatus,
+			}
+			result := device.Health()
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
 	}
 }

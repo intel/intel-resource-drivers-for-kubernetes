@@ -76,7 +76,6 @@ func TestGetResourcesTaintsUnboundUnmanagedDevice(t *testing.T) {
 				MemoryMiB:     16384,
 				Driver:        "xe",
 				CurrentDriver: "",
-				Health:        device.HealthHealthy,
 			},
 			"gpu-prepared": {
 				UID:           "gpu-prepared",
@@ -89,7 +88,6 @@ func TestGetResourcesTaintsUnboundUnmanagedDevice(t *testing.T) {
 				CurrentDriver: "xe-vfio-pci",
 				IOMMUGroup:    "15",
 				VFIODevice:    "vfio0",
-				Health:        device.HealthHealthy,
 			},
 		},
 		Prepared: ClaimPreparations{

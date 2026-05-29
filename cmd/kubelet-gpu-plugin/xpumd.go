@@ -168,7 +168,6 @@ func xpumDevicesToAllocatableDevicesInfo(xpumDevice []*xpumapi.DeviceHealth, ign
 	for _, xpumDevice := range xpumDevice {
 		xpumDeviceInfo := xpumDevice.GetInfo()
 		xpumDeviceHealth := xpumDevice.GetHealth()
-		overallHealth := device.HealthHealthy
 
 		klog.V(6).Infof("xpumd-client: processing device %s: %v\n%v", xpumDeviceInfo.Pci.Bdf, xpumDeviceInfo, xpumDeviceHealth)
 		deviceHealthStatus := make(map[string]string)
@@ -177,7 +176,6 @@ func xpumDevicesToAllocatableDevicesInfo(xpumDevice []*xpumapi.DeviceHealth, ign
 			if health.GetSeverity() >= unhealthyThreshold {
 				klog.V(6).Infof("xpumd-client: device %s health issue: %s severity: %s", xpumDeviceInfo.Pci.Bdf, health.GetName(), health.GetSeverity().String())
 				healthValue = device.HealthUnhealthy
-				overallHealth = device.HealthUnhealthy
 			}
 			deviceHealthStatus[health.Name] = healthValue
 		}
@@ -193,7 +191,6 @@ func xpumDevicesToAllocatableDevicesInfo(xpumDevice []*xpumapi.DeviceHealth, ign
 			Model:        model,
 			ModelName:    xpumDeviceInfo.Model,
 			HealthStatus: deviceHealthStatus,
-			Health:       overallHealth,
 		}
 
 		klog.V(6).Infof("xpumd-client: device %s has memory info: %v", deviceInfo.UID, xpumDeviceInfo.Memory)
@@ -207,4 +204,89 @@ func xpumDevicesToAllocatableDevicesInfo(xpumDevice []*xpumapi.DeviceHealth, ign
 	}
 
 	return devicesInfo
+}
+
+// applyDeviceUpdates processes XPUMD-supplied device details and health, and
+// returns a bool of whether ResourceSlice update and publication is needed,
+// and a possible error.
+func (s *nodeState) applyDeviceUpdates(newDevicesInfo device.DevicesInfo) (bool, error) {
+	s.Lock()
+	defer s.Unlock()
+
+	needToPublish := false
+
+	//nolint:forcetypeassert // We want the code to panic if our assumption turns out to be wrong.
+	allocatable := s.Allocatable.(map[string]*device.DeviceInfo)
+
+	for deviceUID, newDeviceInfo := range newDevicesInfo {
+		klog.V(6).Infof("Checking device %v info", deviceUID)
+		foundDevice, found := allocatable[deviceUID]
+		if !found {
+			// TODO: re-discover to check if new device was hot-plugged.
+			klog.Errorf("applying xpumd health info: could not find device %v, does xpumd need a restart?", deviceUID)
+			continue
+		}
+
+		// Apply memory change if any:
+		// - if DRA driver runs in non-privileged mode, XPUMD info can provide memory info.
+		// - PF can change it's memory amount when VFs are enabled or disabled.
+		if foundDevice.MemoryMiB != newDeviceInfo.MemoryMiB {
+			klog.Infof("Device %v memory changed from %v MiB to %v MiB", deviceUID, foundDevice.MemoryMiB, newDeviceInfo.MemoryMiB)
+			foundDevice.MemoryMiB = newDeviceInfo.MemoryMiB
+			needToPublish = true
+		}
+
+		if needToUpdate := applyHealthStatus(foundDevice, newDeviceInfo); needToUpdate {
+			needToPublish = true
+		}
+
+		klog.V(6).Infof("Updated health status for device: %v to: overall: %v; details: %v", deviceUID, foundDevice.Health(), foundDevice.HealthStatus)
+	}
+
+	return needToPublish, nil
+}
+
+func applyHealthStatus(foundDevice, newDeviceInfo *device.DeviceInfo) (needToPublish bool) {
+	// If the Health status was previously HealthUnknown with 0 entries,
+	// and now has some health information - publish new ResourceSlice.
+	previouslyUnknown := foundDevice.Health() == device.HealthUnknown
+	if previouslyUnknown && newDeviceInfo.Health() != device.HealthHealthy {
+		needToPublish = true
+	}
+
+	// Only overall foundDevice.Health() is exposed in the ResourceSlice Device, and not foundDevice.HealthStatus.
+	// Overall health is a logical AND of all HealthStatus elements. If any HealthStatus[X] changes - the new
+	// ResourceSlice needs to be published.
+	for newHealthType, newHealthStatus := range newDeviceInfo.HealthStatus {
+		oldHealthValue, oldHealthFound := foundDevice.HealthStatus[newHealthType]
+		// Update ResourceSlice if:
+		// - the health was known before and has changed
+		// - health was not known before and new status is unhealthy
+		if (oldHealthFound && oldHealthValue != newHealthStatus) || (!oldHealthFound && newHealthStatus == device.HealthUnhealthy) {
+			klog.Infof("Device %v health status for %v changed from %v to %v", foundDevice.UID, newHealthType, oldHealthValue, newHealthStatus)
+			needToPublish = true
+		}
+	}
+
+	// Check if some previously known health status is no longer reported. If it was known to be
+	// unhealthy last time - consider its absence as healthy and indicate ResourceSlice
+	// update is needed.
+	for oldHealthType, oldHealthValue := range foundDevice.HealthStatus {
+		if _, healthReported := newDeviceInfo.HealthStatus[oldHealthType]; !healthReported && oldHealthValue == device.HealthUnhealthy {
+			klog.Infof("Device %v health status for %v is no longer reported, considered healthy", foundDevice.UID, oldHealthType)
+			needToPublish = true
+		}
+	}
+
+	// Copy custom health statuses (if any) from foundDevice to newDeviceInfo to allow easy replacement.
+	for customHealthKey := range device.HealthCustomList {
+		if customHealthValue, exists := foundDevice.HealthStatus[customHealthKey]; exists {
+			newDeviceInfo.HealthStatus[customHealthKey] = customHealthValue
+		}
+	}
+
+	// Finally, overwrite the health status with the new one as a whole.
+	foundDevice.HealthStatus = newDeviceInfo.HealthStatus
+
+	return needToPublish
 }

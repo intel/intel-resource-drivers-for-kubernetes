@@ -96,10 +96,7 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 	}
 
 	if !gpuFlags.Healthcare {
-		klog.V(5).Info("Healthcare is disabled, setting all device health to HealthUnknown")
-		for _, dev := range detectedDevices {
-			dev.Health = device.HealthUnknown
-		}
+		klog.V(5).Info("Health monitoring is disabled")
 	}
 
 	klog.V(3).Info("Creating new NodeState")

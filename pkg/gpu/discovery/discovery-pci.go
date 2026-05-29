@@ -96,7 +96,6 @@ func DiscoverPCIDevice(deviceSysfsDir, sysfsRoot string) (*device.DeviceInfo, er
 		RenderDName:   "",
 		Driver:        originalDriver,
 		CurrentDriver: currentDriver,
-		Health:        device.HealthHealthy, // Presume healthy until proven otherwise. If healthcare is disabled, after discovery the driver will set this to HealthUnknown.
 		HealthStatus:  map[string]string{},
 	}
 

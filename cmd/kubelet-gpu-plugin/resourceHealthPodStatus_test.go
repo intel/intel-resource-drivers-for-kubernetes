@@ -84,16 +84,18 @@ func TestDeviceInfoToDeviceHealth(t *testing.T) {
 	drv := newDriverForHealthTests(map[string]*device.DeviceInfo{})
 
 	cases := []struct {
-		input    string
+		input    map[string]string
 		expected drahealthv1alpha1.HealthStatus
 	}{
-		{device.HealthHealthy, drahealthv1alpha1.HealthStatus_HEALTHY},
-		{device.HealthUnhealthy, drahealthv1alpha1.HealthStatus_UNHEALTHY},
-		{device.HealthUnknown, drahealthv1alpha1.HealthStatus_UNKNOWN},
+		{map[string]string{"health1": device.HealthHealthy}, drahealthv1alpha1.HealthStatus_HEALTHY},
+		{map[string]string{"health1": device.HealthUnhealthy}, drahealthv1alpha1.HealthStatus_UNHEALTHY},
+		{map[string]string{"health1": device.HealthUnknown}, drahealthv1alpha1.HealthStatus_UNKNOWN},
+		{map[string]string{}, drahealthv1alpha1.HealthStatus_UNKNOWN},
+		{nil, drahealthv1alpha1.HealthStatus_UNKNOWN},
 	}
 
 	for _, tc := range cases {
-		dev := &device.DeviceInfo{UID: "uid1", Health: tc.input}
+		dev := &device.DeviceInfo{UID: "uid1", HealthStatus: tc.input}
 		got := drv.deviceInfoToDeviceHealth(dev)
 		if got.Health != tc.expected {
 			t.Errorf("health %q: expected %v, got %v", tc.input, tc.expected, got.Health)
@@ -106,8 +108,8 @@ func TestDeviceInfoToDeviceHealth(t *testing.T) {
 
 func TestBuildHealthResponse(t *testing.T) {
 	allocatable := map[string]*device.DeviceInfo{
-		"uid1": {UID: "uid1", Health: device.HealthHealthy},
-		"uid2": {UID: "uid2", Health: device.HealthUnhealthy},
+		"uid1": {UID: "uid1", HealthStatus: map[string]string{"health1": device.HealthHealthy}},
+		"uid2": {UID: "uid2", HealthStatus: map[string]string{"health1": device.HealthUnhealthy}},
 	}
 	drv := newDriverForHealthTests(allocatable)
 
@@ -138,7 +140,7 @@ func TestBroadcastHealthUpdateWithResponse(t *testing.T) {
 
 func TestSendCurrentHealthStatus(t *testing.T) {
 	allocatable := map[string]*device.DeviceInfo{
-		"uid1": {UID: "uid1", Health: device.HealthHealthy},
+		"uid1": {UID: "uid1", HealthStatus: map[string]string{"health1": device.HealthHealthy}},
 	}
 	drv := newDriverForHealthTests(allocatable)
 
@@ -164,7 +166,7 @@ func nodeWatchResourceCallerRoutine(t *testing.T, drv *driver, stream *fakeHealt
 func TestNodeWatchResources(t *testing.T) {
 	var wg sync.WaitGroup
 	drv := newDriverForHealthTests(map[string]*device.DeviceInfo{
-		"uid1": {UID: "uid1", Health: device.HealthHealthy},
+		"uid1": {UID: "uid1", HealthStatus: map[string]string{"health1": device.HealthHealthy}},
 	})
 
 	shortLivedContext, cancel := context.WithTimeout(context.Background(), time.Second)

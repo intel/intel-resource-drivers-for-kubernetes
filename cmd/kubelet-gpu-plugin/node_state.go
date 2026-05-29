@@ -143,7 +143,7 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 					StringValue: &gpu.PCIAddress,
 				},
 				"health": {
-					StringValue: &gpu.Health,
+					StringValue: ptr.To(gpu.Health()),
 				},
 				deviceattribute.StandardDeviceAttributePCIeRoot: {
 					StringValue: &gpu.PCIRoot,
@@ -171,7 +171,7 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 
 		// FIXME: TODO: K8s 1.33-1.34 only supports plain taint without description.
 		// See https://github.com/kubernetes/enhancements/issues/5055 .
-		if gpu.Health == device.HealthUnhealthy {
+		if gpu.Health() == device.HealthUnhealthy {
 			// e.g. HealthIssues-memorytemperature_coretemperature:NoExecute
 			// The format will change in K8s 1.35+.
 			unhealthyTypes := []string{}
@@ -541,69 +541,6 @@ func (s *nodeState) getAllocatableByPCIAddress(pciAddress string) (*device.Devic
 	return nil, fmt.Errorf("no device found with PCI address %s", pciAddress)
 }
 
-// applyDeviceUpdates processes XPUMD-supplied device details and health, and
-// returns a bool of whether ResourceSlice update and publication is needed,
-// and a possible error.
-func (s *nodeState) applyDeviceUpdates(newDevicesInfo device.DevicesInfo) (bool, error) {
-	s.Lock()
-	defer s.Unlock()
-
-	needToPublish := false
-
-	//nolint:forcetypeassert // We want the code to panic if our assumption turns out to be wrong.
-	allocatable := s.Allocatable.(map[string]*device.DeviceInfo)
-
-	for deviceUID, newDeviceInfo := range newDevicesInfo {
-		klog.V(6).Infof("Checking device %v info", deviceUID)
-		foundDevice, found := allocatable[deviceUID]
-		if !found {
-			// TODO: re-discover to check if new device was hot-plugged.
-			return false, fmt.Errorf("could not find allocatable device with UID %v", deviceUID)
-		}
-
-		// Apply memory change if any:
-		// - if DRA driver runs in non-privileged mode, XPUMD info can provide memory info.
-		// - PF can change it's memory amount when VFs are enabled or disabled.
-		if foundDevice.MemoryMiB != newDeviceInfo.MemoryMiB {
-			klog.Infof("Device %v memory changed from %v MiB to %v MiB", deviceUID, foundDevice.MemoryMiB, newDeviceInfo.MemoryMiB)
-			foundDevice.MemoryMiB = newDeviceInfo.MemoryMiB
-			needToPublish = true
-		}
-
-		// Only overall foundDevice.Health is exposed in the ResourceSlice Device, and not foundDevice.HealshStatus.
-		// Overall health is a logical AND of all HealthStatus elements. If the overall health changes - the new
-		// ResourceSlice needs to be published.
-		for newHealthType, newHealthStatus := range newDeviceInfo.HealthStatus {
-			oldHealthValue, oldHealthFound := foundDevice.HealthStatus[newHealthType]
-			// If
-			// - the health was known before and has changed
-			// - health was not known before and new status is not healthy
-			if (oldHealthFound && oldHealthValue != newHealthStatus) || (!oldHealthFound && newHealthStatus == device.HealthUnhealthy) {
-				klog.Infof("Device %v health status for %v changed from %v to %v", deviceUID, newHealthType, oldHealthValue, newHealthStatus)
-				needToPublish = true
-			}
-		}
-
-		// Check if some previously known health status is no longer reported. If it was known to be
-		// unhealthy last time - consider its absence as healthy and indicate ResourceSlice
-		// update is needed.
-		for oldHealthType, oldHealthValue := range foundDevice.HealthStatus {
-			if _, healthReported := newDeviceInfo.HealthStatus[oldHealthType]; !healthReported && oldHealthValue == device.HealthUnhealthy {
-				klog.Infof("Device %v health status for %v is no longer reported, considered healthy", deviceUID, oldHealthType)
-				needToPublish = true
-			}
-		}
-
-		// Finally, overwrite the health status with the new one as a whole.
-		foundDevice.HealthStatus = newDeviceInfo.HealthStatus
-		foundDevice.Health = newDeviceInfo.Health
-
-		klog.V(6).Infof("Updated health status for device: %v to: overall: %v; details: %v", deviceUID, foundDevice.Health, foundDevice.HealthStatus)
-	}
-
-	return needToPublish, nil
-}
-
 func (s *nodeState) changeKernelDriver(pciAddress, driverName string) (bool, error) {
 	klog.V(5).Infof("Changing driver for device %v to %v", pciAddress, driverName)
 	supportedDrivers := map[string]struct{}{
@@ -687,8 +624,9 @@ func (s *nodeState) unprepareDevices(ctx context.Context, claimUID types.UID) (b
 			claimUID)
 		allocatableDevice, found := allocatableDevices[preparedDevice.KubeletpluginDevice.DeviceName]
 		if !found {
-			klog.V(5).Infof("could not find allocatable device %v for claim %v", preparedDevice.KubeletpluginDevice.DeviceName, claimUID)
-			return needToPublishSlice, fmt.Errorf("allocatable device %v not found", preparedDevice.KubeletpluginDevice.DeviceName)
+			// Could be a stuck pod after reboot.
+			klog.Errorf("could not find allocatable device %v for claim %v", preparedDevice.KubeletpluginDevice.DeviceName, claimUID)
+			continue
 		}
 
 		// cleanup UnexpectedDevice taint that could have been places when the device was in use / in prepared claim, and the driver was changed.

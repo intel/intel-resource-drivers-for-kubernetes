@@ -139,7 +139,7 @@ func (d *driver) deviceInfoToDeviceHealth(dev *device.DeviceInfo) *drahealthv1al
 	var healthStatus drahealthv1alpha1.HealthStatus
 
 	// Map internal Health string to gRPC HealthStatus enum.
-	switch dev.Health {
+	switch dev.Health() {
 	case device.HealthHealthy:
 		healthStatus = drahealthv1alpha1.HealthStatus_HEALTHY
 	case device.HealthUnhealthy:
@@ -158,8 +158,8 @@ func (d *driver) deviceInfoToDeviceHealth(dev *device.DeviceInfo) *drahealthv1al
 		LastUpdatedTime: time.Now().Unix(),
 	}
 
-	klog.V(3).Infof("Building health for device: pool=%s, device=%s, health=%v, healthStatus=%v",
-		d.state.NodeName, dev.UID, dev.Health, healthStatus)
+	klog.V(5).Infof("Building health for device: pool=%s, device=%s, health=%v, healthStatus=%v",
+		d.state.NodeName, dev.UID, dev.Health(), healthStatus)
 
 	return deviceHealth
 }
