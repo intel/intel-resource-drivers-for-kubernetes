@@ -10,8 +10,8 @@ require (
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/net v0.54.0 // indirect; temporary to mitigate CVE-2026-33814
-	golang.org/x/sys v0.44.0
+	golang.org/x/net v0.55.0 // indirect; temporary to mitigate CVEs
+	golang.org/x/sys v0.45.0
 	google.golang.org/grpc v1.80.0
 	gopkg.in/inf.v0 v0.9.1
 	k8s.io/api v0.36.1

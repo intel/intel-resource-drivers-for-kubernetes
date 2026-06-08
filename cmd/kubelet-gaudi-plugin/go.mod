@@ -8,7 +8,7 @@ require (
 	github.com/HabanaAI/gohlml v1.22.2
 	github.com/intel/intel-resource-drivers-for-kubernetes v0.0.0-00010101000000-000000000000
 	github.com/urfave/cli/v2 v2.27.7
-	golang.org/x/net v0.54.0 // indirect; temporary to mitigate CVE-2026-33814
+	golang.org/x/net v0.55.0 // indirect; temporary to mitigate CVEs
 	k8s.io/api v0.36.1
 	k8s.io/apimachinery v0.36.1
 	k8s.io/client-go v0.36.1
@@ -63,7 +63,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/term v0.43.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
