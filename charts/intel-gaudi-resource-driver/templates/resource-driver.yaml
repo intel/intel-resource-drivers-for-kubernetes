@@ -20,6 +20,12 @@ spec:
         image: {{ include "intel-gaudi-resource-driver.fullimage" . }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         command: ["/kubelet-gaudi-plugin"]
+        args:
+        {{- if .Values.kubeletPlugin.healthMonitoring.enabled }}
+        - -m
+        {{- else }}
+        - --health-monitoring=false
+        {{- end }}
         env:
         - name: NODE_NAME
           valueFrom:

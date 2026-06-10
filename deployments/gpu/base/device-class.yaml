@@ -1,3 +1,4 @@
+---
 apiVersion: resource.k8s.io/v1
 kind: DeviceClass
 metadata:
@@ -9,3 +10,16 @@ spec:
   # Available in K8s v1.34 requires feature gate enabled, uncomment if needed.
   # See https://github.com/kubernetes/enhancements/tree/master/keps/sig-scheduling/5004-dra-extended-resource
   #extendedResourceName: intel.com/gpu
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: gpu-vfio.intel.com
+spec:
+  selectors:
+  - cel:
+      expression: device.driver == "gpu.intel.com"
+  # Uncomment if active binding management is disabled in kubelet-plugin, to prevent non-VFIO bound GPUs
+  # from being allocated to VM-based workloads.
+  #- cel:
+  #    expression: device.attributes["gpu.intel.com"].driver == 'vfio-pci' || device.attributes["gpu.intel.com"].driver == 'xe-vfio-pci'

@@ -1,1 +1,16 @@
+{{- /*
+NOTES is only shown in case of successful deployment. When the xpumd fails to be installed because of
+missing label, this note will not be printed.
+*/}}
 Thank you for installing {{ .Chart.Name }}.
+
+{{- $hm := (.Values.kubeletPlugin.healthMonitoring | default dict).enabled | default false }}
+{{- if $hm }}
+
+GPU health monitoring is ENABLED: the GPU DRA driver runs with "-m" and reads GPU health and
+hardware details from the Intel XPU Manager daemon (xpumd) over the /run/xpumd socket.
+{{- if not .Values.xpumdEnabled }}
+xpumd deployment was disabled, but is required for health monitoring. Install xpumd manually:
+https://github.com/intel/xpumanager/blob/v2.x/xpumd/charts/xpumd/README.md
+{{- end }}
+{{- end }}

@@ -32,8 +32,9 @@ import (
 )
 
 const (
-	containerDevdriPath = "/dev/dri"
-	containerDevPath    = "/dev"
+	containerDevdriPath  = "/dev/dri"
+	containerDevPath     = "/dev"
+	containerDevVFIOPath = "/dev/vfio"
 )
 
 func getGPUSpecs(cdiCache *cdiapi.Cache) []*cdiapi.Spec {
@@ -68,7 +69,7 @@ func replaceGPUCDISpecs(cdiCache *cdiapi.Cache, devices device.DevicesInfo) erro
 
 	klog.V(5).Infof("Adding %v GPU devices to new spec", len(devices))
 	gpuSpec := &specs.Spec{Kind: device.CDIKind}
-	AddDevicesToSpec(devices, gpuSpec)
+	addDevicesToSpec(devices, gpuSpec)
 
 	if err := writeSpec(cdiCache, gpuSpec); err != nil {
 		return fmt.Errorf("failed adding devices to new GPU CDI spec: %v", err)
@@ -89,7 +90,7 @@ func replaceMEICDISpecs(cdiCache *cdiapi.Cache, devices device.DevicesInfo) erro
 
 	klog.V(5).Infof("Adding %v MEI devices to new spec", len(devices))
 	meiSpec := &specs.Spec{Kind: device.CDIMEIKind}
-	AddMeiDevicesToSpec(devices, meiSpec)
+	addMeiDevicesToSpec(devices, meiSpec)
 
 	if err := writeSpec(cdiCache, meiSpec); err != nil {
 		return fmt.Errorf("failed adding devices to new MEI CDI spec: %v", err)
@@ -135,7 +136,7 @@ func writeSpec(cdiCache *cdiapi.Cache, spec *specs.Spec) error {
 	return nil
 }
 
-func AddMeiDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
+func addMeiDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
 	seenMEI := make(map[string]bool)
 
 	for _, gpuDevice := range devices {
@@ -150,7 +151,7 @@ func AddMeiDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
 				DeviceNodes: []*specs.DeviceNode{
 					{
 						Path:     path.Join(containerDevPath, gpuDevice.MEIName),
-						HostPath: path.Join(helpers.GetDevfsRoot(helpers.DevfsEnvVarName, ""), gpuDevice.MEIName),
+						HostPath: path.Join(helpers.GetDevfsRoot(""), gpuDevice.MEIName),
 						Type:     "c",
 					},
 				},
@@ -159,39 +160,76 @@ func AddMeiDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
 	}
 }
 
-func AddDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
+func addDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
+	for _, newDevice := range devices {
+		newCDIDevice := specs.Device{
+			Name: newDevice.UID,
+		}
+		addDeviceContainerEdits(newDevice, &newCDIDevice)
+		spec.Devices = append(spec.Devices, newCDIDevice)
+	}
+}
+
+func addDeviceContainerEdits(newdevice *device.DeviceInfo, cdiDevice *specs.Device) {
+	if newdevice.CurrentDriver == device.SysfsVFIODriverName || newdevice.CurrentDriver == device.SysfsXeVFIODriverName {
+		klog.V(5).Infof("Adding VFIO edits for device %v", newdevice.UID)
+		addVFIOEdits(newdevice, cdiDevice)
+	} else {
+		klog.V(5).Infof("Adding DRM edits for device %v", newdevice.UID)
+		addDRMEdits(newdevice, cdiDevice)
+	}
+}
+
+func addVFIOEdits(newDevice *device.DeviceInfo, cdiDevice *specs.Device) {
+	devVFIOPath := path.Join(helpers.GetDevfsRoot(device.DevfsVFIOPath), device.DevfsVFIOPath)
+
+	cdiDevice.ContainerEdits = specs.ContainerEdits{
+		DeviceNodes: []*specs.DeviceNode{
+			{
+				Path:     path.Join(containerDevVFIOPath, newDevice.IOMMUGroup),
+				HostPath: path.Join(devVFIOPath, newDevice.IOMMUGroup),
+				Type:     "c",
+			},
+			{
+				Path:     path.Join(containerDevVFIOPath, "vfio"),
+				HostPath: path.Join(devVFIOPath, "vfio"),
+				Type:     "c",
+			},
+			{
+				Path:     path.Join(containerDevVFIOPath, "devices", newDevice.VFIODevice),
+				HostPath: path.Join(devVFIOPath, "devices", newDevice.VFIODevice),
+				Type:     "c",
+			},
+		},
+	}
+}
+
+func addDRMEdits(newDevice *device.DeviceInfo, cdiDevice *specs.Device) {
 	devdriPath := device.GetDriDevPath()
 
-	for name, device := range devices {
-		// primary / control node (for modesetting)
-		newDevice := specs.Device{
-			Name: name,
-			ContainerEdits: specs.ContainerEdits{
-				DeviceNodes: []*specs.DeviceNode{
-					{
-						Path:     path.Join(containerDevdriPath, fmt.Sprintf("card%d", device.CardIdx)),
-						HostPath: path.Join(devdriPath, fmt.Sprintf("card%d", device.CardIdx)),
-						Type:     "c",
-					},
-				},
+	cdiDevice.ContainerEdits = specs.ContainerEdits{
+		DeviceNodes: []*specs.DeviceNode{
+			{
+				Path:     path.Join(containerDevdriPath, newDevice.CardName),
+				HostPath: path.Join(devdriPath, newDevice.CardName),
+				Type:     "c",
 			},
-		}
-		// render nodes can be optional: https://www.kernel.org/doc/html/latest/gpu/drm-uapi.html#render-nodes
-		if device.RenderdIdx != 0 {
-			newDevice.ContainerEdits.DeviceNodes = append(
-				newDevice.ContainerEdits.DeviceNodes,
-				&specs.DeviceNode{
-					Path:     path.Join(containerDevdriPath, fmt.Sprintf("renderD%d", device.RenderdIdx)),
-					HostPath: path.Join(devdriPath, fmt.Sprintf("renderD%d", device.RenderdIdx)),
-					Type:     "c",
-				},
-			)
-		}
-
-		addBypathMounts(device, &newDevice, devdriPath)
-
-		spec.Devices = append(spec.Devices, newDevice)
+		},
 	}
+
+	// render nodes can be optional: https://www.kernel.org/doc/html/latest/gpu/drm-uapi.html#render-nodes
+	if newDevice.RenderDName != "" {
+		cdiDevice.ContainerEdits.DeviceNodes = append(
+			cdiDevice.ContainerEdits.DeviceNodes,
+			&specs.DeviceNode{
+				Path:     path.Join(containerDevdriPath, newDevice.RenderDName),
+				HostPath: path.Join(devdriPath, newDevice.RenderDName),
+				Type:     "c",
+			},
+		)
+	}
+
+	addBypathMounts(newDevice, cdiDevice, devdriPath)
 }
 
 // Add GPU specific by-path mounts to the spec.
@@ -217,4 +255,73 @@ func addBypathMounts(info *device.DeviceInfo, spec *specs.Device, dridevPath str
 			})
 		}
 	}
+}
+
+// UpdateGPUDevices removes existing entries from CDI registry and adds new entries based
+// on up supplied DevicesInfo.
+func UpdateGPUDevices(cdiCache *cdiapi.Cache, devicesToUpdate []*device.DeviceInfo) error {
+	devicesToRemove := []string{}
+	for _, deviceToUpdate := range devicesToUpdate {
+		devicesToRemove = append(devicesToRemove, deviceToUpdate.UID)
+	}
+	if err := RemoveDevices(cdiCache, devicesToRemove); err != nil {
+		return fmt.Errorf("failed to remove old GPU devices from CDI spec: %v", err)
+	}
+	for _, deviceToAdd := range devicesToUpdate {
+		if deviceToAdd.CurrentDriver == "" {
+			klog.V(5).Infof("Device %v is not bound to any no driver, skipping CDI creation", deviceToAdd.UID)
+			continue
+		}
+		if err := AddGPUDevice(cdiCache, deviceToAdd); err != nil {
+			return fmt.Errorf("failed to add updated GPU device to CDI spec: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// AddGPUDevice adds a new GPU device entry into cdi registry.
+func AddGPUDevice(cdiCache *cdiapi.Cache, newDevice *device.DeviceInfo) error {
+	gpuSpecs := getGPUSpecs(cdiCache)
+	var gpuSpec *specs.Spec
+	if len(gpuSpecs) == 0 {
+		gpuSpec = &specs.Spec{Kind: device.CDIGPUKind}
+	} else {
+		gpuSpec = gpuSpecs[0].Spec
+	}
+	addDevicesToSpec(device.DevicesInfo{newDevice.UID: newDevice}, gpuSpec)
+
+	if err := writeSpec(cdiCache, gpuSpec); err != nil {
+		return fmt.Errorf("failed adding devices to new GPU CDI spec: %v", err)
+	}
+
+	return nil
+}
+
+func RemoveDevices(cdiCache *cdiapi.Cache, devicesToRemove []string) error {
+	gpuSpecs := getGPUSpecs(cdiCache)
+	if len(gpuSpecs) == 0 {
+		return nil
+	}
+
+	for _, oldDevice := range devicesToRemove {
+		for _, spec := range gpuSpecs {
+			remainingDevices := []specs.Device{}
+			for _, cdiDevice := range spec.Devices {
+				if cdiDevice.Name == oldDevice {
+					klog.V(5).Infof("Removing device %v from CDI spec %v", oldDevice, spec.GetPath())
+					continue
+				}
+				remainingDevices = append(remainingDevices, cdiDevice)
+			}
+			spec.Devices = remainingDevices
+
+			specname := path.Base(spec.GetPath())
+			if err := cdiCache.WriteSpec(spec.Spec, specname); err != nil {
+				return fmt.Errorf("failed to write CDI spec %v: %v", specname, err)
+			}
+		}
+	}
+
+	return nil
 }

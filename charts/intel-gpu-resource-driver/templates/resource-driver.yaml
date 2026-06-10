@@ -27,6 +27,9 @@ spec:
         {{- if not .Values.kubeletPlugin.healthMonitoring.ignoreHealthWarning }}
         - --ignore-health-warning=false
         {{- end }}
+        {{- if not .Values.kubeletPlugin.manageBinding.enabled }}
+        - --manage-binding=false
+        {{- end }}
         {{- end }}
         {{- if gt (int .Values.kubeletPlugin.healthcheckPort) 0 }}
         ports:
@@ -70,8 +73,10 @@ spec:
         # when using fake sysfs - mount at the same place as on host
         - name: sysfs
           mountPath: "/sysfs"
+        {{- if .Values.kubeletPlugin.healthMonitoring.enabled }}
         - name: xpumd-socket
           mountPath: "/run/xpumd"
+        {{- end }}
         securityContext:
           privileged: {{ .Values.kubeletPlugin.privileged }}
           capabilities:
@@ -96,9 +101,11 @@ spec:
       - name: sysfs
         hostPath:
           path: /sys
+      {{- if .Values.kubeletPlugin.healthMonitoring.enabled }}
       - name: xpumd-socket
         hostPath:
           path: /run/xpumd
+      {{- end }}
       {{- with .Values.kubeletPlugin.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}

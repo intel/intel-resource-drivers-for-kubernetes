@@ -20,10 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
-
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -43,31 +40,23 @@ func GetSysfsRoot(sysfsPath string) string {
 
 	if found {
 		if _, err := os.Stat(path.Join(sysfsRoot, sysfsPath)); err == nil {
-			klog.V(5).Infof("using custom sysfs location: %v\n", sysfsRoot)
 			return sysfsRoot
-		} else {
-			klog.V(5).Infof("could not find sysfs at '%v' from %v env var: %v\n", sysfsPath, SysfsEnvVarName, err)
 		}
 	}
 
-	klog.V(5).Infof("using default sysfs location: %v\n", sysfsDefaultRoot)
 	// If /sys is not available, devices discovery will fail gracefully.
 	return sysfsDefaultRoot
 }
 
-func GetDevfsRoot(devfsRootEnvVarName string, devPath string) string {
-	devfsRoot, found := os.LookupEnv(devfsRootEnvVarName)
+func GetDevfsRoot(devPath string) string {
+	devfsRoot, found := os.LookupEnv(DevfsEnvVarName)
 
 	if found {
 		if _, err := os.Stat(path.Join(devfsRoot, devPath)); err == nil {
-			klog.V(5).Infof("using custom devfs location: %v\n", devfsRoot)
 			return devfsRoot
-		} else {
-			klog.V(5).Infof("could not find devfs at '%v' from %v env var: %v\n", devPath, devfsRootEnvVarName, err)
 		}
 	}
 
-	klog.V(5).Infof("using default devfs root: %v\n", devfsDefaultRoot)
 	return devfsDefaultRoot
 }
 
@@ -91,33 +80,4 @@ func DeviceUIDFromPCIinfo(pciAddress string, pciid string) string {
 	newUID := fmt.Sprintf("%v-%v", rfc1123PCIaddress, deviceId)
 
 	return newUID
-}
-
-func DeterminePCIRoot(link string) (string, error) {
-	// e.g. /sys/devices/pci0000:16/0000:16:02.0/0000:17:00.0/0000:18:00.0/0000:19:00.0
-	linkTarget, err := filepath.EvalSymlinks(link)
-	if err != nil {
-		return "", fmt.Errorf("could not determine PCI root complex ID from '%v': %v", link, err)
-	}
-	klog.V(5).Infof("PCI device location: %v", linkTarget)
-	parts := strings.Split(linkTarget, "/")
-
-	// To support arbitrary sysfs location, discard leading path elements
-	// before devices minus one.
-	trueSysfsRootIdx := 0
-	for idx, pathElement := range parts {
-		if pathElement == "devices" && idx > 0 {
-			trueSysfsRootIdx = idx - 1
-			break
-		}
-	}
-	if trueSysfsRootIdx != 0 {
-		parts = parts[trueSysfsRootIdx:]
-	}
-
-	if len(parts) > 2 && parts[1] == "devices" {
-		return parts[2], nil
-	}
-
-	return "", fmt.Errorf("could not parse sysfs link target %v: %v", linkTarget, parts)
 }

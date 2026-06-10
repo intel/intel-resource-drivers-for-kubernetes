@@ -22,8 +22,7 @@ as a package to GitHub OCI registry, and can be installed directly with Helm.
 
 > [!NOTE]
 > Starting from v0.10.0, [XPUM Daemon](https://github.com/intel/xpumanager/tree/v2.x/xpumd) is used for health monitoring and devices' details discovery,
-> and is enabled by default. It is not currently part of this chart, and needs to be installed separaterly.
-> XPUM Daemon can be installed either before or after the Intel GPU Resource Driver.
+> and is enabled by default in Helm chart deployment. If necessary, XPUM Daemon can be installed manually in another namespace after the Intel GPU Resource Driver.
 
 ```console
 helm install \
@@ -39,7 +38,7 @@ See [details](../../charts/intel-gpu-resource-driver/README.md) in the chart dir
 ```bash
 kubectl apply -k 'https://github.com/intel/intel-resource-drivers-for-kubernetes/deployments/gpu?ref=<RELEASE_VERSION>'
 ```
-Example RELEASE_VERSION: `gpu-v0.10.1`.
+Example RELEASE_VERSION: `gpu-v0.11.0`.
 
 By default, the kubelet-plugin is deployed on _all_ nodes in the cluster, as no nodeSelector is defined.
 To restrict the deployment to GPU-enabled nodes, follow these steps:
@@ -193,7 +192,7 @@ crw-rw-rw-    1 root     root      226, 128 Sep 27 09:17 renderD128
 
 ```
 
-# Notable changes
+## Notable changes
 
 K8s v1.34 resource.k8s.io/v1 API changed ResourceClaim syntax compared to resource.k8s.io/v1beta1.
 In v1, device request must be specified either as `exactly`, or as a priority-ordered list using `firstAvailable`
@@ -202,11 +201,16 @@ request type.  Using latter requires `DRAPrioritizedList` [feature gate](../CLUS
 `exactly`-specified request is allocated by the kube-scheduler as-is. The`firstAvailable` list of requests
 is processed by the scheduler sequentially until the currently processed request is possible to allocate.
 
-## v0.10.0
+### v0.10.0
 
-- `pciRoot` attribute of DRA device is deprecated and will eventually be removed (current target is v1.0)
+- `pciRoot` attribute of DRA device is deprecated and will eventually be removed (current target is v1.0), use `resource.kubernetes.io/pcieRoot` instead.
 - health monitoring change: in-container `xpu-smi` is replaced by GRPC-based communications with xpumd: to get operational health monitoring, deploy xpumd into the cluster: https://github.com/intel/xpumanager/blob/v2.x/xpumd/charts/xpumd/README.md
 - hardware discovery change: privileged mode is no longer required, xpumd is now the default source of detailed HW information (e.g. GPU local memory amount). Alternatively, if health monitoring is not required, privileged mode can be used to allow GPU DRA driver query HW details directly from the devices. If neither health-monitoring is enabled, nor privileged mode - the discovered devices are announced to the cluster without the HW details (e.g. memory)
+
+### v0.11.0
+
+- `pciAddress` attribute of DRA device is deprecated and will eventually be removed (current target is v1.0), use `resource.kubernetes.io/pciBusID` instead.
+- added support for automated switching between DRM (i915, xe) and VFIO (vfio-pci, xe-vfio-pci) Linux kernel drivers (default: enabled) for [KubeVirt support](#kubevirt-support).
 
 ## Requesting resources
 
@@ -290,8 +294,9 @@ See [example](../../deployments/gpu/examples/deployment-extended-resources-impli
 
 ### Device Class
 
-Intel GPU resource driver provides following device class:
+Intel GPU resource driver provides following device classes:
 - `gpu.intel.com`
+- `gpu-vfio.intel.com`
 
 ### Advanced use cases
 
@@ -388,6 +393,30 @@ workload Pods from using such GPU unless they have toleration specified in the `
 This feature was first introduced in K8s v1.33, it allows scheduler to handle ResourceSlice devices
 similarly to how K8s Node Taints and Tolerations allow. Cluster admins can also create standalone
 DeviceTaintRule to prevent workloads being scheduled and / or executed on a particular GPU.
+
+## [KubeVirt](https://github.com/kubevirt/enhancements/blob/main/veps/sig-compute/10-dra-devices/vep.md) support: using GPU in VM in a PCI passthrough mode
+
+Starting [version v1.8.3](https://github.com/kubevirt/kubevirt/releases/v1.8.3), KubeVirt has
+experimental / alpha support for DRA-backed GPU allocation. This requires
+[Kubernetes v1.36](https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/5304-dra-attributes-downward-api/README.md)
+and GPU DRA driver >= `v0.11.0`.
+
+`-b | --manage-binding` parameter (default: enabled) enables automated switching between
+DRM (i915, xe) and VFIO (vfio-pci, xe-vfio-pci) Linux kernel drivers with based on the `DeviceClass`.
+See [example Pod YAML](../../deployments/gpu/examples/pod-inline-vfio.yaml)
+
+When the active binding management is enabled, and a `gpu-vfio.intel.com` `DeviceClass` device
+is requested in the `ResourceClaim`, the GPU device will be unbound from the DRM kernel driver
+and bound to the respective VFIO kernel driver during preparation, to be used in the virtual machine
+in the PCI passthrough mode. This is supported for both: whole GPU allocations and SR-IOV Virtual
+Function (VFs) PCI devices. Likewise, the GPU device will be unbound from VFIO kernel driver, and
+bound to the respective DRM kernel driver when `gpu.intel.com` `DeviceClass` was specified
+in the `ResourceClaim` for a regular (non-VM) container workload.
+
+To prevent the GPU DRA driver fom switching the GPU kernel driver, set `-b | --manage-binding` to false
+in `DaemonSet` `command` or `args`. It is recommended to either delete `gpu-vfio.intel.com` `DeviceClass`,
+or uncomment its [selector for the `driver` attribute](../../deployments/gpu/base/device-class.yaml#L24)
+to prevent GPUs bound to DRM drivers from being allocated for VM workloads.
 
 ## Known issues
 

@@ -13,7 +13,7 @@ image:
   repository: ghcr.io/intel/intel-resource-drivers-for-kubernetes
   name: intel-gaudi-resource-driver
   pullPolicy: IfNotPresent
-  tag: "v0.7.1"
+  tag: "v0.7.2"
 
 serviceAccount:
   create: true
@@ -46,6 +46,11 @@ kubeletPlugin:
       operator: "Exists"
       effect: "NoSchedule"
   affinity: {}
+
+  # Health monitoring configuration
+  healthMonitoring:
+    # Provide -m flag to kubelet-plugin to actively monitor Gaudi health via HLML.
+    enabled: true
 
 cdi:
   staticPath: /etc/cdi

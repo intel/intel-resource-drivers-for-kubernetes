@@ -20,41 +20,40 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strconv"
 
 	"k8s.io/klog/v2"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 )
 
-// DeduceCardAndRenderdIndexes arg is device "<sysfs>/bus/pci/drivers/i915/<DBDF>/drm/" path.
-func DeduceCardAndRenderdIndexes(sysfsDeviceDir string) (uint64, uint64, error) {
-	var cardIdx uint64
-	var renderDidx uint64
+// DeduceCardAndRenderDNames returns DRM device names such as card0 and renderD128.
+func DeduceCardAndRenderDNames(sysfsDeviceDir string) (string, string, error) {
+	cardName := ""
+	renderDName := ""
 
-	// get card and renderD indexes
+	// get card and renderD names
 	drmDir := path.Join(sysfsDeviceDir, "drm")
 	drmFiles, err := os.ReadDir(drmDir)
 	if err != nil { // ignore this device
-		return 0, 0, fmt.Errorf("cannot read device folder %v: %v", drmDir, err)
+		return "", "", fmt.Errorf("cannot read device folder %v: %v", drmDir, err)
 	}
 
 	for _, drmFile := range drmFiles {
 		drmFileName := drmFile.Name()
 		if device.CardRegexp.MatchString(drmFileName) {
-			cardIdx, err = strconv.ParseUint(drmFileName[4:], 10, 64)
-			if err != nil {
-				return 0, 0, fmt.Errorf("failed to parse index of DRM card device '%v', skipping", drmFileName)
-			}
+			cardName = drmFileName
 		} else if device.RenderdRegexp.MatchString(drmFileName) {
-			renderValue, err := strconv.ParseUint(drmFileName[7:], 10, 64)
-			if err != nil {
-				klog.Errorf("failed to parse renderDN device: %v, skipping", drmFileName)
-				continue
-			}
-			renderDidx = renderValue
+			renderDName = drmFileName
 		}
 	}
 
-	return cardIdx, renderDidx, nil
+	if cardName == "" {
+		return "", "", fmt.Errorf("failed to find DRM card device in %v", drmDir)
+	}
+
+	if renderDName == "" {
+		klog.V(5).Infof("No renderD device found in %v", drmDir)
+	}
+
+	return cardName, renderDName, nil
 }

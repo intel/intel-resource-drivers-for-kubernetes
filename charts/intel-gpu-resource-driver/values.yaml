@@ -13,7 +13,7 @@ image:
   repository: ghcr.io/intel/intel-resource-drivers-for-kubernetes
   name: intel-gpu-resource-driver
   pullPolicy: IfNotPresent
-  tag: "v0.10.1"
+  tag: "v0.11.0"
 
 serviceAccount:
   create: true
@@ -32,7 +32,7 @@ kubeletPlugin:
   # Custom nodeSelector. Used only when nodeFeatureRules.enabled=false.
   nodeSelector: {}
   # When health monitoring is disabled, set this to true for GPU driver to query hardware details directly from devices.
-  # With health monitoring enabled, hardware details come from xpumd amd privileged mode is not required.
+  # With health monitoring enabled, hardware details come from xpumd and privileged mode is not required.
   privileged: false
 
 
@@ -43,6 +43,12 @@ kubeletPlugin:
     # Only critical errors should result in tainting the device and evicting Pods from using the GPU.
     ignoreHealthWarning: true
 
+
+  manageBinding:
+    # Let GPU DRA driver actively switch GPUs between DRM Linux kernel drivers and
+    # VFIO Linux kernel drivers to be used in regular containers and VMs respectively.
+    # If set to false - only VFIO-driver-bound GPUs will be usable for VMs PCI passthrough.
+    enabled: true
 
   tolerations:
     - key: node-role.kubernetes.io/master
@@ -74,3 +80,8 @@ nfd:
   enabled: false
   nameOverride: intel-gpu-nfd
   enableNodeFeatureApi: true
+
+xpumdEnabled: false
+
+xpumd:
+  gpuAccess: dra

@@ -24,14 +24,15 @@ func TestConsumeXPUMDDeviceDetails(t *testing.T) {
 
 	testDevices := gpudevice.DevicesInfo{
 		"0000-00-02-0-0x56c0": {
-			UID:        "0000-00-02-0-0x56c0",
-			Model:      "0x56c0",
-			DeviceType: "gpu",
-			Driver:     "i915",
-			CardIdx:    0,
-			RenderdIdx: 128,
-			MemoryMiB:  8192,
-			MaxVFs:     16,
+			UID:           "0000-00-02-0-0x56c0",
+			Model:         "0x56c0",
+			DeviceType:    "gpu",
+			Driver:        "i915",
+			CurrentDriver: "i915",
+			CardName:      "card0",
+			RenderDName:   "renderD128",
+			MemoryMiB:     8192,
+			MaxVFs:        16,
 		},
 	}
 	if err := fakesysfs.FakeSysFsGpuContents(testDirs.SysfsRoot, testDirs.DevfsRoot, testDevices, false); err != nil {
@@ -42,13 +43,14 @@ func TestConsumeXPUMDDeviceDetails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not create fake driver: %v", err)
 	}
-	//	defer func() { _ = drv.Shutdown(context.TODO()) }()
+	defer func() { _ = drv.Shutdown(context.TODO()) }()
 
 	//nolint:forcetypeassert // We want the code to panic if our assumption turns out to be wrong.
 	allocatable := drv.state.Allocatable.(map[string]*gpudevice.DeviceInfo)
-	dev := allocatable["0000-00-02-0-0x56c0"]
-	// Health becomes gpudevice.HealthUnknown when health monitoring is not enabled.
-	dev.Health = gpudevice.HealthHealthy
+	dev, found := allocatable["0000-00-02-0-0x56c0"]
+	if !found {
+		t.Fatal("device 0000-00-02-0-0x56c0 not found in allocatable")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -188,7 +190,7 @@ func TestConsumeXPUMDDeviceDetails(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset device to healthy state before each test.
-			dev.Health = gpudevice.HealthHealthy
+			dev.HealthStatus = map[string]string{}
 
 			// Set the driver's ignoreHealthWarning setting.
 			drv.ignoreHealthWarning = tt.ignoreHealthWarning
@@ -203,8 +205,8 @@ func TestConsumeXPUMDDeviceDetails(t *testing.T) {
 			if !exists {
 				t.Fatalf("device %v not found in allocatable after update", "0000-00-02-0-0x56c0")
 			}
-			if updatedDev.Health != tt.expectedHealth {
-				t.Errorf("expected health %s, got %s", tt.expectedHealth, updatedDev.Health)
+			if updatedDev.Health() != tt.expectedHealth {
+				t.Errorf("expected health %s, got %s", tt.expectedHealth, updatedDev.Health())
 			}
 			expectedMemoryMiB := tt.updates[0].Info.Memory[0].Size / (1024 * 1024)
 			if updatedDev.MemoryMiB != expectedMemoryMiB {
@@ -254,7 +256,6 @@ func TestXpumDevicesToAllocatableDevicesInfo(t *testing.T) {
 					Model:      "0x56c0",
 					ModelName:  "Intel Arc A770",
 					MemoryMiB:  16384,
-					Health:     "Healthy",
 					HealthStatus: map[string]string{
 						"CoreThermal": "Healthy",
 					},
@@ -284,7 +285,6 @@ func TestXpumDevicesToAllocatableDevicesInfo(t *testing.T) {
 					PCIAddress: "0000:00:02.0",
 					Model:      "0x56c0",
 					ModelName:  "Intel Arc A770",
-					Health:     "Unhealthy",
 					HealthStatus: map[string]string{
 						"CoreThermal": "Unhealthy",
 					},
@@ -314,7 +314,6 @@ func TestXpumDevicesToAllocatableDevicesInfo(t *testing.T) {
 					PCIAddress: "0000:00:02.0",
 					Model:      "0x56c0",
 					ModelName:  "Intel Arc A770",
-					Health:     "Healthy",
 					HealthStatus: map[string]string{
 						"CoreThermal": "Healthy",
 					},
@@ -344,7 +343,6 @@ func TestXpumDevicesToAllocatableDevicesInfo(t *testing.T) {
 					PCIAddress: "0000:00:02.0",
 					Model:      "0x56c0",
 					ModelName:  "Intel Arc A770",
-					Health:     "Unhealthy",
 					HealthStatus: map[string]string{
 						"CoreThermal": "Unhealthy",
 					},
@@ -376,7 +374,6 @@ func TestXpumDevicesToAllocatableDevicesInfo(t *testing.T) {
 					PCIAddress: "0000:00:02.0",
 					Model:      "0x56c0",
 					ModelName:  "Intel Arc A770",
-					Health:     "Healthy",
 					HealthStatus: map[string]string{
 						"CoreThermal": "Healthy",
 						"Memory":      "Healthy",
@@ -424,7 +421,6 @@ func TestXpumDevicesToAllocatableDevicesInfo(t *testing.T) {
 					PCIAddress: "0000:03:00.0",
 					Model:      "0x56c0",
 					ModelName:  "Intel Arc A770",
-					Health:     "Healthy",
 					HealthStatus: map[string]string{
 						"CoreThermal": "Healthy",
 						"Memory":      "Healthy",
@@ -436,7 +432,6 @@ func TestXpumDevicesToAllocatableDevicesInfo(t *testing.T) {
 					PCIAddress: "0000:05:00.0",
 					Model:      "0x56c1",
 					ModelName:  "Intel Arc A750",
-					Health:     "Unhealthy",
 					HealthStatus: map[string]string{
 						"CoreThermal": "Healthy",
 						"Memory":      "Healthy",

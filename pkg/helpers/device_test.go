@@ -62,7 +62,6 @@ func TestGetSysfsRoot(t *testing.T) {
 func TestGetDevRoot(t *testing.T) {
 	tests := []struct {
 		name        string
-		envVarName  string
 		envVarValue string
 		devPath     string
 		expected    string
@@ -70,7 +69,6 @@ func TestGetDevRoot(t *testing.T) {
 	}{
 		{
 			name:        "Custom devfs location exists",
-			envVarName:  DevfsEnvVarName,
 			envVarValue: TestDevfsRoot,
 			devPath:     "devices",
 			expected:    TestDevfsRoot,
@@ -78,7 +76,6 @@ func TestGetDevRoot(t *testing.T) {
 		},
 		{
 			name:        "Custom devfs location does not exist",
-			envVarName:  DevfsEnvVarName,
 			envVarValue: "/invalid/dev",
 			devPath:     "devices",
 			expected:    devfsDefaultRoot,
@@ -86,7 +83,6 @@ func TestGetDevRoot(t *testing.T) {
 		},
 		{
 			name:        "Default devfs location",
-			envVarName:  DevfsEnvVarName,
 			envVarValue: "",
 			devPath:     "devices",
 			expected:    devfsDefaultRoot,
@@ -97,8 +93,8 @@ func TestGetDevRoot(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.setupEnv {
-				os.Setenv(tt.envVarName, tt.envVarValue)
-				defer os.Unsetenv(tt.envVarName)
+				os.Setenv(DevfsEnvVarName, tt.envVarValue)
+				defer os.Unsetenv(DevfsEnvVarName)
 			}
 
 			if tt.envVarValue != "" {
@@ -108,7 +104,7 @@ func TestGetDevRoot(t *testing.T) {
 				defer os.RemoveAll(tt.envVarValue)
 			}
 
-			result := GetDevfsRoot(tt.envVarName, tt.devPath)
+			result := GetDevfsRoot(tt.devPath)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}

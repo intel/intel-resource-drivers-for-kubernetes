@@ -24,10 +24,11 @@ import (
 	"strconv"
 	"strings"
 
+	deviceAttribute "k8s.io/dynamic-resource-allocation/deviceattribute"
+	"k8s.io/klog/v2"
+
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/helpers"
-
-	"k8s.io/klog/v2"
 )
 
 // Detect devices from sysfs.
@@ -43,7 +44,7 @@ func DiscoverDevices(sysfsRoot, namingStyle string) map[string]*device.DeviceInf
 			klog.V(5).Infof("No Intel Gaudi devices found on this host. %v does not exist", sysfsDriverDir)
 			return devices
 		}
-		klog.Errorf("could not read sysfs directory %v: %v", driverDirFiles, err)
+		klog.Errorf("could not read sysfs directory %v: %v", sysfsDriverDir, err)
 		return devices
 	}
 
@@ -101,12 +102,11 @@ func scanDevicesFromDriverDirFiles(driverDirFiles []os.DirEntry, sysfsDriverDir,
 			Healthy:    true,
 		}
 
-		linkSource := path.Join(sysfsDriverDir, devicePCIAddress)
-		pciRoot, err := helpers.DeterminePCIRoot(linkSource)
+		pciRootAttribute, err := deviceAttribute.GetPCIeRootAttributeByPCIBusID(devicePCIAddress, deviceAttribute.WithFSFromRoot(sysfsRoot))
 		if err != nil {
 			klog.Warningf("could not detect PCI root complex for %v: %v", devicePCIAddress, err)
 		} else {
-			newDeviceInfo.PCIRoot = pciRoot
+			newDeviceInfo.PCIRoot = *pciRootAttribute.Value.StringValue
 		}
 
 		// Set user-friendly ModelName field.

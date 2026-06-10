@@ -16,3 +16,24 @@ spec:
   # See https://github.com/kubernetes/enhancements/tree/master/keps/sig-scheduling/5004-dra-extended-resource
   extendedResourceName: {{ .Values.extendedResourceName }}
   {{- end }}
+
+---
+{{- if and (.Values.openshift.enabled) (semverCompare "<4.21" .Values.openshift.version) }}
+apiVersion: resource.k8s.io/v1beta1
+{{- else }}
+apiVersion: resource.k8s.io/v1
+{{- end }}
+kind: DeviceClass
+metadata:
+  name: gpu-vfio.intel.com
+
+spec:
+  selectors:
+  - cel:
+      expression: device.driver == "gpu.intel.com"
+  # If manageBinding is disabled, only vfio-pci or xe-vfio-pci driver-bound GPUs
+  # will be used for VMs PCI passthrough.
+  {{- if not .Values.kubeletPlugin.manageBinding.enabled }}
+  - cel:
+      expression: device.attributes["gpu.intel.com"].driver == 'vfio-pci' || device.attributes["gpu.intel.com"].driver == 'xe-vfio-pci'
+  {{- end }}
