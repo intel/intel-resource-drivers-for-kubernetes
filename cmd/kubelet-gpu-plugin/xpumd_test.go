@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	xpumapi "github.com/intel/xpumanager/xpumd/exporter/api/deviceinfo/v1alpha1"
+	xpumapi "github.com/intel/xpumanager/xpumd/exporter/intelxpuinfo/api/deviceinfo/v1alpha1"
 
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/fakesysfs"
 	gpudevice "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"

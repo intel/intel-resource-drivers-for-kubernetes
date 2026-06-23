@@ -3,8 +3,7 @@ module github.com/intel/intel-resource-drivers-for-kubernetes
 go 1.26.0
 
 require (
-	github.com/fsnotify/fsnotify v1.9.0
-	github.com/intel/xpumanager/xpumd/exporter v0.0.0-20260416113012-0a2523c6e0f6
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/spf13/cobra v1.10.2
@@ -79,7 +78,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	go.uber.org/zap v1.27.1 // indirect
+	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
@@ -110,6 +109,7 @@ require (
 
 require (
 	github.com/containers/nri-plugins v0.12.1
+	github.com/intel/xpumanager/xpumd/exporter/intelxpuinfo/api v0.2.0-1
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	tags.cncf.io/container-device-interface v1.1.0
 )
