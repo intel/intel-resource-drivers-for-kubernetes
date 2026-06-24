@@ -397,13 +397,14 @@ DeviceTaintRule to prevent workloads being scheduled and / or executed on a part
 ## [KubeVirt](https://github.com/kubevirt/enhancements/blob/main/veps/sig-compute/10-dra-devices/vep.md) support: using GPU in VM in a PCI passthrough mode
 
 Starting [version v1.8.3](https://github.com/kubevirt/kubevirt/releases/v1.8.3), KubeVirt has
-experimental / alpha support for DRA-backed GPU allocation. This requires
-[Kubernetes v1.36](https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/5304-dra-attributes-downward-api/README.md)
-and GPU DRA driver >= `v0.11.0`.
+experimental / alpha support for DRA-backed GPU allocation. This requires:
+- enabling `GPUsWithDRA` [FeatureGate in KubeVirt](https://kubevirt.io/user-guide/cluster_admin/activating_feature_gates/)
+- Kubernetes v1.36+, because of [the feature](https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/5304-dra-attributes-downward-api/README.md) (enabled by default)
+- Intel(R) GPU DRA driver >= `v0.11.0`
 
 `-b | --manage-binding` parameter (default: enabled) enables automated switching between
 DRM (i915, xe) and VFIO (vfio-pci, xe-vfio-pci) Linux kernel drivers with based on the `DeviceClass`.
-See [example Pod YAML](../../deployments/gpu/examples/pod-inline-vfio.yaml)
+See [example Pod YAML](../../deployments/gpu/examples/kubevirt-vmi-inline-gpu.yaml)
 
 When the active binding management is enabled, and a `gpu-vfio.intel.com` `DeviceClass` device
 is requested in the `ResourceClaim`, the GPU device will be unbound from the DRM kernel driver
