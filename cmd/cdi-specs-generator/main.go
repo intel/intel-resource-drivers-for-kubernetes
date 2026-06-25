@@ -32,14 +32,19 @@ import (
 	gaudiCdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/cdihelpers"
 	gaudiDevice "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/device"
 	gaudiDiscovery "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gaudi/discovery"
+
+	npuCdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/npu/cdihelpers"
+	npuDevice "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/npu/device"
+	npuDiscovery "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/npu/discovery"
 )
 
 var (
 	supportedDevices = map[string]bool{
 		"gpu":   true,
 		"gaudi": true,
+		"npu":   true,
 	}
-	version = "v0.3.0"
+	version = "v0.4.0"
 )
 
 func main() {
@@ -61,6 +66,10 @@ func handleDevices(args []string, cdiCache *cdiapi.Cache, namingStyle string, dr
 			}
 		case "gaudi":
 			if err := handleGaudiDevices(cdiCache, namingStyle, dryRun); err != nil {
+				return err
+			}
+		case "npu":
+			if err := handleNPUDevices(cdiCache, namingStyle, dryRun); err != nil {
 				return err
 			}
 		default:
@@ -114,7 +123,7 @@ func cobraRunFunc(cmd *cobra.Command, args []string) error {
 
 func newCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "intel-cdi-specs-generator [--cdi-dir=<cdi directory>] [--naming=<style>] <gpu | gaudi>",
+		Use:   "intel-cdi-specs-generator [--cdi-dir=<cdi directory>] [--naming=<style>] <gpu | gaudi | npu>",
 		Short: "Intel CDI Spec Generator",
 		Long:  "Intel CDI Specs Generator detects supported accelerators and creates CDI specs for them.",
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -191,6 +200,33 @@ func handleGaudiDevices(cdiCache *cdiapi.Cache, namingStyle string, dryRun bool)
 	}
 
 	if err := gaudiCdihelpers.AddDetectedDevicesToCDIRegistry(cdiCache, detectedDevices); err != nil {
+		fmt.Printf("unable to add detected devices to CDI registry: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func handleNPUDevices(cdiCache *cdiapi.Cache, namingStyle string, dryRun bool) error {
+	sysfsDir := helpers.GetSysfsRoot(npuDevice.SysfsAccelClassPath)
+
+	fmt.Println("Scanning for NPU accelerators")
+
+	detectedDevices := npuDiscovery.DiscoverDevices(sysfsDir, namingStyle)
+	if len(detectedDevices) == 0 {
+		fmt.Println("No supported devices detected")
+	}
+
+	fmt.Println("Detected supported devices")
+	for npuName, npu := range detectedDevices {
+		fmt.Printf("NPU: %v=%v (%v - %v)\n", npuDevice.CDIKind, npuName, npu.PCIAddress, npu.PCIDeviceId)
+	}
+
+	if dryRun {
+		return nil
+	}
+
+	if err := npuCdihelpers.AddDetectedDevicesToCDIRegistry(cdiCache, detectedDevices); err != nil {
 		fmt.Printf("unable to add detected devices to CDI registry: %v", err)
 		return err
 	}
