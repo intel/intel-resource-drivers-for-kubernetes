@@ -29,6 +29,7 @@ import (
 const (
 	PartitioningDefault            = false
 	HealthCareFlagDefault          = false
+	HealthCareOptionalFlagDefault  = false
 	IgnoreHealthWarningFlagDefault = true
 	HealthcheckPortDefault         = 51516
 	DefaultManageBinding           = true
@@ -36,6 +37,7 @@ const (
 
 type GPUFlags struct {
 	Healthcare          bool
+	HealthcareOptional  bool
 	IgnoreHealthWarning bool // true if Warning status means healthy, false otherwise. Default: true
 	HealthcheckPort     int
 	XPUMDSocketFilePath string
@@ -53,6 +55,15 @@ func main() {
 			Destination: &gpuFlags.Healthcare,
 
 			EnvVars: []string{"HEALTH_MONITORING"},
+		},
+		&cli.BoolFlag{
+			Name:        "health-monitoring-optional",
+			Aliases:     []string{"o"},
+			Usage:       "Allow infinite polling for XPUM daemon without restart.",
+			Value:       HealthCareOptionalFlagDefault,
+			Destination: &gpuFlags.HealthcareOptional,
+
+			EnvVars: []string{"HEALTH_MONITORING_OPTIONAL"},
 		},
 		&cli.BoolFlag{
 			Name:        "ignore-health-warning",

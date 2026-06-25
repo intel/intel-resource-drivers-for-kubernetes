@@ -43,11 +43,17 @@ const (
 	ConnectAttemptInterval = 10 * time.Second
 )
 
-func (d *driver) waitForXPUMDStream(ctx context.Context, c xpumapi.DeviceInfoClient) (xpumapi.DeviceInfo_WatchDeviceHealthClient, error) {
+func (d *driver) waitForXPUMDStream(ctx context.Context, c xpumapi.DeviceInfoClient, infiniteWait bool) (xpumapi.DeviceInfo_WatchDeviceHealthClient, error) {
 	var err error
 	var stream xpumapi.DeviceInfo_WatchDeviceHealthClient
 
-	for attempt := 0; attempt < ConnectAttemptsMax; attempt++ {
+	// Allow waiting infinitely for the XPUM daemon without causing a panic in the caller.
+	attemptStep := 1
+	if infiniteWait {
+		attemptStep = 0
+	}
+
+	for attempt := 0; attempt < ConnectAttemptsMax; attempt += attemptStep {
 		klog.V(5).Infof("trying to connect to xpumd, attempt %v/%v", attempt+1, ConnectAttemptsMax)
 		stream, err = c.WatchDeviceHealth(ctx, &xpumapi.WatchDeviceHealthRequest{})
 		if err == nil || d.stopXPUMDListener {
@@ -63,7 +69,7 @@ func (d *driver) waitForXPUMDStream(ctx context.Context, c xpumapi.DeviceInfoCli
 
 // xpumdListen is the entrypoint go routine to receive health status and device details
 // updates from XPUMD stream. The received updates are handled by ConsumeXPUMDDeviceDetails function.
-func (d *driver) xpumdListen(ctx context.Context, socketFilePath string) {
+func (d *driver) xpumdListen(ctx context.Context, socketFilePath string, infiniteWait bool) {
 	klog.V(3).Info("starting xpumd listener")
 	var conn *grpc.ClientConn
 
@@ -83,7 +89,7 @@ func (d *driver) xpumdListen(ctx context.Context, socketFilePath string) {
 		d.stopXPUMDListener = true
 	}()
 
-	stream, err := d.waitForXPUMDStream(ctx, c)
+	stream, err := d.waitForXPUMDStream(ctx, c, infiniteWait)
 	if err != nil {
 		panic("xpumd-client: failed to connect to xpumd within expected time, exiting")
 	}
@@ -100,7 +106,7 @@ func (d *driver) xpumdListen(ctx context.Context, socketFilePath string) {
 				// Socket was closed by remote, likely due to xpumd restart.
 				// Try to reconnect same way as on startup..
 				klog.Errorf("xpumd-client: error receiving data: %v", err)
-				stream, err = d.waitForXPUMDStream(ctx, c)
+				stream, err = d.waitForXPUMDStream(ctx, c, infiniteWait)
 				if err != nil {
 					panic("xpumd-client: failed to reconnect to xpumd, exiting")
 				}
