@@ -1,3 +1,9 @@
+#
+# Copyright (C) 2025-2026 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
 CC = gcc
 CFLAGS = -O -Wall -Wextra -Wno-unused-parameter -fPIC
 LDFLAGS = -shared

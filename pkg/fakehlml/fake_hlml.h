@@ -1,8 +1,8 @@
-/* SPDX-License-Identifier: MIT
- *
- * Copyright (c) 2024-2026, Intel Corporation. All Rights Reserved.
- *
- */
+//
+// Copyright (C) 2025-2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
 
 #ifndef __FAKE_HLML_H__
 #define __FAKE_HLML_H__
