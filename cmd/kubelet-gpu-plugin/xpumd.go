@@ -237,12 +237,6 @@ func (s *nodeState) applyDeviceUpdates(newDevicesInfo device.DevicesInfo) (bool,
 }
 
 func applyHealthStatus(foundDevice, newDeviceInfo *device.DeviceInfo) (needToPublish bool) {
-	// If the Health status was previously HealthUnknown with 0 entries,
-	// and now has some health information - publish new ResourceSlice.
-	previouslyUnknown := foundDevice.Health() == device.HealthUnknown
-	if previouslyUnknown && newDeviceInfo.Health() != device.HealthHealthy {
-		needToPublish = true
-	}
 
 	// Only overall foundDevice.Health() is exposed in the ResourceSlice Device, and not foundDevice.HealthStatus.
 	// Overall health is a logical AND of all HealthStatus elements. If any HealthStatus[X] changes - the new
