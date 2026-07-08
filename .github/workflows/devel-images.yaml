@@ -35,7 +35,7 @@ jobs:
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
     - name: Prepare for build
-      run: make vendor licenses
+      run: make vendor
 
     - name: Build and push image
       id: build_and_push
