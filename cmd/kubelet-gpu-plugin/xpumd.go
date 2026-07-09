@@ -43,15 +43,15 @@ const (
 	ConnectAttemptInterval = 10 * time.Second
 )
 
-func (d *driver) waitForXPUMDStream(ctx context.Context, c xpumapi.DeviceInfoClient) (xpumapi.DeviceInfo_WatchDeviceHealthClient, error) {
+func (d *driver) waitForXPUMDStream(ctx context.Context, c xpumapi.DeviceInfoClient, infiniteWait bool) (xpumapi.DeviceInfo_WatchDeviceHealthClient, error) {
 	var err error
 	var stream xpumapi.DeviceInfo_WatchDeviceHealthClient
 
-	for attempt := 0; attempt < ConnectAttemptsMax; attempt++ {
+	for attempt := 0; infiniteWait || attempt < ConnectAttemptsMax; attempt++ {
 		klog.V(5).Infof("trying to connect to xpumd, attempt %v/%v", attempt+1, ConnectAttemptsMax)
 		stream, err = c.WatchDeviceHealth(ctx, &xpumapi.WatchDeviceHealthRequest{})
 		if err == nil || d.stopXPUMDListener {
-			break
+			return stream, nil
 		}
 
 		klog.Error("xpumd-client: error calling WatchDeviceHealth", "error", err)
@@ -63,7 +63,7 @@ func (d *driver) waitForXPUMDStream(ctx context.Context, c xpumapi.DeviceInfoCli
 
 // xpumdListen is the entrypoint go routine to receive health status and device details
 // updates from XPUMD stream. The received updates are handled by ConsumeXPUMDDeviceDetails function.
-func (d *driver) xpumdListen(ctx context.Context, socketFilePath string) {
+func (d *driver) xpumdListen(ctx context.Context, socketFilePath string, infiniteWait bool) {
 	klog.V(3).Info("starting xpumd listener")
 	var conn *grpc.ClientConn
 
@@ -83,7 +83,7 @@ func (d *driver) xpumdListen(ctx context.Context, socketFilePath string) {
 		d.stopXPUMDListener = true
 	}()
 
-	stream, err := d.waitForXPUMDStream(ctx, c)
+	stream, err := d.waitForXPUMDStream(ctx, c, infiniteWait)
 	if err != nil {
 		panic("xpumd-client: failed to connect to xpumd within expected time, exiting")
 	}
@@ -94,13 +94,18 @@ func (d *driver) xpumdListen(ctx context.Context, socketFilePath string) {
 	maxErrors := 5
 	arbitraryErrorDelay := 5 * time.Second
 	for {
+		if d.stopXPUMDListener {
+			klog.Info("xpumd-client: stopping xpumd listener")
+			return
+		}
+
 		msg, err := stream.Recv()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				// Socket was closed by remote, likely due to xpumd restart.
 				// Try to reconnect same way as on startup..
 				klog.Errorf("xpumd-client: error receiving data: %v", err)
-				stream, err = d.waitForXPUMDStream(ctx, c)
+				stream, err = d.waitForXPUMDStream(ctx, c, infiniteWait)
 				if err != nil {
 					panic("xpumd-client: failed to reconnect to xpumd, exiting")
 				}
@@ -109,7 +114,7 @@ func (d *driver) xpumdListen(ctx context.Context, socketFilePath string) {
 			} else {
 				// Arbitrary error. Retry until maxErrors reached then panic in case the GRPC is incompatible.
 				// If :latest DRA image tag is used chances are new image will fix the issue.
-				if errCounter < maxErrors {
+				if infiniteWait || errCounter < maxErrors {
 					klog.Errorf("xpumd-client: error receiving data: %v", err)
 					errCounter++
 					time.Sleep(arbitraryErrorDelay)
@@ -122,11 +127,6 @@ func (d *driver) xpumdListen(ctx context.Context, socketFilePath string) {
 
 		klog.V(6).Infof("xpumd-client: received %d device info items", len(msg.Devices))
 		d.ConsumeXPUMDDeviceDetails(ctx, msg.GetDevices())
-
-		if d.stopXPUMDListener {
-			klog.Info("xpumd-client: stopping xpumd listener")
-			return
-		}
 	}
 }
 
