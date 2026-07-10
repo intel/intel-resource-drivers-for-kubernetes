@@ -136,10 +136,10 @@ PluginDataDirectoryPath: %v`,
 		// Enable monitoring health stream from xpumd 2.0+.
 		klog.Info("Starting health monitoring")
 		go driver.xpumdListen(ctx, gpuFlags.XPUMDSocketFilePath, gpuFlags.HealthcareOptional)
-
-		// Start udev device events listener.
-		go driver.watchDevices(ctx)
 	}
+
+	// Start udev device events listener.
+	go driver.watchDevices(ctx)
 
 	klog.V(3).Info("Finished creating new driver")
 	return driver, nil
