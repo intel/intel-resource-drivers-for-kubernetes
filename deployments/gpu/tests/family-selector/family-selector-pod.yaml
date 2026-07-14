@@ -12,7 +12,7 @@ spec:
           deviceClassName: gpu.intel.com
           selectors:
           - cel:
-              expression: device.attributes["gpu.intel.com"].family == "Arc"
+              expression: device.attributes["gpu.intel.com"].family.startsWith("Arc")
 ---
 apiVersion: v1
 kind: Pod
