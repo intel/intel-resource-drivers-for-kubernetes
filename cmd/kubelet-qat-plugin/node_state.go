@@ -163,30 +163,30 @@ func (s *nodeState) Allocate(requestedDeviceUID string, requestedService device.
 	return nil, false, fmt.Errorf("could not allocate device '%s', service '%s' from any device", requestedDeviceUID, requestedService.String())
 }
 
-func (s *nodeState) Unprepare(ctx context.Context, claim kubeletplugin.NamespacedObject) (bool, error) {
+func (s *nodeState) Unprepare(ctx context.Context, claim kubeletplugin.NamespacedObject) (updated bool, err error) {
+	allocatableDevices, _ := s.Allocatable.(device.VFDevices)
 
 	for _, requestedDevice := range s.Prepared[string(claim.UID)].Devices {
-		allocatableDevices, _ := s.Allocatable.(device.VFDevices)
-		requestedDevice := allocatableDevices[requestedDevice.DeviceName]
+		vf := allocatableDevices[requestedDevice.DeviceName]
 
-		var updated bool
-		var err error
-
-		if err = s.NodeState.Unprepare(ctx, string(claim.UID)); err != nil {
-			return false, fmt.Errorf("error unpreparing claim %s: %v", claim.UID, err)
+		freed, freeErr := vf.Free(string(claim.UID))
+		if freeErr != nil {
+			klog.Warningf("Could not free device %s claim '%s': %v", vf.UID(), claim.UID, freeErr)
+			continue
 		}
-
-		if updated, err = requestedDevice.Free(string(claim.UID)); err != nil {
-			klog.Warningf("Could not free device %s claim '%s': %v", requestedDevice.UID(), claim.UID, err)
+		// Accumulate across all devices: a claim can span several PFs, so an
+		// earlier PF reset must not be lost if the last device did not reset.
+		if freed {
+			updated = true
 		}
-		klog.V(5).Infof("Claim with uid '%s' freed", claim.UID)
-
-		if updated {
-			return updated, nil
-		}
+		klog.V(5).Infof("Claim with uid '%s' device %s freed", claim.UID, vf.UID())
 	}
-	return false, nil
 
+	if err = s.NodeState.Unprepare(ctx, string(claim.UID)); err != nil {
+		err = fmt.Errorf("error unpreparing claim %s: %v", claim.UID, err)
+	}
+
+	return updated, err
 }
 
 func (s *nodeState) GetResources() resourceslice.DriverResources {
