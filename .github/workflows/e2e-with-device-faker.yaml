@@ -1,0 +1,65 @@
+name: E2E-GPU with Device Faker
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  e2e-gpu:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up kind cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: kind
+          config: hack/kind-config.yaml
+          version: v0.32.0
+          kubectl_version: v1.36.1
+          node_image: kindest/node:v1.36.1
+          wait: 120s
+
+      - name: Build container images
+        run: make gpu-container-build device-faker-container-build
+
+      - name: Prepare local image tags and overlay
+        run: |
+          set -eu
+          GPU_VERSION=$(grep -E '^GPU_VERSION \?=' gpu.mk | awk '{print $3}')
+          DEVICE_FAKER_VERSION=$(grep -E '^DEVICE_FAKER_VERSION \?=' Makefile | awk '{print $3}')
+          GPU_IMAGE="registry.local/intel-gpu-resource-driver:${GPU_VERSION}"
+          DEVICE_FAKER_IMAGE="registry.local/intel-device-faker:${DEVICE_FAKER_VERSION}"
+
+          sed -i "s|^\([[:space:]]*image:[[:space:]]*\).*intel-gpu-resource-driver:.*$|\1${GPU_IMAGE}|" deployments/gpu/overlays/device-faker/device-faker.yaml
+          sed -i "s|^\([[:space:]]*image:[[:space:]]*\).*intel-device-faker:.*$|\1${DEVICE_FAKER_IMAGE}|" deployments/gpu/overlays/device-faker/device-faker.yaml
+          sed -i 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/g' deployments/gpu/overlays/device-faker/device-faker.yaml
+
+          kind load docker-image --name kind "${GPU_IMAGE}" "${DEVICE_FAKER_IMAGE}"
+
+      - name: Run GPU e2e tests
+        run: GPU_E2E_USE_DEVICE_FAKER=true make e2e-gpu
+        
+      - name: Collect diagnostics on failure
+        if: failure()
+        run: |
+          set +e
+          kubectl get pods -A -o wide
+          kubectl get events -A --sort-by=.lastTimestamp
+          kubectl get all -n intel-gpu-resource-driver -o wide
+          kubectl describe ds/intel-gpu-resource-driver-kubelet-plugin -n intel-gpu-resource-driver
+          kubectl logs -n intel-gpu-resource-driver ds/intel-gpu-resource-driver-kubelet-plugin -c device-faker --tail=-1
+          kubectl logs -n intel-gpu-resource-driver ds/intel-gpu-resource-driver-kubelet-plugin -c kubelet-plugin --tail=-1
+          kubectl logs -n intel-gpu-resource-driver pod/gpu-sample-app --all-containers --tail=-1

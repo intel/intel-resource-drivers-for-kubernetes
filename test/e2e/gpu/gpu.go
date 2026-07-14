@@ -2,6 +2,7 @@ package gpu
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -21,6 +22,7 @@ const (
 	gpuDeviceClassYaml            = "deployments/gpu/base/device-class.yaml"
 	gpuNamespaceYaml              = "deployments/gpu/base/namespace.yaml"
 	gpuDriverYaml                 = "deployments/gpu/base/resource-driver.yaml"
+	gpuDeviceFakerKustomization   = "deployments/gpu/overlays/device-faker/kustomization.yaml"
 	gpuResourceClaimTemplateYaml  = "deployments/gpu/examples/resource-claim-template.yaml"
 	gpuSampleAppKustomizationYaml = "deployments/gpu/tests/gpu-sample-app/kustomization.yaml"
 )
@@ -29,6 +31,7 @@ var (
 	gpuDeviceClassYamlPath           string
 	gpuNamespaceYamlPath             string
 	gpuDriverYamlPath                string
+	gpuDeviceFakerKustomizationPath  string
 	gpuResourceClaimTemplateYamlPath string
 )
 
@@ -44,6 +47,7 @@ func describeGpuDraDriver() {
 		gpuDeviceClassYaml:           &gpuDeviceClassYamlPath,
 		gpuNamespaceYaml:             &gpuNamespaceYamlPath,
 		gpuDriverYaml:                &gpuDriverYamlPath,
+		gpuDeviceFakerKustomization:  &gpuDeviceFakerKustomizationPath,
 		gpuResourceClaimTemplateYaml: &gpuResourceClaimTemplateYamlPath,
 	}
 	for file, pathVar := range filePaths {
@@ -57,7 +61,13 @@ func describeGpuDraDriver() {
 	ginkgo.BeforeEach(func(ctx context.Context) {
 		ginkgo.By("deploying GPU plugin")
 		e2ekubectl.RunKubectlOrDie(gpuNamespace, "apply", "-f", gpuNamespaceYamlPath)
-		e2ekubectl.RunKubectlOrDie(gpuNamespace, "apply", "-f", gpuDriverYamlPath)
+
+		if os.Getenv("GPU_E2E_USE_DEVICE_FAKER") == "true" {
+			e2ekubectl.RunKubectlOrDie(gpuNamespace, "apply", "-k", filepath.Dir(gpuDeviceFakerKustomizationPath))
+		} else {
+			e2ekubectl.RunKubectlOrDie(gpuNamespace, "apply", "-f", gpuDriverYamlPath)
+		}
+
 		_, _ = e2epod.WaitForPodsWithLabelRunningReady(ctx, f.ClientSet, gpuNamespace,
 			labels.Set{"app": "intel-gpu-resource-driver-kubelet-plugin"}.AsSelector(), 1 /* one replica */, 100*time.Second)
 		e2ekubectl.RunKubectlOrDie(gpuNamespace, "apply", "-f", gpuDeviceClassYamlPath)

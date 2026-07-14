@@ -50,3 +50,8 @@ gpu-container-build: cleanall vendor
 .PHONY: gpu-container-push
 gpu-container-push: gpu-container-build
 	$(DOCKER) push $(GPU_IMAGE_TAG)
+
+.PHONY: e2e-gpu
+e2e-gpu:
+	PLUGINS_REPO_DIR=$(CURDIR) GPU_E2E_USE_DEVICE_FAKER=$(GPU_E2E_USE_DEVICE_FAKER) \
+	go test -v ./test/e2e/... --clean-start=true -ginkgo.v -ginkgo.trace -ginkgo.show-node-events -ginkgo.focus='GPU DRA Driver'
