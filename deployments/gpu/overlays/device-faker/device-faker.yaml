@@ -13,8 +13,7 @@ spec:
         # https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#termination-with-sidecars
         # which allows proper fake root cleanup.
         restartPolicy: Always
-        # TODO: switch to CI image when public CI is in place
-        image: registry.local/intel-device-faker:v0.5.0
+        image: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-device-faker:latest
         imagePullPolicy: Always
         command: ["/device-faker", "gpu", "-t", "/opt/templates/gpu-template.json", "-r", "-d", "/tmp/gpu-fake-root", "-c", "-p"]
         volumeMounts:

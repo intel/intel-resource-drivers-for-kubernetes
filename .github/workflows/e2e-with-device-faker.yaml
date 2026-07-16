@@ -18,7 +18,6 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       GPU_IMAGE: registry.local/intel-gpu-resource-driver:ci-${{ github.sha }}
-      DEVICE_FAKER_IMAGE: registry.local/intel-device-faker:ci-${{ github.sha }} # This will be replaced with the published image in the future when available for device-faker
 
     steps:
       - name: Checkout code
@@ -43,20 +42,16 @@ jobs:
         run: |
           make \
             GPU_IMAGE_TAG="${GPU_IMAGE}" \
-            DEVICE_FAKER_IMAGE_TAG="${DEVICE_FAKER_IMAGE}" \
-            gpu-container-build device-faker-container-build
+            gpu-container-build
 
       - name: Prepare local image tags and overlay
         run: |
           set -eu
 
-          # Temporary for local kind testing in CI: rewrite image refs and load local images.
-          # Remove these steps once this workflow switches to using published remote images directly.
           sed -i "s|^\([[:space:]]*image:[[:space:]]*\).*intel-gpu-resource-driver:.*$|\1${GPU_IMAGE}|" deployments/gpu/overlays/device-faker/device-faker.yaml
-          sed -i "s|^\([[:space:]]*image:[[:space:]]*\).*intel-device-faker:.*$|\1${DEVICE_FAKER_IMAGE}|" deployments/gpu/overlays/device-faker/device-faker.yaml
           sed -i 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/g' deployments/gpu/overlays/device-faker/device-faker.yaml
 
-          kind load docker-image --name kind "${GPU_IMAGE}" "${DEVICE_FAKER_IMAGE}"
+          kind load docker-image --name kind "${GPU_IMAGE}"
 
       - name: Run GPU e2e tests
         run: KUBECONFIG=$HOME/.kube/config GPU_E2E_USE_DEVICE_FAKER=true make e2e-gpu
