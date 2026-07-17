@@ -47,6 +47,14 @@ kubeletPlugin:
       effect: "NoSchedule"
   affinity: {}
 
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+
 cdi:
   staticPath: /etc/cdi
   dynamicPath: /var/run/cdi

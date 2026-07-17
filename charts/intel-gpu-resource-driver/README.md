@@ -60,6 +60,7 @@ You may also run `helm show values` on this chart's dependencies for additional 
 | kubeletPlugin.healthMonitoring.enabled | bool | true | Enable (default) GPU details discovery method. Also, [health monitoring](../../doc/gpu/USAGE.md#health-monitoring-support). Requires [xpumd](https://github.com/intel/xpumanager/tree/v2.x/xpumd) |
 | kubeletPlugin.privileged | bool | false | Enable alternative method for discovering GPU details when health monitoring is disabled |
 | kubeletPlugin.manageBinding.enabled | bool | true | Enable dynamic switching between DRM and VFIO-PCI kernel drivers |
+| kubeletPlugin.resources | object | `{}` | Compute resource requests/limits for kubelet-plugin container |
 
 ## Deploying to RedHat OpenShift Container Platform
 

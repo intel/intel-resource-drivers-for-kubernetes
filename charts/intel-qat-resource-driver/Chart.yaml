@@ -3,7 +3,7 @@ name: intel-qat-resource-driver-chart
 description: A Helm chart for a Dynamic Resource Allocation (DRA) Intel QAT Resource Driver
 
 type: application
-version: 0.4.3
+version: 0.4.4
 appVersion: v0.4.3
 home: https://github.com/intel/intel-resource-drivers-for-kubernetes/charts
 

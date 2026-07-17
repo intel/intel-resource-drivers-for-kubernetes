@@ -52,6 +52,7 @@ You may also run `helm show values` on this chart's dependencies for additional 
 | image.name | string | `"intel-qat-resource-driver"` |
 | image.pullPolicy | string | `"IfNotPresent"` |
 | image.tag | string | `"v0.4.3"` |
+| kubeletPlugin.resources | object | `{}` |
 
 If you change the image tag to be used in Helm chart deployment, ensure that the version of the container image is consistent with deployment YAMLs - they might change between releases.
 

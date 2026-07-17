@@ -51,6 +51,10 @@ spec:
         # when using fake sysfs - mount at the same place as on host
         - name: sysfs
           mountPath: "/sysfs"
+        {{- with .Values.kubeletPlugin.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         securityContext:
           privileged: true
           capabilities:

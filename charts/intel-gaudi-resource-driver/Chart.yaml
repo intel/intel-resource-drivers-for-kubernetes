@@ -3,7 +3,7 @@ name: intel-gaudi-resource-driver-chart
 description: A Helm chart for a Dynamic Resource Allocation (DRA) Intel Gaudi Resource Driver
 
 type: application
-version: 0.7.2
+version: 0.7.3
 appVersion: v0.7.2
 home: https://github.com/intel/intel-resource-drivers-for-kubernetes/charts
 
