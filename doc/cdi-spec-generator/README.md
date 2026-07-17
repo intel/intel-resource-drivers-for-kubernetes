@@ -9,12 +9,13 @@ The Intel CDI Specs Generator is a command line tool to generate Container Devic
 ## Usage
 Execute the built executable with the type of device you wish to generate CDI specs for:
 ```bash
-intel-cdi-specs-generator <gpu | gaudi>
+intel-cdi-specs-generator <gpu | gaudi | npu>
 ```
 
 Supported device types:
 - gpu: Use this option to generate CDI specs for Intel GPUs.
 - gaudi: Use this option to generate CDI specs for Intel Gaudi accelerators.
+- npu: Use this option to generate CDI specs for Intel NPU accelerators.
 
 ## Display Version
 To display the version of the binary, use the following command:
