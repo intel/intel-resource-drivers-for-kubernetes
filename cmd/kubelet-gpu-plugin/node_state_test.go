@@ -116,6 +116,66 @@ func TestGetResourcesTaintsUnboundUnmanagedDevice(t *testing.T) {
 	}
 }
 
+func TestGetResourcesTaintsPerUnhealthyType(t *testing.T) {
+	state := &nodeState{
+		Allocatable: map[string]*device.DeviceInfo{
+			"gpu-unhealthy": {
+				UID:           "gpu-unhealthy",
+				PCIAddress:    "0000:00:01.0",
+				Driver:        "xe",
+				CurrentDriver: "xe",
+				HealthStatus: map[string]string{
+					"temperature.core.gpu":          device.HealthUnhealthy,
+					"frequency":                     device.HealthHealthy,
+					device.HealthStatusDeviceAbsent: device.HealthUnhealthy,
+				},
+			},
+		},
+		NodeName:      "test-node",
+		ManageBinding: true,
+	}
+
+	devices := state.GetResources().Pools["test-node"].Slices[0].Devices
+	if len(devices) != 1 {
+		t.Fatalf("expected 1 device, got %d", len(devices))
+	}
+
+	taints := devices[0].Taints
+	if len(taints) != 2 {
+		t.Fatalf("expected 2 taints, got %d: %v", len(taints), taints)
+	}
+
+	if taints[0].Key != "health-DeviceAbsent" || taints[0].Effect != resourcev1.DeviceTaintEffectNoExecute {
+		t.Errorf("unexpected taint[0]:  got key=%v, effect=%v, expected key=health-DeviceAbsent, effect=NoExecute", taints[0].Key, taints[0].Effect)
+	}
+
+	if taints[1].Key != "health-xpumd-temperature.core.gpu" || taints[1].Effect != resourcev1.DeviceTaintEffectNoExecute {
+		t.Errorf("unexpected taint[1]:  got key=%v, effect=%v, expected key=health-xpumd-temperature.core.gpu, effect=NoExecute", taints[1].Key, taints[1].Effect)
+	}
+}
+
+func TestGetResourcesTaintsUnsupportedHealth(t *testing.T) {
+	state := &nodeState{
+		Allocatable: map[string]*device.DeviceInfo{
+			"gpu-unhealthy": {
+				UID:          "gpu-unhealthy",
+				HealthStatus: map[string]string{"invalid category": device.HealthUnhealthy},
+			},
+		},
+		NodeName:      "test-node",
+		ManageBinding: true,
+	}
+
+	taints := state.GetResources().Pools["test-node"].Slices[0].Devices[0].Taints
+	if len(taints) != 1 {
+		t.Fatalf("expected 1 taint, got %d: %v", len(taints), taints)
+	}
+
+	if taints[0].Key != device.UnsupportedHealthTaintKey || taints[0].Effect != resourcev1.DeviceTaintEffectNoExecute {
+		t.Errorf("unexpected taint:  got key=%v, effect=%v, expected key=%v, effect=NoExecute", taints[0].Key, taints[0].Effect, device.UnsupportedHealthTaintKey)
+	}
+}
+
 func TestIsDeviceUsedExclusivelyAlready(t *testing.T) {
 	state := &nodeState{
 		Allocatable: map[string]*device.DeviceInfo{

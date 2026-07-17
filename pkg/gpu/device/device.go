@@ -68,6 +68,7 @@ const (
 	HealthStatusDeviceAbsent     = "DeviceAbsent"     // part of HealthCustomList
 	HealthStatusUnexpectedDriver = "UnexpectedDriver" // part of HealthCustomList
 	UnboundUnmanagedTaintKey     = "UnboundUnmanaged" // part of HealthCustomList
+	UnsupportedHealthTaintKey    = "UnsupportedHealth"
 
 	PCIVendorId           = "0x8086"
 	PCIVGAClassID         = "0x030000"

@@ -19,6 +19,7 @@ import (
 	resourcev1 "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/dynamic-resource-allocation/deviceattribute"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
@@ -159,26 +160,43 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 			}
 		}
 
-		// FIXME: TODO: K8s 1.33-1.34 only supports plain taint without description.
-		// See https://github.com/kubernetes/enhancements/issues/5055 .
-		if gpu.Health() == device.HealthUnhealthy {
-			// e.g. HealthIssues-memorytemperature_coretemperature:NoExecute
-			// The format will change in K8s 1.35+.
-			unhealthyTypes := []string{}
-			for healthType, healthStatus := range gpu.HealthStatus {
-				if healthStatus == device.HealthUnhealthy {
-					unhealthyTypes = append(unhealthyTypes, healthType)
-				}
+		// One DeviceTaint per unhealthy HealthStatus entry.
+		// driver-managed UnhealthyTypes get the "health-" prefix.
+		// xpumd-managed UnhealthyTypes get the "health-xpumd-" prefix.
+		unhealthyTypes := []string{}
+		for healthType, healthStatus := range gpu.HealthStatus {
+			if healthStatus == device.HealthUnhealthy {
+				unhealthyTypes = append(unhealthyTypes, healthType)
 			}
-			sort.Strings(unhealthyTypes)
-			key := "HealthIssues-" + strings.Join(unhealthyTypes, "_")
-			key = strings.ReplaceAll(key, "[", "")
-			key = strings.ReplaceAll(key, "]", "")
-			key = strings.ReplaceAll(key, ",", "_")
-			newDevice.Taints = []resourcev1.DeviceTaint{{
+		}
+
+		sort.Strings(unhealthyTypes)
+		unsupportedHealth := false
+		for _, healthType := range unhealthyTypes {
+			prefix := "health-"
+			if !device.HealthCustomList[healthType] {
+				prefix = "health-xpumd-"
+			}
+
+			key := prefix + healthType
+			if errs := validation.IsValidLabelValue(key); len(errs) > 0 {
+				klog.Errorf("Cannot taint device %v with health type %v: %q is not a valid label value: %v. Tainting with %q", gpuUID, healthType, key, errs, device.UnsupportedHealthTaintKey)
+				unsupportedHealth = true
+				continue
+			}
+
+			newDevice.Taints = append(newDevice.Taints, resourcev1.DeviceTaint{
 				Key:    key,
 				Effect: resourcev1.DeviceTaintEffectNoExecute,
-			}}
+			})
+		}
+
+		// Taint the device with a generic key if it has unsupported health type.
+		if unsupportedHealth {
+			newDevice.Taints = append(newDevice.Taints, resourcev1.DeviceTaint{
+				Key:    device.UnsupportedHealthTaintKey,
+				Effect: resourcev1.DeviceTaintEffectNoExecute,
+			})
 		}
 
 		// Taint the device if it is not bound to any kernel driver and binding
