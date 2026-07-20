@@ -47,6 +47,14 @@ kubeletPlugin:
       effect: "NoSchedule"
   affinity: {}
 
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+
   # Health monitoring configuration
   healthMonitoring:
     # Provide -m flag to kubelet-plugin to actively monitor Gaudi health via HLML.

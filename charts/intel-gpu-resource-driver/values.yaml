@@ -35,6 +35,13 @@ kubeletPlugin:
   # With health monitoring enabled, hardware details come from xpumd and privileged mode is not required.
   privileged: false
 
+  resources: {}
+    # limits:
+    #   cpu: 100m
+    #   memory: 128Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
 
   # Health monitoring configuration
   healthMonitoring:

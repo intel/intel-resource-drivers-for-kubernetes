@@ -44,6 +44,10 @@ spec:
           mountPath: /sysfs
         - name: qatconfiguration
           mountPath: /defaults
+        {{- with .Values.kubeletPlugin.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         securityContext:
           privileged: true
           readOnlyRootFilesystem: true

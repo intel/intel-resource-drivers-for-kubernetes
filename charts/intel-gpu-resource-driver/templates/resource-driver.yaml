@@ -77,6 +77,10 @@ spec:
         - name: xpumd-socket
           mountPath: "/run/xpumd"
         {{- end }}
+        {{- with .Values.kubeletPlugin.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         securityContext:
           privileged: {{ .Values.kubeletPlugin.privileged }}
           capabilities:
