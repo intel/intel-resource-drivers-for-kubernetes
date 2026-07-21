@@ -7,6 +7,11 @@ spec:
   selectors:
   - cel:
       expression: device.driver == "gpu.intel.com"
+  # Uncomment if active binding management is disabled in kubelet-plugin, to prevent non-DRM bound GPUs
+  # from being allocated to regular (non-VM) workloads.
+  #- cel:
+  #    expression: device.attributes["gpu.intel.com"].driver == 'i915' || device.attributes["gpu.intel.com"].driver == 'xe'
+  # Alternative: use overlays/manage-binding-disabled.
   # Available in K8s v1.34 requires feature gate enabled, uncomment if needed.
   # See https://github.com/kubernetes/enhancements/tree/master/keps/sig-scheduling/5004-dra-extended-resource
   #extendedResourceName: intel.com/gpu
@@ -20,6 +25,7 @@ spec:
   - cel:
       expression: device.driver == "gpu.intel.com"
   # Uncomment if active binding management is disabled in kubelet-plugin, to prevent non-VFIO bound GPUs
-  # from being allocated to VM-based workloads.
+  # from being allocated to VM-based workloads. Keep the DRM selector above enabled too.
   #- cel:
   #    expression: device.attributes["gpu.intel.com"].driver == 'vfio-pci' || device.attributes["gpu.intel.com"].driver == 'xe-vfio-pci'
+  # Alternative: use overlays/manage-binding-disabled.

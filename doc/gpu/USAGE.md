@@ -419,10 +419,14 @@ bound to the respective DRM kernel driver when `gpu.intel.com` `DeviceClass` was
 in the `ResourceClaim` for a regular (non-VM) container workload.
 
 To prevent the GPU DRA driver fom switching the GPU kernel driver, set `-b | --manage-binding` to false
-in `DaemonSet` `command` or `args`. It is recommended to either delete `gpu-vfio.intel.com` `DeviceClass`,
-or uncomment its [selector for the `driver` attribute](../../deployments/gpu/base/device-class.yaml#L24)
-to prevent GPUs bound to DRM drivers from being allocated for VM workloads.
+in `DaemonSet` `command` or `args` (or set `MANAGE_BINDING=false` environment variable). 
+In this case, both [DeviceClasses](../../deployments/gpu/base/device-class.yaml) need to have a `driver` 
+selector to prevent the scheduler from allocating a GPU bound to an incompatible driver.
 
+When deploying the [helm chart](../../charts/intel-gpu-resource-driver/), use `--set kubeletPlugin.manageBinding.enabled=false`.
+During the non-Helm deployment, use `deployments/gpu/overlays/manage-binding-disabled` 
+[kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/#bases-and-overlays)
+overlay, or uncomment the selector manually in the [DeviceClasses](../../deployments/gpu/base/device-class.yaml) YAML file.
 ## Known issues
 
 - In K8s v1.34.0 - v1.34.1 the kubelet might lose GRPC connection to a DRA driver after 30 minutes

@@ -11,6 +11,12 @@ spec:
   selectors:
   - cel:
       expression: device.driver == "gpu.intel.com"
+  # If manageBinding is disabled, only i915 or xe driver-bound GPUs
+  # will be used for regular (non-VM) workloads.
+  {{- if not .Values.kubeletPlugin.manageBinding.enabled }}
+  - cel:
+      expression: device.attributes["gpu.intel.com"].driver == 'i915' || device.attributes["gpu.intel.com"].driver == 'xe'
+  {{- end }}
   {{- if .Values.enableDRAExtendedResources }}
   # Available in K8s v1.34 requires feature gate enabled
   # See https://github.com/kubernetes/enhancements/tree/master/keps/sig-scheduling/5004-dra-extended-resource

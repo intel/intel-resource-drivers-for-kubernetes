@@ -1,6 +1,10 @@
 resources:
   - ../../base
 
+# Dynamic binding is not supported with device-faker.
+components:
+  - ../../components/manage-binding-disabled
+
 patches:
   - path: remove-sysfs.yaml
   - path: device-faker.yaml

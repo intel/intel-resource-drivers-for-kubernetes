@@ -6,5 +6,9 @@ resources:
   - nfd-intel-gpu-device-rule.yaml
   - nfd-intel-gpu-platform-labeling.yaml
 
+# Uncomment if manage-binding=false is needed.
+#components:
+#  - ../../components/manage-binding-disabled
+
 patches:
   - path: add-nodeselector-intel-gpu.yaml
