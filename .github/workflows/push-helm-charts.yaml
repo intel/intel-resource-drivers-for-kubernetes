@@ -1,0 +1,112 @@
+name: Publish Helm charts
+
+on:
+  push:
+    tags:
+      - '*-v*-chart'
+  workflow_dispatch:
+    inputs:
+      chart_type:
+        description: 'Chart type to release: gpu, gaudi, qat'
+        required: true
+        type: choice
+        options:
+          - gpu
+          - gaudi
+          - qat
+      allow_overwrite:
+        description: 'Allow overwriting an already published chart version'
+        type: boolean
+        default: false
+
+jobs:
+  push-helm-chart:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      packages: write
+      contents: read
+    env:
+      OCI_REGISTRY: oci://ghcr.io/intel
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: Parse tag
+        id: parse
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            CHART_TYPE="${TAG%%-v*}"
+            TAG_VERSION="${TAG#*-v}"
+            TAG_VERSION="${TAG_VERSION%-chart}"
+            echo "tag_version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+          else
+            CHART_TYPE="${{ inputs.chart_type }}"
+          fi
+
+          CHART_DIR="charts/intel-${CHART_TYPE}-resource-driver"
+
+          if [ ! -d "$CHART_DIR" ]; then
+            echo "ERROR: chart directory $CHART_DIR does not exist"
+            echo "Available charts:"
+            ls -d charts/*/
+            exit 1
+          fi
+
+          echo "chart_type=$CHART_TYPE" >> "$GITHUB_OUTPUT"
+          echo "chart_dir=$CHART_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Validate chart version matches tag
+        if: github.event_name == 'push'
+        run: |
+          CHART_VERSION=$(awk '/^version:/ {print $2; exit}' "${{ steps.parse.outputs.chart_dir }}/Chart.yaml")
+          TAG_VERSION="${{ steps.parse.outputs.tag_version }}"
+          echo "Chart.yaml version: $CHART_VERSION"
+          echo "Tag version:        $TAG_VERSION"
+          if [ "$CHART_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: Chart.yaml version ($CHART_VERSION) does not match tag version ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Login to GHCR
+        run: |
+          echo "${{ secrets.GH_PUBLIC_TOKEN }}" | \
+          helm registry login "${OCI_REGISTRY}" -u ${{ secrets.CI_USER_EMAIL }} --password-stdin
+
+      - name: Check chart not already published
+        if: ${{ inputs.allow_overwrite != true }}
+        run: |
+          CHART_DIR="${{ steps.parse.outputs.chart_dir }}"
+          chart_name=$(awk '/^name:/ {print $2; exit}' "$CHART_DIR/Chart.yaml")
+          chart_version=$(awk '/^version:/ {print $2; exit}' "$CHART_DIR/Chart.yaml")
+          echo "Checking ${chart_name}:${chart_version}..."
+          if helm pull "${OCI_REGISTRY}/${chart_name}" --version "$chart_version" 2>/dev/null; then
+            rm -f "${chart_name}-${chart_version}.tgz"
+            echo "ERROR: ${chart_name} version ${chart_version} already exists in the registry"
+            exit 1
+          fi
+          echo "OK: ${chart_name}:${chart_version} not yet published"
+
+      - name: Build helm dependencies
+        run: helm dependency update "${{ steps.parse.outputs.chart_dir }}"
+
+      - name: Package and publish chart
+        run: |
+          CHART_DIR="${{ steps.parse.outputs.chart_dir }}"
+          chart_name=$(awk '/^name:/ {print $2; exit}' "$CHART_DIR/Chart.yaml")
+          chart_version=$(awk '/^version:/ {print $2; exit}' "$CHART_DIR/Chart.yaml")
+          app_version=$(awk '/^appVersion:/ {print $2; exit}' "$CHART_DIR/Chart.yaml")
+
+          helm package "$CHART_DIR" \
+            --version "$chart_version" \
+            --app-version "$app_version" \
+            --destination .charts
+
+          helm push ".charts/${chart_name}-${chart_version}.tgz" "${OCI_REGISTRY}"
