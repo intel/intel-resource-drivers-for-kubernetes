@@ -316,6 +316,18 @@ func RemoveDevices(cdiCache *cdiapi.Cache, devicesToRemove []string) error {
 			}
 			spec.Devices = remainingDevices
 
+			// CDI rejects a spec with no devices, so removing the last device
+			// has to delete the spec rather than write it back empty. This is
+			// reachable on single-GPU hosts: binding the only GPU to a VFIO
+			// driver drops its DRM nodes, emptying the spec.
+			if len(spec.Devices) == 0 {
+				specName := strings.TrimSuffix(filepath.Base(spec.GetPath()), filepath.Ext(spec.GetPath()))
+				if err := cdiCache.RemoveSpec(specName); err != nil {
+					return fmt.Errorf("failed to remove empty CDI spec %v: %v", specName, err)
+				}
+				continue
+			}
+
 			specname := path.Base(spec.GetPath())
 			if err := cdiCache.WriteSpec(spec.Spec, specname); err != nil {
 				return fmt.Errorf("failed to write CDI spec %v: %v", specname, err)

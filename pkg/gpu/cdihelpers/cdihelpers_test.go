@@ -374,6 +374,48 @@ func TestUpdateGPUDevices(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Single-GPU host: rebinding the only GPU to a VFIO driver drops its
+			// DRM nodes, so removing the old entry empties the spec. CDI rejects
+			// a spec with no devices, so the spec has to be deleted rather than
+			// written back empty.
+			name: "Existing spec, updating the only device empties the spec",
+			existingSpecs: []*cdiapi.Spec{
+				{
+					Spec: &specs.Spec{
+						Kind:    device.CDIKind,
+						Version: "0.6.0",
+						Devices: []specs.Device{
+							{
+								Name: "gpu1",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/dri/card0", HostPath: "/dev/dri/card0", Type: "c"},
+										{Path: "/dev/dri/renderD128", HostPath: "/dev/dri/renderD128", Type: "c"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			detectedDevices: []*device.DeviceInfo{
+				{UID: "gpu1", VFIODevice: "vfio0", IOMMUGroup: "15", Driver: "xe", CurrentDriver: "xe-vfio-pci"},
+			},
+			expectedError: false,
+			expectedCDIDevices: []specs.Device{
+				{
+					Name: "gpu1",
+					ContainerEdits: specs.ContainerEdits{
+						DeviceNodes: []*specs.DeviceNode{
+							{Path: "/dev/vfio/15", HostPath: "/dev/vfio/15", Type: "c"},
+							{Path: "/dev/vfio/vfio", HostPath: "/dev/vfio/vfio", Type: "c"},
+							{Path: "/dev/vfio/devices/vfio0", HostPath: "/dev/vfio/devices/vfio0", Type: "c"},
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
