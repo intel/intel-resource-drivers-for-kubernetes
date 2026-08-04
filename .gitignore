@@ -16,6 +16,7 @@
 *.o
 *.so
 *.out
+coverage.txt
 
 Chart.lock
 *.tgz
