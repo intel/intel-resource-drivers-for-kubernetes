@@ -61,6 +61,26 @@ cp controller-tools/controller-gen code-generator/client-gen $HOME/go/bin
 # ensure it's in the path. You may want to add export to $HOME/.bashrc
 echo $PATH | grep -q $HOME/go/bin || export PATH=$HOME/go/bin:$PATH
 ```
+# Go modules and `go install`
+
+This repo has two Go modules: the root module, and `cmd/kubelet-gaudi-plugin` which is separate so
+that its GPL-2.0-or-later `gohlml` dependency stays out of the Apache-2.0 binaries.
+
+The **root `go.mod` must not gain any `replace` directives**. `go install <pkg>@<version>` refuses
+to build a module whose `go.mod` replaces anything, so a single `replace` there breaks
+```shell
+go install github.com/intel/intel-resource-drivers-for-kubernetes/cmd/cdi-specs-generator@gpu-v0.11.0
+```
+and the equivalent for every other command in the root module. The `noreplace` target, part of
+`make lint`, guards against this.
+
+The gaudi module keeps its `replace github.com/intel/intel-resource-drivers-for-kubernetes => ../../`
+— that is how it resolves the parent module without a published version, and it only affects builds
+of that module. The consequence is that `kubelet-gaudi-plugin` cannot be installed with
+`go install`; build it from a clone with `make gaudi` instead. Removing that `replace` would mean
+publishing the root module as a versioned dependency of the gaudi module and bumping it on every
+release, so the tradeoff is deliberate.
+
 # Running tests
 
 Since Q1 '26 Gaudi DRA driver uses `gohlml` to retrieve health-related information.
