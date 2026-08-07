@@ -583,27 +583,35 @@ func (s *nodeState) changeKernelDriver(pciAddress, driverName string) (bool, err
 
 func (s *nodeState) getRequestDeviceClassNameFromClaim(requestName string, claim *resourcev1.ResourceClaim) string {
 	klog.V(5).Infof("Getting device class name for request %v in claim %v", requestName, claim.Name)
+
+	requestNameParts := strings.SplitN(requestName, "/", 2)
+
 	for _, deviceRequest := range claim.Spec.Devices.Requests {
 		klog.V(5).Infof("Checking device request %v: %+v", deviceRequest.Name, deviceRequest)
-		requestNameParts := strings.Split(requestName, "/")
-		if deviceRequest.Name == requestNameParts[0] {
-			if deviceRequest.Exactly != nil {
-				klog.V(5).Infof("Exact request %v: %+v", requestName, deviceRequest.Exactly)
-				return deviceRequest.Exactly.DeviceClassName
-			}
+		if deviceRequest.Name != requestNameParts[0] {
+			continue
+		}
 
-			if len(deviceRequest.FirstAvailable) > 0 && len(requestNameParts) == 2 {
-				for _, subRequest := range deviceRequest.FirstAvailable {
-					if subRequest.Name == requestNameParts[1] {
-						klog.V(5).Infof("FirstAvailable request %v: %+v", requestName, subRequest)
-						return subRequest.DeviceClassName
-					}
+		if deviceRequest.Exactly != nil {
+			klog.V(5).Infof("Exact request %v: %+v", requestName, deviceRequest.Exactly)
+			return deviceRequest.Exactly.DeviceClassName
+		}
+
+		if len(deviceRequest.FirstAvailable) > 0 && len(requestNameParts) == 2 {
+			for _, subRequest := range deviceRequest.FirstAvailable {
+				if subRequest.Name == requestNameParts[1] {
+					klog.V(5).Infof("FirstAvailable request %v: %+v", requestName, subRequest)
+					return subRequest.DeviceClassName
 				}
 			}
-
-			return ""
 		}
+
+		klog.Warningf("Could not find device class name for request %v in claim %v", requestName, claim.Name)
+
+		return ""
 	}
+
+	klog.Warningf("Could not find request %v in claim %v", requestName, claim.Name)
 
 	return ""
 }

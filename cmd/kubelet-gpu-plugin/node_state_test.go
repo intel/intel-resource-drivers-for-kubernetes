@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	resourcev1 "k8s.io/api/resource/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 
@@ -276,6 +277,90 @@ func TestIsDeviceUsedExclusivelyAlready(t *testing.T) {
 
 			if got != testcase.expected {
 				t.Fatalf("expected IsDeviceUsedExclusivelyAlready()=%v, got %v", testcase.expected, got)
+			}
+		})
+	}
+}
+
+func TestGetRequestDeviceClassNameFromClaim(t *testing.T) {
+	claim := &resourcev1.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "namespace1", Name: "claim1"},
+		Spec: resourcev1.ResourceClaimSpec{
+			Devices: resourcev1.DeviceClaim{
+				Requests: []resourcev1.DeviceRequest{
+					{
+						Name:    "exact-request",
+						Exactly: &resourcev1.ExactDeviceRequest{DeviceClassName: device.DriverName, Count: 1},
+					},
+					{
+						Name: "prioritized-request",
+						FirstAvailable: []resourcev1.DeviceSubRequest{
+							{Name: "vfio", DeviceClassName: device.VFIODeviceClassName, Count: 1},
+							{Name: "drm", DeviceClassName: device.DriverName, Count: 1},
+						},
+					},
+					{
+						Name: "unknown-request-type",
+					},
+				},
+			},
+		},
+	}
+
+	testcases := []struct {
+		name        string
+		requestName string
+		expected    string
+	}{
+		{
+			name:        "exactly request",
+			requestName: "exact-request",
+			expected:    device.DriverName,
+		},
+		{
+			name:        "firstAvailable request, first subrequest selected",
+			requestName: "prioritized-request/vfio",
+			expected:    device.VFIODeviceClassName,
+		},
+		{
+			name:        "firstAvailable request, second subrequest selected",
+			requestName: "prioritized-request/drm",
+			expected:    device.DriverName,
+		},
+		{
+			name:        "firstAvailable request without subrequest name",
+			requestName: "prioritized-request",
+			expected:    "",
+		},
+		{
+			name:        "firstAvailable request with unknown subrequest name",
+			requestName: "prioritized-request/nonexistent",
+			expected:    "",
+		},
+		{
+			name:        "exactly request with unexpected subrequest name",
+			requestName: "exact-request/vfio",
+			expected:    device.DriverName,
+		},
+		{
+			name:        "request of unsupported type",
+			requestName: "unknown-request-type",
+			expected:    "",
+		},
+		{
+			name:        "unknown request",
+			requestName: "nonexistent-request",
+			expected:    "",
+		},
+	}
+
+	state := &nodeState{}
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			got := state.getRequestDeviceClassNameFromClaim(testcase.requestName, claim)
+
+			if got != testcase.expected {
+				t.Errorf("expected device class %q, got %q", testcase.expected, got)
 			}
 		})
 	}

@@ -623,6 +623,136 @@ func TestPrepareResourceClaims(t *testing.T) {
 			},
 			driverChange: true,
 		},
+		{
+			// The first subrequest of the prioritized list is selected by the
+			// scheduler: plain GPU, no driver change is needed.
+			name: "firstAvailable request, GPU subrequest selected",
+			request: []*resourceapi.ResourceClaim{
+				testhelpers.NewClaimFirstAvailable(
+					"namespacefa", "claimfa", "uidfa", "requestfa", "gpu.intel.com", "node1",
+					[]testhelpers.SubRequest{
+						{Name: "gpu", DeviceClass: "gpu.intel.com"},
+						{Name: "vfio", DeviceClass: "gpu-vfio.intel.com"},
+					},
+					0,
+					[]string{"0000-00-02-0-0x56c0"}),
+			},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uidfa": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"requestfa/gpu"},
+							PoolName:     "node1",
+							DeviceName:   "0000-00-02-0-0x56c0",
+							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+							Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:02.0"}[0]}}},
+						},
+					},
+				},
+			},
+			initialPreparedClaims: ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{
+				"uidfa": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"requestfa/gpu"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-02-0-0x56c0",
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+								Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:02.0"}[0]}}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "firstAvailable request, VFIO subrequest selected, no driver change",
+			request: []*resourceapi.ResourceClaim{
+				testhelpers.NewClaimFirstAvailable(
+					"namespacefa", "claimfa", "uidfa", "requestfa", "gpu.intel.com", "node1",
+					[]testhelpers.SubRequest{
+						{Name: "gpu", DeviceClass: "gpu.intel.com"},
+						{Name: "vfio", DeviceClass: "gpu-vfio.intel.com"},
+					},
+					1,
+					[]string{"0000-00-06-0-0xe211"}),
+			},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uidfa": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"requestfa/vfio"},
+							PoolName:     "node1",
+							DeviceName:   "0000-00-06-0-0xe211",
+							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-06-0-0xe211"},
+							Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:06.0"}[0]}}},
+						},
+					},
+				},
+			},
+			initialPreparedClaims: ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{
+				"uidfa": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"requestfa/vfio"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-06-0-0xe211",
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-06-0-0xe211"},
+								Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:06.0"}[0]}}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			// selected VFIO subrequest requires the kernel driver of the device to be changed from xe to xe-vfio-pci.
+			name: "firstAvailable request, VFIO subrequest selected, driver change from xe to xe-vfio-pci",
+			request: []*resourceapi.ResourceClaim{
+				testhelpers.NewClaimFirstAvailable(
+					"namespacefa", "claimfa", "uidfa", "requestfa", "gpu.intel.com", "node1",
+					[]testhelpers.SubRequest{
+						{Name: "vfio", DeviceClass: "gpu-vfio.intel.com"},
+						{Name: "gpu", DeviceClass: "gpu.intel.com"},
+					},
+					0,
+					[]string{"0000-00-05-0-0xe211"}),
+			},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uidfa": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"requestfa/vfio"},
+							PoolName:     "node1",
+							DeviceName:   "0000-00-05-0-0xe211",
+							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0xe211"},
+							Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:05.0"}[0]}}},
+						},
+					},
+				},
+			},
+			initialPreparedClaims: ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{
+				"uidfa": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"requestfa/vfio"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-05-0-0xe211",
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0xe211"},
+								Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:05.0"}[0]}}},
+							},
+						},
+					},
+				},
+			},
+			driverChange: true,
+		},
 	}
 
 	for _, testcase := range testcases {

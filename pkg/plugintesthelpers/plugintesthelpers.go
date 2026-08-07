@@ -94,19 +94,66 @@ func NewMonitoringClaim(claimNs, claimName, claimUID, requestName, driverName, p
 	return claim
 }
 
-// TODO: only Exactly requests tested ATM, test FirstAvailable as well.
-// See: https://pkg.go.dev/k8s.io/api/resource/v1#DeviceRequest
 // TODO: Test also >1 Count and different AlloctionModes + Selectors.
 // See: https://pkg.go.dev/k8s.io/api/resource/v1#ExactDeviceRequest
 func NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, deviceClass string, allocatedDevices []string, adminAccess bool) *resourcev1.ResourceClaim {
+	claim := newClaim(claimNs, claimName, claimUID, requestName, driverName, pool, requestName, allocatedDevices, &adminAccess)
+	claim.Spec.Devices.Requests[0].Exactly = &resourcev1.ExactDeviceRequest{DeviceClassName: deviceClass, Count: 1}
+
+	return claim
+}
+
+// SubRequest describes a single entry of a firstAvailable prioritized list.
+type SubRequest struct {
+	Name        string
+	DeviceClass string
+}
+
+// NewClaimFirstAvailable returns a ResourceClaim with one firstAvailable
+// (prioritized list) device request.
+// See: https://pkg.go.dev/k8s.io/api/resource/v1#DeviceRequest
+func NewClaimFirstAvailable(
+	claimNs, claimName, claimUID, requestName, driverName, pool string,
+	subRequests []SubRequest, selected int, allocatedDevices []string) *resourcev1.ResourceClaim {
+
+	firstAvailable := []resourcev1.DeviceSubRequest{}
+	for _, subRequest := range subRequests {
+		firstAvailable = append(firstAvailable, resourcev1.DeviceSubRequest{
+			Name:            subRequest.Name,
+			DeviceClassName: subRequest.DeviceClass,
+			Count:           1,
+		})
+	}
+
+	// Allocation result of a firstAvailable request always refers to the
+	// selected subrequest, not to the request itself.
+	allocatedRequestName := requestName
+	if selected >= 0 && selected < len(subRequests) {
+		allocatedRequestName = requestName + "/" + subRequests[selected].Name
+	}
+
+	claim := newClaim(claimNs, claimName, claimUID, requestName, driverName, pool, allocatedRequestName, allocatedDevices, nil)
+	claim.Spec.Devices.Requests[0].FirstAvailable = firstAvailable
+
+	return claim
+}
+
+// newClaim returns a ResourceClaim with one, yet unspecified, device request
+// named requestName, and an allocation result for allocatedDevices referring to
+// allocatedRequestName. The caller is expected to set either Exactly or
+// FirstAvailable on the first request.
+func newClaim(
+	claimNs, claimName, claimUID, requestName, driverName, pool, allocatedRequestName string,
+	allocatedDevices []string, adminAccess *bool) *resourcev1.ResourceClaim {
+
 	allocationResults := []resourcev1.DeviceRequestAllocationResult{}
 	for _, deviceUID := range allocatedDevices {
 		newDevice := resourcev1.DeviceRequestAllocationResult{
 			Device:      deviceUID,
-			Request:     requestName,
+			Request:     allocatedRequestName,
 			Driver:      driverName,
 			Pool:        pool,
-			AdminAccess: &adminAccess,
+			AdminAccess: adminAccess,
 		}
 		allocationResults = append(allocationResults, newDevice)
 	}
@@ -125,7 +172,7 @@ func NewClaim(claimNs, claimName, claimUID, requestName, driverName, pool, devic
 		Spec: resourcev1.ResourceClaimSpec{
 			Devices: resourcev1.DeviceClaim{
 				Requests: []resourcev1.DeviceRequest{
-					{Name: requestName, Exactly: &resourcev1.ExactDeviceRequest{DeviceClassName: deviceClass, Count: 1}},
+					{Name: requestName},
 					{Name: "complimentaryRequest", Exactly: &resourcev1.ExactDeviceRequest{DeviceClassName: "NonExistent"}},
 				},
 			},
