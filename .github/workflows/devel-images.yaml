@@ -7,14 +7,16 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  packages: write
 
 env:
   repo: ghcr.io/intel/intel-resource-drivers-for-kubernetes
 
 jobs:
   build-and-push:
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
     runs-on: ubuntu-24.04
     strategy:
       matrix:
