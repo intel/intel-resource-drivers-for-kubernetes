@@ -37,6 +37,12 @@ const (
 	containerDevVFIOPath = "/dev/vfio"
 )
 
+// specName returns the spec name RemoveSpec expects (without extension), not
+// the full file path. Example: /var/run/cdi/intel.com_gpu.yaml -> intel.com_gpu .
+func specName(spec *cdiapi.Spec) string {
+	return strings.TrimSuffix(filepath.Base(spec.GetPath()), filepath.Ext(spec.GetPath()))
+}
+
 func getGPUSpecs(cdiCache *cdiapi.Cache) []*cdiapi.Spec {
 	gpuSpecs := []*cdiapi.Spec{}
 	for _, cdiSpec := range cdiCache.GetVendorSpecs(device.CDIVendor) {
@@ -59,10 +65,7 @@ func getMEISpecs(cdiCache *cdiapi.Cache) []*cdiapi.Spec {
 
 func replaceGPUCDISpecs(cdiCache *cdiapi.Cache, devices device.DevicesInfo) error {
 	for _, spec := range getGPUSpecs(cdiCache) {
-		// RemoveSpec expects spec name (without extension), not full file path.
-		// Example: /var/run/cdi/intel.com_gpu.yaml -> intel.com_gpu
-		specName := strings.TrimSuffix(filepath.Base(spec.GetPath()), filepath.Ext(spec.GetPath()))
-		if err := cdiCache.RemoveSpec(specName); err != nil {
+		if err := cdiCache.RemoveSpec(specName(spec)); err != nil {
 			return fmt.Errorf("failed to remove old GPU CDI spec %v: %v", spec, err)
 		}
 	}
@@ -80,10 +83,7 @@ func replaceGPUCDISpecs(cdiCache *cdiapi.Cache, devices device.DevicesInfo) erro
 
 func replaceMEICDISpecs(cdiCache *cdiapi.Cache, devices device.DevicesInfo) error {
 	for _, spec := range getMEISpecs(cdiCache) {
-		// RemoveSpec expects spec name (without extension), not full file path.
-		// Example: /var/run/cdi/intel.com_gpu-mei.yaml -> intel.com_gpu-mei.yaml -> intel.com_gpu-mei
-		specName := strings.TrimSuffix(filepath.Base(spec.GetPath()), filepath.Ext(spec.GetPath()))
-		if err := cdiCache.RemoveSpec(specName); err != nil {
+		if err := cdiCache.RemoveSpec(specName(spec)); err != nil {
 			return fmt.Errorf("failed to remove old MEI CDI spec %v: %v", spec, err)
 		}
 	}
@@ -316,6 +316,19 @@ func RemoveDevices(cdiCache *cdiapi.Cache, devicesToRemove []string) error {
 			}
 			spec.Devices = remainingDevices
 
+			// CDI rejects a spec with no devices, so removing the last device
+			// has to delete the spec rather than write it back empty. This is
+			// reachable on single-GPU hosts: binding the only GPU to a VFIO
+			// driver drops its DRM nodes, emptying the spec.
+			if len(spec.Devices) == 0 {
+				name := specName(spec)
+				if err := cdiCache.RemoveSpec(name); err != nil {
+					return fmt.Errorf("failed to remove empty CDI spec %v: %v", name, err)
+				}
+				continue
+			}
+
+			// WriteSpec, unlike RemoveSpec, expects the file name with extension.
 			specname := path.Base(spec.GetPath())
 			if err := cdiCache.WriteSpec(spec.Spec, specname); err != nil {
 				return fmt.Errorf("failed to write CDI spec %v: %v", specname, err)
