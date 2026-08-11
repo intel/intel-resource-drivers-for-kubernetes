@@ -38,7 +38,7 @@ const (
 )
 
 // specName returns the spec name RemoveSpec expects (without extension), not
-// the full file path. Example: /var/run/cdi/intel.com_gpu.yaml -> intel.com_gpu
+// the full file path. Example: /var/run/cdi/intel.com_gpu.yaml -> intel.com_gpu .
 func specName(spec *cdiapi.Spec) string {
 	return strings.TrimSuffix(filepath.Base(spec.GetPath()), filepath.Ext(spec.GetPath()))
 }
