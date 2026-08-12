@@ -13,7 +13,7 @@ More info: [Intel Resource Drivers for Kubernetes](https://github.com/intel/inte
 helm install \
     --namespace intel-gaudi-resource-driver \
     --create-namespace \
-    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver-chart
+    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-gaudi-resource-driver-chart
 ```
 
 > [!NOTE]
@@ -25,7 +25,7 @@ kubectl create namespace intel-gaudi-resource-driver
 kubectl label --overwrite namespace intel-gaudi-resource-driver pod-security.kubernetes.io/enforce=privileged
 helm install \
     --namespace intel-gaudi-resource-driver \
-    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver-chart
+    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-gaudi-resource-driver-chart
 ```
 
 ## Uninstalling the chart
@@ -41,7 +41,7 @@ kubectl delete ns intel-gaudi-resource-driver
 See [Customizing the Chart Before Installing](https://helm.sh/docs/intro/using_helm/#customizing-the-chart-before-installing). To see all configurable options with detailed comments:
 
 ```console
-helm show values oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver-chart
+helm show values oci://ghcr.io/intel/intel-gaudi-resource-driver-chart
 ```
 
 You may also run `helm show values` on this chart's dependencies for additional options.
@@ -66,7 +66,7 @@ helm install \
     --set openshift.version=4.20 \
     --namespace intel-gaudi-resource-driver \
     --create-namespace \
-    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver-chart
+    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-gaudi-resource-driver-chart
 ```
 
 ### OpenShift 4.21+
@@ -77,7 +77,7 @@ helm install \
     --set openshift.enabled=true \
     --namespace intel-gaudi-resource-driver \
     --create-namespace \
-    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver-chart
+    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-gaudi-resource-driver-chart
 ```
 
 > [!NOTE]

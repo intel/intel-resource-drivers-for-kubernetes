@@ -28,7 +28,7 @@ as a package to GitHub OCI registry, and can be installed directly with Helm.
 helm install \
     --namespace "intel-gpu-resource-driver" \
     --create-namespace \
-    intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver-chart
+    intel-gpu-resource-driver oci://ghcr.io/intel/intel-gpu-resource-driver-chart
 ```
 
 See [details](../../charts/intel-gpu-resource-driver/README.md) in the chart directory.

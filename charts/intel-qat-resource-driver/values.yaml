@@ -10,7 +10,7 @@ extendedResourceName: intel.com/qat
 
 imagePullSecrets: []
 image:
-  repository: ghcr.io/intel/intel-resource-drivers-for-kubernetes
+  repository: ghcr.io/intel
   name: intel-qat-resource-driver
   pullPolicy: IfNotPresent
   tag: "v0.4.3"

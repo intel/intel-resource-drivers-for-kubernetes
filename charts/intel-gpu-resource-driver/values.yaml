@@ -10,7 +10,7 @@ extendedResourceName: intel.com/gpu
 
 imagePullSecrets: []
 image:
-  repository: ghcr.io/intel/intel-resource-drivers-for-kubernetes
+  repository: ghcr.io/intel
   name: intel-gpu-resource-driver
   pullPolicy: IfNotPresent
   tag: "v0.11.0"
