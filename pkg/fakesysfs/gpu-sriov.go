@@ -298,13 +298,18 @@ func fakeSysfsSRIOVContents(sysfsRoot string, gpus device.DevicesInfo) error {
 				return fmt.Errorf("error creating fake sysfs, err: %v", err)
 			}
 		case "vf":
-			if _, found := gpus[gpu.ParentUID]; !found {
+			if gpu.ParentUID == "" {
+				return fmt.Errorf("cannot determine parent device for VF: %+v. ParentUID is empty", gpu)
+			}
+
+			parentGpu, found := gpus[gpu.ParentUID]
+			if !found {
 				// check if PF already exists
 				if _, err := os.Stat(path.Join(driverDevDir, "../", gpu.ParentPCIAddress())); err != nil {
 					return fmt.Errorf("parent device %v of VF %v is not found and will not be created", gpu.ParentUID, deviceUID)
 				}
 			}
-			if err := fakeSysfsVF(gpu, perDeviceNumvfs[deviceUID], sysfsRoot, driverDevDir); err != nil {
+			if err := fakeSysfsVF(gpu, parentGpu, sysfsRoot, driverDevDir); err != nil {
 				return fmt.Errorf("creating fake sysfs, err: %v", err)
 			}
 		default:
@@ -315,18 +320,14 @@ func fakeSysfsSRIOVContents(sysfsRoot string, gpus device.DevicesInfo) error {
 	return nil
 }
 
-func fakeSysfsVF(vf *device.DeviceInfo, numvfs int, sysfsRoot string, i915DevDir string) error {
-	if vf.Driver != "i915" {
-		return fmt.Errorf("fake SR-IOV only supported for i915 KMD")
-	}
-
-	if err := os.Symlink(fmt.Sprintf("../%s", vf.ParentPCIAddress()), path.Join(i915DevDir, "physfn")); err != nil {
+func fakeSysfsVF(vf, parentGpu *device.DeviceInfo, sysfsRoot string, driverDevDir string) error {
+	if err := os.Symlink(fmt.Sprintf("../%s", vf.ParentPCIAddress()), path.Join(driverDevDir, "physfn")); err != nil {
 		return fmt.Errorf("creating fake sysfs, err: %v", err)
 	}
 
-	parentI915DevDir := path.Join(sysfsRoot, "bus/pci/drivers/i915/", vf.ParentPCIAddress())
+	parentDevDir := path.Join(sysfsRoot, "bus/pci/drivers", parentGpu.CurrentDriver, vf.ParentPCIAddress())
 
-	parentLinkName := path.Join(parentI915DevDir, fmt.Sprintf("virtfn%d", vf.VFIndex))
+	parentLinkName := path.Join(parentDevDir, fmt.Sprintf("virtfn%d", vf.VFIndex))
 	if vf.PCIAddress == "" {
 		if len(vf.UID) != device.UIDLength {
 			return fmt.Errorf("cannot determine PCI address for VF: %v. Neither PCIAddress nor UID contain valid PCI address", vf)
