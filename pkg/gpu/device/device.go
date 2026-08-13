@@ -29,16 +29,17 @@ const (
 
 	// driver.sysfsI915Dir and driver.sysfsDRMDir are sysfsI915path and sysfsDRMpath
 	// respectively prefixed with $SYSFS_ROOT.
-	SysfsPCIDevicesPath   = "bus/pci/devices"
-	SysfsPCIDriversPath   = "bus/pci/drivers"
-	SysfsI915DriverName   = "i915"
-	SysfsXeDriverName     = "xe"
-	SysfsVFIODriverName   = "vfio-pci"
-	SysfsXeVFIODriverName = "xe-vfio-pci"
-	SysfsDRMpath          = "class/drm/"
-	SysfsMEIpath          = "class/mei/"
-	DevfsVFIOPath         = "vfio"
-	DevfsVFIODevicesPath  = "vfio/devices"
+	SysfsPCIDevicesPath        = "bus/pci/devices"
+	SysfsPCIDriversPath        = "bus/pci/drivers"
+	SysfsI915DriverName        = "i915"
+	SysfsXeDriverName          = "xe"
+	SysfsVFIODriverName        = "vfio-pci"
+	SysfsXeVFIODriverName      = "xe-vfio-pci"
+	SysfsDRMpath               = "class/drm/"
+	SysfsMEIpath               = "class/mei/"
+	SysfsSurvivabilityModeFile = "survivability_mode"
+	DevfsVFIOPath              = "vfio"
+	DevfsVFIODevicesPath       = "vfio/devices"
 
 	CDIVendor   = "intel.com"
 	CDIGPUClass = "gpu"
@@ -64,9 +65,10 @@ const (
 	HealthUnknown   = "Unknown"
 	HealthHealthy   = "Healthy"
 	HealthUnhealthy = "Unhealthy"
-	// These three are used manually in particular scenarios.
+	// These four are used manually in particular scenarios.
 	HealthStatusDeviceAbsent     = "DeviceAbsent"     // part of HealthCustomList
 	HealthStatusUnexpectedDriver = "UnexpectedDriver" // part of HealthCustomList
+	HealthStatusSurvivability    = "Survivability"    // part of HealthCustomList
 	UnboundUnmanagedTaintKey     = "UnboundUnmanaged" // part of HealthCustomList
 	UnsupportedHealthTaintKey    = "UnsupportedHealth"
 
@@ -98,6 +100,7 @@ var VfAttributeFiles = []string{
 var HealthCustomList = map[string]bool{
 	HealthStatusDeviceAbsent:     true,
 	HealthStatusUnexpectedDriver: true,
+	HealthStatusSurvivability:    true,
 	UnboundUnmanagedTaintKey:     true,
 }
 
@@ -127,6 +130,7 @@ type DeviceInfo struct {
 	HealthStatus  map[string]string `json:"healthstatus"`  // Detailed per-category health status information
 	VFIODevice    string            `json:"vfiodevice"`    // VFIO device name, e.g. vfio0
 	IOMMUGroup    string            `json:"iommugroup"`    // IOMMU group of the device, e.g. 12
+	Survivability bool              `json:"survivability"` // survivability mode
 }
 
 func (g DeviceInfo) CDIName() string {

@@ -155,6 +155,97 @@ func TestGetResourcesTaintsPerUnhealthyType(t *testing.T) {
 	}
 }
 
+func TestGetResourcesTaintsSurvivabilityMode(t *testing.T) {
+	state := &nodeState{
+		Allocatable: map[string]*device.DeviceInfo{
+			"gpu-survivability": {
+				UID:           "gpu-survivability",
+				PCIAddress:    "0000:00:01.0",
+				Driver:        "xe",
+				CurrentDriver: "xe",
+				MEIName:       "mei0",
+				Survivability: true,
+				HealthStatus: map[string]string{
+					device.HealthStatusSurvivability: device.HealthUnhealthy,
+				},
+			},
+		},
+		NodeName:      "test-node",
+		ManageBinding: true,
+	}
+
+	devices := state.GetResources().Pools["test-node"].Slices[0].Devices
+	if len(devices) != 1 {
+		t.Fatalf("expected 1 device, got %d", len(devices))
+	}
+
+	if health := devices[0].Attributes["health"].StringValue; health == nil || *health != device.HealthUnhealthy {
+		t.Errorf("unexpected health attribute: %v, expected %v", health, device.HealthUnhealthy)
+	}
+
+	taints := devices[0].Taints
+	if len(taints) != 1 {
+		t.Fatalf("expected 1 taint, got %d: %v", len(taints), taints)
+	}
+
+	if taints[0].Key != "health-Survivability" || taints[0].Effect != resourcev1.DeviceTaintEffectNoExecute {
+		t.Errorf("unexpected taint: got key=%v, effect=%v, expected key=health-Survivability, effect=NoExecute", taints[0].Key, taints[0].Effect)
+	}
+}
+
+func TestDeviceCDINames(t *testing.T) {
+	testcases := []struct {
+		name        string
+		gpu         *device.DeviceInfo
+		adminAccess bool
+		expected    []string
+	}{
+		{
+			name:     "regular device",
+			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0"},
+			expected: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+		},
+		{
+			name:        "regular device with admin access",
+			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0"},
+			adminAccess: true,
+			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0", "intel.com/gpu-mei=mei0"},
+		},
+		{
+			name:        "regular device without MEI device with admin access",
+			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0"},
+			adminAccess: true,
+			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+		},
+		{
+			name:     "device in survivability mode",
+			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", Survivability: true},
+			expected: []string{"intel.com/gpu-mei=mei0"},
+		},
+		{
+			name:        "device in survivability mode with admin access",
+			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", Survivability: true},
+			adminAccess: true,
+			expected:    []string{"intel.com/gpu-mei=mei0"},
+		},
+		{
+			name:     "device in survivability mode without MEI device",
+			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", Survivability: true},
+			expected: []string{},
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			got := deviceCDINames(testcase.gpu, testcase.adminAccess)
+
+			if !reflect.DeepEqual(got, testcase.expected) {
+				t.Errorf("expected CDI device names %v, got %v", testcase.expected, got)
+			}
+		})
+	}
+}
+
 func TestGetResourcesTaintsUnsupportedHealth(t *testing.T) {
 	state := &nodeState{
 		Allocatable: map[string]*device.DeviceInfo{

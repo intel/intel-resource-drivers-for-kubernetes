@@ -94,7 +94,13 @@ func DiscoverPCIDevice(deviceSysfsDir, sysfsRoot string) (*device.DeviceInfo, er
 	newDeviceInfo.Model = deviceId
 	newDeviceInfo.SetModelInfo()
 
-	if newDeviceInfo.IsDRMBound() {
+	newDeviceInfo.Survivability = isInSurvivabilityMode(deviceSysfsDir)
+
+	switch {
+	case newDeviceInfo.Survivability:
+		newDeviceInfo.HealthStatus[device.HealthStatusSurvivability] = device.HealthUnhealthy
+		newDeviceInfo.MEIName = mei.DiscoverMEIDeviceForGPU(deviceSysfsDir, deviceSysfsDir)
+	case newDeviceInfo.IsDRMBound():
 		cardName, renderDName, err := drm.DeduceCardAndRenderDNames(deviceSysfsDir)
 		if err != nil {
 			klog.Errorf("device %v bound to %v: failed to detect DRM devices: %v", devicePCIAddress, currentDriver, err)
@@ -103,7 +109,7 @@ func DiscoverPCIDevice(deviceSysfsDir, sysfsRoot string) (*device.DeviceInfo, er
 		newDeviceInfo.CardName = cardName
 		newDeviceInfo.RenderDName = renderDName
 		newDeviceInfo.MEIName = mei.DiscoverMEIDeviceForGPU(deviceSysfsDir, deviceSysfsDir)
-	} else if newDeviceInfo.IsVFIOBound() {
+	case newDeviceInfo.IsVFIOBound():
 		vfioDevice, err := GetVFIODevice(devicePCIAddress)
 		if err != nil {
 			// TODO: try reverting driver change
@@ -156,6 +162,14 @@ func readPCIInfo(sysfsDevicePath string) (vendorId, deviceId, classId string) {
 	classId = strings.TrimSpace(string(classIdBytes))
 
 	return vendorId, deviceId, classId
+}
+
+// isInSurvivabilityMode tells whether the KMD probed the device in survivability mode, which
+// happens when the device firmware is broken. The survivability_mode sysfs file exists only
+// when the mode is on, and it disappears after a successful firmware reflashing and reprobe.
+func isInSurvivabilityMode(sysfsDevicePath string) bool {
+	_, err := os.Stat(path.Join(sysfsDevicePath, device.SysfsSurvivabilityModeFile))
+	return err == nil
 }
 
 func GetPCIDeviceDriver(sysfsDevicePath string) string {

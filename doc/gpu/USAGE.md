@@ -398,6 +398,24 @@ This feature was first introduced in K8s v1.33, it allows scheduler to handle Re
 similarly to how K8s Node Taints and Tolerations allow. Cluster admins can also create standalone
 DeviceTaintRule to prevent workloads being scheduled and / or executed on a particular GPU.
 
+### Survivability mode
+
+When the firmware of a GPU is broken, the Linux kernel driver probes the device in the so called
+survivability mode: no DRM devices are registered for the GPU, and the only thing that can be done
+with the device is reflashing its firmware through its MEI device. The GPU DRA driver detects this
+from the presence of the `/sys/bus/pci/devices/<pci-address>/survivability_mode` file, which the
+kernel driver creates only when the mode is active.
+
+Such GPU is still published in the `ResourceSlice`, with `health` attribute `Unhealthy` and a
+`health-Survivability` `DeviceTaint` (`NoExecute` effect), so that the cluster can tell why the
+device cannot be used, and so that workloads are not scheduled to it. No CDI device is created for
+such GPU, as it has no DRM devices, only its MEI device is announced as a CDI device
+(`intel.com/gpu-mei`). When such GPU is allocated to a Pod that tolerates the taint, the Pod gets
+the MEI device node (`/dev/meiX`) of the GPU, which allows reflashing the firmware.
+
+The taint is removed, and the DRM devices are picked up, when the kernel driver re-probes the device
+after a successful firmware reflashing.
+
 ## [KubeVirt](https://github.com/kubevirt/enhancements/blob/main/veps/sig-compute/10-dra-devices/vep.md) support: using GPU in VM in a PCI passthrough mode
 
 Starting [version v1.8.3](https://github.com/kubevirt/kubevirt/releases/v1.8.3), KubeVirt has

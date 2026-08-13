@@ -358,6 +358,15 @@ func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.Devices
 			path.Join(pciDeviceDir, "class"):           device.PCIVGAClassID,
 			path.Join(pciDeviceDir, "driver_override"): "",
 		}
+		if gpu.Survivability {
+			if gpu.CardName != "" || gpu.RenderDName != "" {
+				return fmt.Errorf("GPU %v is in survivability mode, but has DRM devices assigned (card: %v, render: %v)",
+					gpu.UID, gpu.CardName, gpu.RenderDName)
+			}
+
+			// KMD creates the file only when the device was probed in survivability mode.
+			fileWrites[path.Join(pciDeviceDir, device.SysfsSurvivabilityModeFile)] = "1"
+		}
 		for filePath, content := range fileWrites {
 			if writeErr := helpers.WriteFile(filePath, content); writeErr != nil {
 				return fmt.Errorf("creating fake sysfs file %v content, err: %v", filePath, writeErr)
@@ -370,7 +379,14 @@ func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.Devices
 				return fmt.Errorf("creating fake sysfs PCI driver binding, err: %v", err)
 			}
 
-			if gpu.IsDRMBound() {
+			switch {
+			case gpu.Survivability:
+				// No DRM devices are registered in survivability mode, only the MEI device that
+				// can be used for reflashing the firmware.
+				if err := fakeGpuMEI(sysfsRoot, devfsRoot, gpu.PCIRoot, gpu.PCIAddress, gpu.MEIName, gpu.CurrentDriver, realDevices); err != nil {
+					return fmt.Errorf("creating fake mei sysfs: %v", err)
+				}
+			case gpu.IsDRMBound():
 				if err := fakeGpuDRI(sysfsRoot, devfsRoot, gpu.PCIAddress, gpu.CardName, gpu.RenderDName, realDevices); err != nil {
 					return fmt.Errorf("creating fake sysfs DRI devices, err: %v", err)
 				}
@@ -379,7 +395,7 @@ func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.Devices
 						return fmt.Errorf("creating fake mei sysfs: %v", err)
 					}
 				}
-			} else if gpu.IsVFIOBound() {
+			case gpu.IsVFIOBound():
 				if err := fakeGpuVFIO(sysfsRoot, devfsRoot, gpu.VFIODevice, gpu.IOMMUGroup, gpu.PCIAddress, realDevices); err != nil {
 					return fmt.Errorf("creating fake sysfs VFIO devices, err: %v", err)
 				}

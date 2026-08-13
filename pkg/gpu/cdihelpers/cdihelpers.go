@@ -152,16 +152,31 @@ func addMeiDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
 
 func addDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
 	for _, newDevice := range devices {
+		// A device in survivability mode has no DRM devices, only the MEI device that is used for
+		// firmware reflashing, and MEI devices have their own CDI spec.
+		if newDevice.Survivability {
+			klog.V(5).Infof("Device %v is in survivability mode, skipping CDI device creation", newDevice.UID)
+			continue
+		}
+
 		newCDIDevice := specs.Device{
 			Name: newDevice.UID,
 		}
 		addDeviceContainerEdits(newDevice, &newCDIDevice)
+
+		// CDI spec validation rejects devices without container edits, and such a device could not
+		// be used for anything anyway.
+		if len(newCDIDevice.ContainerEdits.DeviceNodes) == 0 {
+			klog.V(5).Infof("Device %v has no device nodes, skipping CDI device creation", newDevice.UID)
+			continue
+		}
+
 		spec.Devices = append(spec.Devices, newCDIDevice)
 	}
 }
 
 func addDeviceContainerEdits(newdevice *device.DeviceInfo, cdiDevice *specs.Device) {
-	if newdevice.CurrentDriver == device.SysfsVFIODriverName || newdevice.CurrentDriver == device.SysfsXeVFIODriverName {
+	if newdevice.IsVFIOBound() {
 		klog.V(5).Infof("Adding VFIO edits for device %v", newdevice.UID)
 		addVFIOEdits(newdevice, cdiDevice)
 	} else {
@@ -320,6 +335,16 @@ func RemoveDevices(cdiCache *cdiapi.Cache, devicesToRemove []string) error {
 
 			// WriteSpec, unlike RemoveSpec, expects the file name with extension.
 			specname := path.Base(spec.GetPath())
+			// A CDI spec without devices is invalid and cannot be written, remove the file instead.
+			if len(spec.Devices) == 0 {
+				klog.V(5).Infof("Removing CDI spec %v without devices", specname)
+				if err := cdiCache.RemoveSpec(specname); err != nil {
+					return fmt.Errorf("failed to remove empty CDI spec %v: %v", specname, err)
+				}
+
+				continue
+			}
+
 			if err := cdiCache.WriteSpec(spec.Spec, specname); err != nil {
 				return fmt.Errorf("failed to write CDI spec %v: %v", specname, err)
 			}

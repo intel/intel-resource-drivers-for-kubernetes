@@ -76,6 +76,32 @@ func createFakeSysfsWithSingleVFIOGpu(sysfsRoot, devfsRoot string) error {
 	return nil
 }
 
+// createFakeSysfsWithSingleSurvivabilityGpu creates a GPU that the KMD probed in survivability
+// mode: no DRM devices, only the MEI device for firmware reflashing.
+func createFakeSysfsWithSingleSurvivabilityGpu(sysfsRoot, devfsRoot string) error {
+	if err := fakesysfs.FakeSysFsGpuContents(
+		sysfsRoot,
+		devfsRoot,
+		device.DevicesInfo{
+			"0000-0f-00-0-0xe211": {
+				Model:         "0xe211",
+				PCIAddress:    "0000:0f:00.0",
+				DeviceType:    "gpu",
+				MEIName:       "mei0",
+				Millicores:    1000,
+				UID:           "0000-0f-00-0-0xe211",
+				Driver:        device.SysfsXeDriverName,
+				CurrentDriver: device.SysfsXeDriverName,
+				Survivability: true,
+			},
+		},
+		false,
+	); err != nil {
+		return fmt.Errorf("could not set up fake sysfs gpu contents: %v", err)
+	}
+	return nil
+}
+
 //nolint:cyclop
 func TestDiscoverDevices(t *testing.T) {
 	tests := []struct {
@@ -331,6 +357,28 @@ func TestDiscoverDevices(t *testing.T) {
 					Driver:        device.SysfsXeDriverName,
 					CurrentDriver: device.SysfsXeVFIODriverName,
 					HealthStatus:  map[string]string{},
+				},
+			},
+		},
+		{
+			name:      "single device in survivability mode",
+			setupFunc: createFakeSysfsWithSingleSurvivabilityGpu,
+			expected: map[string]*device.DeviceInfo{
+				"0000-0f-00-0-0xe211": {
+					Model:         "0xe211",
+					ModelName:     "B60",
+					FamilyName:    "Arc Pro B-Series",
+					PCIAddress:    "0000:0f:00.0",
+					PCIRoot:       "pci0000:00",
+					MemoryMiB:     0,
+					DeviceType:    "gpu",
+					MEIName:       "mei0",
+					Millicores:    1000,
+					UID:           "0000-0f-00-0-0xe211",
+					Driver:        device.SysfsXeDriverName,
+					CurrentDriver: device.SysfsXeDriverName,
+					Survivability: true,
+					HealthStatus:  map[string]string{device.HealthStatusSurvivability: device.HealthUnhealthy},
 				},
 			},
 		},

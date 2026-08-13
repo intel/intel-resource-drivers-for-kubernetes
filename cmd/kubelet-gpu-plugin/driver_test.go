@@ -1177,6 +1177,214 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 	}
 }
 
+// fakeSurvivabilityGpu re-creates fake sysfs and devfs with a single GPU that is either in
+// survivability mode - no DRM devices, only MEI - or fully functional.
+func fakeSurvivabilityGpu(t *testing.T, testDirs testhelpers.TestDirsType, deviceUID string, survivability bool) {
+	t.Helper()
+
+	gpu := &device.DeviceInfo{
+		UID:           deviceUID,
+		PCIAddress:    "0000:00:02.0",
+		Model:         "0x56c0",
+		MEIName:       "mei0",
+		DeviceType:    "gpu",
+		Driver:        device.SysfsXeDriverName,
+		CurrentDriver: device.SysfsXeDriverName,
+		Survivability: survivability,
+	}
+	if !survivability {
+		gpu.CardName = "card0"
+		gpu.RenderDName = "renderD128"
+	}
+
+	recreateFakeGpu(t, testDirs, gpu)
+}
+
+// recreateFakeGpu wipes the fake sysfs and devfs contents and recreates them with a single GPU
+// in the described state.
+func recreateFakeGpu(t *testing.T, testDirs testhelpers.TestDirsType, gpu *device.DeviceInfo) {
+	t.Helper()
+
+	for _, toDelete := range []string{"bus", "devices", "class"} {
+		if err := os.RemoveAll(path.Join(testDirs.SysfsRoot, toDelete)); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("setup error: failed removing fake sysfs dir: %v", err)
+		}
+	}
+	for _, toDelete := range []string{"dri", "vfio"} {
+		if err := os.RemoveAll(path.Join(testDirs.DevfsRoot, toDelete)); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("setup error: failed removing fake devfs dir: %v", err)
+		}
+	}
+
+	if err := fakesysfs.FakeSysFsGpuContents(
+		testDirs.SysfsRoot, testDirs.DevfsRoot, device.DevicesInfo{gpu.UID: gpu}, false); err != nil {
+		t.Fatalf("setup error: could not create fake sysfs: %v", err)
+	}
+}
+
+// gpuCDIDeviceExists tells whether the GPU CDI device of the device UID is in the CDI registry.
+func gpuCDIDeviceExists(t *testing.T, state *nodeState, deviceUID string) bool {
+	t.Helper()
+
+	testhelpers.CDICacheDelay()
+
+	return state.CdiCache.GetDevice(device.CDIKind+"="+deviceUID) != nil
+}
+
+//nolint:cyclop // test code
+func TestRefreshDeviceOnSurvivabilityChange(t *testing.T) {
+	testDirs, err := testhelpers.NewTestDirs(device.DriverName)
+	defer testhelpers.CleanupTest(t, "TestRefreshDeviceOnSurvivabilityChange", testDirs.TestRoot)
+	if err != nil {
+		t.Fatalf("setup error: %v", err)
+	}
+
+	const deviceUID = "0000-00-02-0-0x56c0"
+	const pciAddress = "0000:00:02.0"
+
+	os.Setenv(helpers.DevfsEnvVarName, testDirs.DevfsRoot)
+	defer os.Unsetenv(helpers.DevfsEnvVarName)
+
+	// The GPU has broken firmware when the driver starts.
+	fakeSurvivabilityGpu(t, testDirs, deviceUID, true)
+
+	drv, err := getFakeDriver(testDirs)
+	if err != nil {
+		t.Fatalf("could not create fake driver: %v", err)
+	}
+	defer func() { _ = drv.Shutdown(context.TODO()) }()
+	drv.state.SysfsRoot = testDirs.SysfsRoot
+
+	//nolint:forcetypeassert
+	allocatable := drv.state.Allocatable.(map[string]*device.DeviceInfo)
+	discovered := allocatable[deviceUID]
+	if discovered == nil {
+		t.Fatalf("expected device %v in allocatable devices: %+v", deviceUID, allocatable)
+	}
+	if !discovered.Survivability || discovered.Health() != device.HealthUnhealthy {
+		t.Errorf("expected discovered device to be in survivability mode and unhealthy, got: %+v", discovered)
+	}
+	if discovered.MEIName != "mei0" {
+		t.Errorf("expected MEI device to be discovered for device in survivability mode, got: %+v", discovered)
+	}
+	if gpuCDIDeviceExists(t, drv.state, deviceUID) {
+		t.Errorf("expected no GPU CDI device for device %v in survivability mode", deviceUID)
+	}
+
+	// Firmware was reflashed, the device is functional again.
+	fakeSurvivabilityGpu(t, testDirs, deviceUID, false)
+
+	needToPublish, err := drv.state.RefreshDeviceOnDriverEvent(pciAddress, device.SysfsXeDriverName)
+	if err != nil {
+		t.Fatalf("unexpected error refreshing device: %v", err)
+	}
+	if !needToPublish {
+		t.Error("expected ResourceSlice publishing to be needed after leaving survivability mode")
+	}
+	if discovered.Survivability {
+		t.Errorf("expected device to be healthy after leaving survivability mode, got: %+v", discovered)
+	}
+	if _, found := discovered.HealthStatus[device.HealthStatusSurvivability]; found {
+		t.Errorf("expected device to not have survivability health status, got: %+v", discovered)
+	}
+	if discovered.CardName != "card0" || discovered.RenderDName != "renderD128" {
+		t.Errorf("expected DRM devices to be discovered after leaving survivability mode, got: %+v", discovered)
+	}
+	if !gpuCDIDeviceExists(t, drv.state, deviceUID) {
+		t.Errorf("expected GPU CDI device for device %v after leaving survivability mode", deviceUID)
+	}
+
+	// Firmware broke again.
+	fakeSurvivabilityGpu(t, testDirs, deviceUID, true)
+
+	needToPublish, err = drv.state.RefreshDeviceOnDriverEvent(pciAddress, device.SysfsXeDriverName)
+	if err != nil {
+		t.Fatalf("unexpected error refreshing device: %v", err)
+	}
+	if !needToPublish {
+		t.Error("expected ResourceSlice publishing to be needed after entering survivability mode")
+	}
+	if !discovered.Survivability || discovered.Health() != device.HealthUnhealthy {
+		t.Errorf("expected device to be in survivability mode and unhealthy, got: %+v", discovered)
+	}
+	if discovered.CardName != "" || discovered.RenderDName != "" {
+		t.Errorf("expected no DRM devices for device in survivability mode, got: %+v", discovered)
+	}
+	if gpuCDIDeviceExists(t, drv.state, deviceUID) {
+		t.Errorf("expected no GPU CDI device for device %v in survivability mode", deviceUID)
+	}
+}
+
+// TestRefreshDeviceOnRebindAfterSurvivability covers the recovery of a device with broken firmware
+// through kernel driver unbinding: the survivability_mode sysfs file is gone already when the
+// kernel driver is unbound, so the CDI spec of the device has to be updated when the device is
+// bound back to the kernel driver, based on the changed kernel driver alone.
+func TestRefreshDeviceOnRebindAfterSurvivability(t *testing.T) {
+	testDirs, err := testhelpers.NewTestDirs(device.DriverName)
+	defer testhelpers.CleanupTest(t, "TestRefreshDeviceOnRebindAfterSurvivability", testDirs.TestRoot)
+	if err != nil {
+		t.Fatalf("setup error: %v", err)
+	}
+
+	const deviceUID = "0000-00-02-0-0x56c0"
+	const pciAddress = "0000:00:02.0"
+
+	os.Setenv(helpers.DevfsEnvVarName, testDirs.DevfsRoot)
+	defer os.Unsetenv(helpers.DevfsEnvVarName)
+
+	// The GPU has broken firmware when the driver starts.
+	fakeSurvivabilityGpu(t, testDirs, deviceUID, true)
+
+	drv, err := getFakeDriver(testDirs)
+	if err != nil {
+		t.Fatalf("could not create fake driver: %v", err)
+	}
+	defer func() { _ = drv.Shutdown(context.TODO()) }()
+	drv.state.SysfsRoot = testDirs.SysfsRoot
+
+	//nolint:forcetypeassert
+	discovered := drv.state.Allocatable.(map[string]*device.DeviceInfo)[deviceUID]
+	if discovered == nil || !discovered.Survivability {
+		t.Fatalf("expected device %v to be discovered in survivability mode, got: %+v", deviceUID, discovered)
+	}
+
+	// Kernel driver is unbound from the device for the firmware reflashing.
+	recreateFakeGpu(t, testDirs, &device.DeviceInfo{
+		UID:        deviceUID,
+		PCIAddress: pciAddress,
+		Model:      "0x56c0",
+		DeviceType: "gpu",
+		Driver:     device.SysfsXeDriverName,
+	})
+
+	if _, err = drv.state.RefreshDeviceOnDriverEvent(pciAddress, ""); err != nil {
+		t.Fatalf("unexpected error refreshing unbound device: %v", err)
+	}
+	if discovered.CurrentDriver != "" || discovered.Survivability {
+		t.Errorf("expected unbound device without survivability mode, got: %+v", discovered)
+	}
+	if gpuCDIDeviceExists(t, drv.state, deviceUID) {
+		t.Errorf("expected no GPU CDI device for unbound device %v", deviceUID)
+	}
+
+	// Firmware was reflashed and the kernel driver is bound back to the device.
+	fakeSurvivabilityGpu(t, testDirs, deviceUID, false)
+
+	needToPublish, err := drv.state.RefreshDeviceOnDriverEvent(pciAddress, device.SysfsXeDriverName)
+	if err != nil {
+		t.Fatalf("unexpected error refreshing rebound device: %v", err)
+	}
+	if !needToPublish {
+		t.Error("expected ResourceSlice publishing to be needed after the device was bound back")
+	}
+	if discovered.CardName != "card0" || discovered.RenderDName != "renderD128" {
+		t.Errorf("expected DRM devices to be discovered for rebound device, got: %+v", discovered)
+	}
+	if !gpuCDIDeviceExists(t, drv.state, deviceUID) {
+		t.Errorf("expected GPU CDI device for rebound device %v", deviceUID)
+	}
+}
+
 func TestHandleError(t *testing.T) {
 	type testCase struct {
 		name    string
