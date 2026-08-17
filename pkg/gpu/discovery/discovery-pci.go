@@ -169,7 +169,17 @@ func readPCIInfo(sysfsDevicePath string) (vendorId, deviceId, classId string) {
 // when the mode is on, and it disappears after a successful firmware reflashing and reprobe.
 func isInSurvivabilityMode(sysfsDevicePath string) bool {
 	_, err := os.Stat(path.Join(sysfsDevicePath, device.SysfsSurvivabilityModeFile))
-	return err == nil
+	if err == nil {
+		return true
+	}
+
+	if os.IsNotExist(err) {
+		return false
+	}
+
+	klog.Warningf("could not stat survivability mode file for device at %s: %v", sysfsDevicePath, err)
+
+	return false
 }
 
 func GetPCIDeviceDriver(sysfsDevicePath string) string {
