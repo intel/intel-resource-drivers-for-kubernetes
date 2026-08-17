@@ -253,6 +253,14 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 			return
 		}
 
+		// Prevent cases where claim requests Unhealthy devices but without admin access, and the device is in survivability mode.
+		if !adminAccess && allocatableDevice.Survivability {
+			prepareResult.Err = fmt.Errorf(
+				"device %v (pool %v) is in survivability mode and cannot be prepared without adminAccess flag",
+				allocatedDevice.Device, allocatedDevice.Pool)
+			return
+		}
+
 		deviceClassName := s.getRequestDeviceClassNameFromClaim(allocatedDevice.Request, claim)
 		klog.V(5).Infof("Device class name for request %v: %v", allocatedDevice.Request, deviceClassName)
 		if deviceClassName == device.VFIODeviceClassName {

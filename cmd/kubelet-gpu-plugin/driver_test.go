@@ -1385,6 +1385,157 @@ func TestRefreshDeviceOnRebindAfterSurvivability(t *testing.T) {
 	}
 }
 
+// TestPrepareSurvivabilityDevice covers preparing a claim for a device in survivability mode:
+// the device is unusable as a GPU until its firmware has been reflashed, so only claims with the
+// adminAccess flag - e.g. the firmware reflashing or monitoring deployment - can be prepared for it.
+func TestPrepareSurvivabilityDevice(t *testing.T) {
+	const deviceUID = "0000-00-02-0-0x56c0"
+	const pciAddress = "0000:00:02.0"
+
+	pciAddressAttributes := &kubeletplugin.DeviceMetadata{
+		Attributes: map[string]resourceapi.DeviceAttribute{
+			"resource.kubernetes.io/pciBusID": {StringValue: &[]string{pciAddress}[0]},
+		},
+	}
+
+	type testCase struct {
+		name                   string
+		survivability          bool
+		request                *resourceapi.ResourceClaim
+		expectedResponse       map[types.UID]kubeletplugin.PrepareResult
+		expectedPreparedClaims ClaimPreparations
+	}
+
+	testcases := []testCase{
+		{
+			name:          "claim without admin access is rejected for device in survivability mode",
+			survivability: true,
+			request: testhelpers.NewClaim(
+				"namespace1", "claim1", "uid1", "request1", "gpu.intel.com", "node1", "gpu.intel.com", []string{deviceUID}, false),
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid1": {
+					Err: errors.New("device 0000-00-02-0-0x56c0 (pool node1) is in survivability mode and cannot be prepared without adminAccess flag"),
+				},
+			},
+			expectedPreparedClaims: ClaimPreparations{},
+		},
+		{
+			name:          "claim with admin access gets the MEI device of the device in survivability mode",
+			survivability: true,
+			request: testhelpers.NewMonitoringClaim(
+				"namespace2", "monitor", "uid2", "monitor", "gpu.intel.com", "node1", []string{deviceUID}),
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid2": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"monitor"},
+							PoolName:     "node1",
+							DeviceName:   deviceUID,
+							CDIDeviceIDs: []string{"intel.com/gpu-mei=mei0"},
+							Metadata:     pciAddressAttributes,
+						},
+					},
+				},
+			},
+			expectedPreparedClaims: ClaimPreparations{
+				"uid2": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"monitor"},
+								PoolName:     "node1",
+								DeviceName:   deviceUID,
+								CDIDeviceIDs: []string{"intel.com/gpu-mei=mei0"},
+								Metadata:     pciAddressAttributes,
+							},
+							AdminAccess: true,
+						},
+					},
+				},
+			},
+		},
+		{
+			// Control case: the same claim is prepared when the firmware of the device is intact.
+			name:          "claim without admin access is prepared for functional device",
+			survivability: false,
+			request: testhelpers.NewClaim(
+				"namespace1", "claim1", "uid1", "request1", "gpu.intel.com", "node1", "gpu.intel.com", []string{deviceUID}, false),
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid1": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"request1"},
+							PoolName:     "node1",
+							DeviceName:   deviceUID,
+							CDIDeviceIDs: []string{"intel.com/gpu=" + deviceUID},
+							Metadata:     pciAddressAttributes,
+						},
+					},
+				},
+			},
+			expectedPreparedClaims: ClaimPreparations{
+				"uid1": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"request1"},
+								PoolName:     "node1",
+								DeviceName:   deviceUID,
+								CDIDeviceIDs: []string{"intel.com/gpu=" + deviceUID},
+								Metadata:     pciAddressAttributes,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			testDirs, err := testhelpers.NewTestDirs(device.DriverName)
+			defer testhelpers.CleanupTest(t, testcase.name, testDirs.TestRoot)
+			if err != nil {
+				t.Fatalf("setup error: %v", err)
+			}
+
+			os.Setenv(helpers.DevfsEnvVarName, testDirs.DevfsRoot)
+			defer os.Unsetenv(helpers.DevfsEnvVarName)
+
+			fakeSurvivabilityGpu(t, testDirs, deviceUID, testcase.survivability)
+
+			preparedClaimFilePath := path.Join(testDirs.KubeletPluginDir, device.PreparedClaimsFileName)
+			if err := WritePreparedClaimsToFile(preparedClaimFilePath, ClaimPreparations{}); err != nil {
+				t.Fatalf("setup error: could not write prepared claims to file: %v", err)
+			}
+
+			drv, err := getFakeDriver(testDirs)
+			if err != nil {
+				t.Fatalf("could not create fake driver: %v", err)
+			}
+			defer func() { _ = drv.Shutdown(context.TODO()) }()
+
+			response, err := drv.PrepareResourceClaims(context.TODO(), []*resourceapi.ResourceClaim{testcase.request})
+			if err != nil {
+				t.Fatalf("unexpected error preparing claim: %v", err)
+			}
+
+			if !testhelpers.DeepEqualPrepareResults(testcase.expectedResponse, response) {
+				t.Errorf("unexpected response: %v, expected response: %v", response, testcase.expectedResponse)
+			}
+
+			preparedClaims, err := readPreparedClaimsFromFile(preparedClaimFilePath)
+			if err != nil {
+				t.Fatalf("unexpected error reading prepared claims: %v", err)
+			}
+
+			if !reflect.DeepEqual(testcase.expectedPreparedClaims, preparedClaims) {
+				t.Errorf("unexpected PreparedClaims: %v, expected PreparedClaims: %v", preparedClaims, testcase.expectedPreparedClaims)
+			}
+		})
+	}
+}
+
 func TestHandleError(t *testing.T) {
 	type testCase struct {
 		name    string
