@@ -134,6 +134,7 @@ func (d *driver) watchDevices(ctx context.Context) {
 		{"SUBSYSTEM": "pci"},
 		{"SUBSYSTEM": "pci", "PCI_CLASS": device.UDEVPCIDisplayClassID},
 		{"SUBSYSTEM": "pci", "PCI_CLASS": device.UDEVPCIVGAClassID},
+		{"SUBSYSTEM": "pci", "PCI_CLASS": device.UDEVPCIProcessingAcceleratorClassID},
 	}
 	filteredEvents := make(chan *udev.Event, 64)
 
@@ -158,7 +159,7 @@ func (d *driver) watchDevices(ctx context.Context) {
 		case evt := <-filteredEvents:
 			// Ignore all events that are not binding / unbinding or that are for non Intel GPU class.
 			class := evt.Properties["PCI_CLASS"]
-			if class != device.UDEVPCIDisplayClassID && class != device.UDEVPCIVGAClassID {
+			if class != device.UDEVPCIDisplayClassID && class != device.UDEVPCIVGAClassID && class != device.UDEVPCIProcessingAcceleratorClassID {
 				klog.V(5).Infof("Ignoring udev event for non-GPU PCI class device: %+v", evt)
 				continue
 			}

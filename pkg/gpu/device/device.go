@@ -72,12 +72,14 @@ const (
 	UnboundUnmanagedTaintKey     = "UnboundUnmanaged" // part of HealthCustomList
 	UnsupportedHealthTaintKey    = "UnsupportedHealth"
 
-	PCIVendorId           = "0x8086"
-	PCIVGAClassID         = "0x030000"
-	PCIDisplayClassID     = "0x038000"
-	UDEVPCIVendorId       = "8086"
-	UDEVPCIVGAClassID     = "30000"
-	UDEVPCIDisplayClassID = "38000"
+	PCIVendorId                         = "0x8086"
+	PCIVGAClassID                       = "0x030000"
+	PCIDisplayClassID                   = "0x038000"
+	PCIProcessingAcceleratorClassID     = "0x120000"
+	UDEVPCIVendorId                     = "8086"
+	UDEVPCIVGAClassID                   = "30000"
+	UDEVPCIDisplayClassID               = "38000"
+	UDEVPCIProcessingAcceleratorClassID = "120000"
 )
 
 // VfAttributeFiles is a list of filenames that needs to be configured for a VF
@@ -232,5 +234,5 @@ func GetDriDevPath() string {
 }
 
 func IsGPUClass(classId string) bool {
-	return classId == PCIVGAClassID || classId == PCIDisplayClassID
+	return classId == PCIVGAClassID || classId == PCIDisplayClassID || classId == PCIProcessingAcceleratorClassID
 }
