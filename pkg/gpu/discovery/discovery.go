@@ -53,13 +53,16 @@ func populateDevicesInfoMemory(devices map[string]*device.DeviceInfo) error {
 
 func DetermineDeviceName(info *device.DeviceInfo, namingStyle string) string {
 	if namingStyle == "classic" {
-		// TODO: FIXME: in survivability mode there is no DRM device even though driver is DRM.
-		// When survivability mode field is added to DeviceInfo, use PCI address as a name.
-		if info.CurrentDriver == device.SysfsI915DriverName || info.CurrentDriver == device.SysfsXeDriverName {
+		if info.IsDRMBound() {
+			// In survivability mode there is no DRM device even though driver is DRM, use UID.
+			if info.Survivability {
+				return info.UID
+			}
+
 			return info.CardName
 		}
 
-		if info.CurrentDriver == device.SysfsVFIODriverName || info.CurrentDriver == device.SysfsXeVFIODriverName {
+		if info.IsVFIOBound() {
 			return info.VFIODevice
 		}
 	}
