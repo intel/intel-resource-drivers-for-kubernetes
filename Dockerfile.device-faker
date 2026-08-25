@@ -27,6 +27,8 @@ RUN mkdir -p /opt/templates && \
 
 FROM scratch
 LABEL description="Intel Device Faker"
+LABEL org.opencontainers.image.source="https://github.com/intel/intel-resource-drivers-for-kubernetes"
+LABEL org.opencontainers.image.description="Intel Device Faker"
 COPY --from=build /install_root/device-faker /device-faker
 COPY --from=build /opt/templates /opt/templates
 ENTRYPOINT ["/device-faker"]

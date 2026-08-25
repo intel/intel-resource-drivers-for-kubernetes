@@ -67,6 +67,8 @@ cp bin/kubelet-gaudi-plugin /install_root/
 
 FROM scratch
 LABEL description="Intel Gaudi resource driver for Kubernetes"
+LABEL org.opencontainers.image.source="https://github.com/intel/intel-resource-drivers-for-kubernetes"
+LABEL org.opencontainers.image.description="Intel Gaudi resource driver for Kubernetes"
 
 COPY --from=build /install_root /
 COPY --from=ubuntu /tmp/src/hl-smi-SA/libhlml.so /usr/lib/habanalabs/libhlml.so

@@ -22,5 +22,7 @@ cp bin/qat-showdevice /install_root/
 FROM scratch
 WORKDIR /
 LABEL description="Intel QAT resource driver for Kubernetes"
+LABEL org.opencontainers.image.source="https://github.com/intel/intel-resource-drivers-for-kubernetes"
+LABEL org.opencontainers.image.description="Intel QAT resource driver for Kubernetes"
 
 COPY --from=build /install_root /

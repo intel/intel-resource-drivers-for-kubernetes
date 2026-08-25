@@ -19,7 +19,7 @@ spec:
       serviceAccountName: intel-gpu-resource-driver-service-account
       containers:
       - name: kubelet-plugin
-        image: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver:latest
+        image: ghcr.io/intel/intel-gpu-resource-driver:latest
         command: ["/kubelet-gpu-plugin"]
         ports:
         - name: healthcheck

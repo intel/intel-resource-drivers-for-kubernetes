@@ -22,6 +22,8 @@ cp bin/kubelet-gpu-plugin /install_root/
 FROM scratch
 WORKDIR /
 LABEL description="Intel GPU resource driver for Kubernetes"
+LABEL org.opencontainers.image.source="https://github.com/intel/intel-resource-drivers-for-kubernetes"
+LABEL org.opencontainers.image.description="Intel GPU resource driver for Kubernetes"
 
 COPY --from=build /install_root /
 CMD ["/kubelet-gpu-plugin"]

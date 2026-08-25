@@ -4,6 +4,6 @@ resources:
   - resource-driver.yaml
 
 #images:
-#  - name: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver
-#    newName: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver
+#  - name: ghcr.io/intel/intel-gpu-resource-driver
+#    newName: ghcr.io/intel/intel-gpu-resource-driver
 #    newTag: v0.9.0
