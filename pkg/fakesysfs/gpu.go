@@ -353,10 +353,12 @@ func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.Devices
 
 		pciDeviceDir := path.Join(sysfsRoot, device.SysfsPCIDevicesPath, gpu.PCIAddress)
 		fileWrites := map[string]string{
-			path.Join(pciDeviceDir, "device"):          gpu.Model,
-			path.Join(pciDeviceDir, "vendor"):          device.PCIVendorId,
-			path.Join(pciDeviceDir, "class"):           device.PCIVGAClassID,
-			path.Join(pciDeviceDir, "driver_override"): "",
+			path.Join(pciDeviceDir, "device"):           gpu.Model,
+			path.Join(pciDeviceDir, "vendor"):           device.PCIVendorId,
+			path.Join(pciDeviceDir, "class"):            device.PCIVGAClassID,
+			path.Join(pciDeviceDir, "subsystem_vendor"): gpu.SubVendorId,
+			path.Join(pciDeviceDir, "subsystem_device"): gpu.SubDeviceId,
+			path.Join(pciDeviceDir, "driver_override"):  "",
 		}
 		if gpu.Survivability {
 			if gpu.CardName != "" || gpu.RenderDName != "" {

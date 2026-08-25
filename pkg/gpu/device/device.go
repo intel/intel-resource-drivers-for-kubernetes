@@ -112,6 +112,8 @@ type DeviceInfo struct {
 	// Consists of PCIAddress and Model with colons and dots replaced with hyphens, e.g. 0000-01-02-0-0x1234.
 	UID           string            `json:"uid"`
 	PCIAddress    string            `json:"pciaddress"`    // PCI address in Linux DBDF notation for use with sysfs, e.g. 0000:00:00.0
+	SubVendorId   string            `json:"subvendorid"`   // PCI subvendor ID, identifies the board vendor, e.g. 0x8086 for Intel
+	SubDeviceId   string            `json:"subdeviceid"`   // PCI subdevice ID, identifies the board vendor's product, e.g. 0x0aef for Flex 140
 	Model         string            `json:"model"`         // PCI device ID
 	ModelName     string            `json:"modelname"`     // SKU name, usually Series + Model, e.g. Flex 140
 	FamilyName    string            `json:"familyname"`    // SKU family name, usually Series, e.g. Flex or Max

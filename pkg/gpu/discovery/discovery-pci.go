@@ -93,6 +93,7 @@ func DiscoverPCIDevice(deviceSysfsDir, sysfsRoot string) (*device.DeviceInfo, er
 	newDeviceInfo.UID = uid
 	newDeviceInfo.Model = deviceId
 	newDeviceInfo.SetModelInfo()
+	newDeviceInfo.SubVendorId, newDeviceInfo.SubDeviceId = readPCISubsystemInfo(deviceSysfsDir)
 
 	newDeviceInfo.Survivability = isInSurvivabilityMode(deviceSysfsDir)
 
@@ -162,6 +163,25 @@ func readPCIInfo(sysfsDevicePath string) (vendorId, deviceId, classId string) {
 	classId = strings.TrimSpace(string(classIdBytes))
 
 	return vendorId, deviceId, classId
+}
+
+// readPCISubsystemInfo reads the subsystem_vendor and subsystem_device IDs of the device.
+func readPCISubsystemInfo(sysfsDevicePath string) (subVendorId, subDeviceId string) {
+	subVendorIdBytes, err := os.ReadFile(path.Join(sysfsDevicePath, "subsystem_vendor"))
+	if err != nil {
+		klog.V(5).Infof("could not read subsystem_vendor file for device at %s: %v", sysfsDevicePath, err)
+	} else {
+		subVendorId = strings.TrimSpace(string(subVendorIdBytes))
+	}
+
+	subDeviceIdBytes, err := os.ReadFile(path.Join(sysfsDevicePath, "subsystem_device"))
+	if err != nil {
+		klog.V(5).Infof("could not read subsystem_device file for device at %s: %v", sysfsDevicePath, err)
+	} else {
+		subDeviceId = strings.TrimSpace(string(subDeviceIdBytes))
+	}
+
+	return subVendorId, subDeviceId
 }
 
 // isInSurvivabilityMode tells whether the KMD probed the device in survivability mode, which

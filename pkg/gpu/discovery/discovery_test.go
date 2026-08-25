@@ -140,6 +140,43 @@ func TestDiscoverDevices(t *testing.T) {
 			},
 		},
 		{
+			name: "single device with subsystem vendor and device IDs",
+			setupFunc: func(sysfsRoot, devfsRoot string) error {
+				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot); err != nil {
+					return err
+				}
+
+				pciDeviceDir := path.Join(sysfsRoot, device.SysfsPCIDevicesPath, "0000:0f:00.0")
+				if err := helpers.WriteFile(path.Join(pciDeviceDir, "subsystem_vendor"), "0x1043"); err != nil {
+					return err
+				}
+
+				return helpers.WriteFile(path.Join(pciDeviceDir, "subsystem_device"), "0x8888")
+			},
+			expected: map[string]*device.DeviceInfo{
+				"0000-0f-00-0-0x56c0": {
+					Model:         "0x56c0",
+					ModelName:     "Flex 170",
+					FamilyName:    "Data Center Flex",
+					PCIAddress:    "0000:0f:00.0",
+					PCIRoot:       "pci0000:00",
+					SubVendorId:   "0x1043",
+					SubDeviceId:   "0x8888",
+					MemoryMiB:     0,
+					DeviceType:    "gpu",
+					CardName:      "card0",
+					MEIName:       "mei0",
+					RenderDName:   "renderD128",
+					Millicores:    1000,
+					UID:           "0000-0f-00-0-0x56c0",
+					MaxVFs:        16,
+					Driver:        device.SysfsI915DriverName,
+					CurrentDriver: device.SysfsI915DriverName,
+					HealthStatus:  map[string]string{},
+				},
+			},
+		},
+		{
 			name: "with 1 vf",
 			setupFunc: func(sysfsRoot, devfsRoot string) error {
 				if err := fakesysfs.FakeSysFsGpuContents(

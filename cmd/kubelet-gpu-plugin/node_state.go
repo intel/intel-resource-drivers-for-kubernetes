@@ -133,6 +133,12 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 				"pciAddress": {
 					StringValue: &gpu.PCIAddress,
 				},
+				"subVendorId": {
+					StringValue: &gpu.SubVendorId,
+				},
+				"subDeviceId": {
+					StringValue: &gpu.SubDeviceId,
+				},
 				"health": {
 					StringValue: ptr.To(gpu.Health()),
 				},
