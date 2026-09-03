@@ -1,6 +1,6 @@
 ## Requirements
 
-- Kubernetes v1.34+, and  optionally [some cluster parameters](../../hack/clusterconfig.yaml) for advanced features, see [Cluster Setup](../CLUSTER_SETUP.md)
+- Kubernetes v1.36+, and  optionally [some cluster parameters](../../hack/clusterconfig.yaml) for advanced features, see [Cluster Setup](../CLUSTER_SETUP.md)
 - Container runtime needs to support CDI:
   - CRI-O v1.23.0 or newer
   - Containerd v1.7 or newer with CDI enabled
@@ -38,7 +38,7 @@ See [details](../../charts/intel-gpu-resource-driver/README.md) in the chart dir
 ```bash
 kubectl apply -k 'https://github.com/intel/intel-resource-drivers-for-kubernetes/deployments/gpu?ref=<RELEASE_VERSION>'
 ```
-Example RELEASE_VERSION: `gpu-v0.11.0`.
+Example RELEASE_VERSION: `gpu-v0.12.0`.
 
 By default, the kubelet-plugin is deployed on _all_ nodes in the cluster, as no nodeSelector is defined.
 To restrict the deployment to GPU-enabled nodes, follow these steps:
@@ -90,22 +90,22 @@ Example contents of the ResourceSlice object:
 <details>
 
 ```yaml
-# kubectl get resourceslices/00000-gpu.intel.com-arrow-9wfdl -o yaml
+# kubectl get resourceslices/00000-gpu.intel.com-arrow-v4ltm -o yaml
 apiVersion: resource.k8s.io/v1
 kind: ResourceSlice
 metadata:
-  creationTimestamp: "2026-06-24T08:26:26Z"
+  creationTimestamp: "2026-09-01T12:22:17Z"
   generateName: 00000-gpu.intel.com-arrow-
-  generation: 2
-  name: 00000-gpu.intel.com-arrow-9wfdl
+  generation: 3
+  name: 00000-gpu.intel.com-arrow-v4ltm
   ownerReferences:
   - apiVersion: v1
     controller: true
     kind: Node
     name: arrow
-    uid: 3a243a6b-e6db-4613-94f2-169f938c87ae
-  resourceVersion: "16878115"
-  uid: 72e7df0f-c853-48ed-8709-4e4a37c504ca
+    uid: 6777b039-ec06-432e-9029-7c92d0aa98a9
+  resourceVersion: "674591"
+  uid: b01c7b40-1b22-4e95-b802-949777f9b3a8
 spec:
   devices:
   - attributes:
@@ -129,6 +129,10 @@ spec:
         string: pci0000:00
       sriov:
         bool: true
+      subDeviceId:
+        string: "0x7d67"
+      subVendorId:
+        string: "0x1849"
       type:
         string: gpu
     capacity:
@@ -158,6 +162,10 @@ spec:
         string: pci0000:00
       sriov:
         bool: true
+      subDeviceId:
+        string: "0x6023"
+      subVendorId:
+        string: "0x1849"
       type:
         string: gpu
     capacity:
@@ -215,6 +223,10 @@ is processed by the scheduler sequentially until the currently processed request
 
 - `pciAddress` attribute of DRA device is deprecated and will eventually be removed (current target is v1.0), use `resource.kubernetes.io/pciBusID` instead.
 - added support for automated switching between DRM (i915, xe) and VFIO (vfio-pci, xe-vfio-pci) Linux kernel drivers (default: enabled) for [KubeVirt support](#kubevirt-support).
+
+### v0.12.0
+
+- `subDeviceId`, `subVendorId` DRA device attributes added, reflecting `subsystem_device` and `subsystem_vendor` from Linux kernel sysfs.
 
 ## Requesting resources
 
@@ -437,12 +449,12 @@ bound to the respective DRM kernel driver when `gpu.intel.com` `DeviceClass` was
 in the `ResourceClaim` for a regular (non-VM) container workload.
 
 To prevent the GPU DRA driver fom switching the GPU kernel driver, set `-b | --manage-binding` to false
-in `DaemonSet` `command` or `args` (or set `MANAGE_BINDING=false` environment variable). 
-In this case, both [DeviceClasses](../../deployments/gpu/base/device-class.yaml) need to have a `driver` 
+in `DaemonSet` `command` or `args` (or set `MANAGE_BINDING=false` environment variable).
+In this case, both [DeviceClasses](../../deployments/gpu/base/device-class.yaml) need to have a `driver`
 selector to prevent the scheduler from allocating a GPU bound to an incompatible driver.
 
 When deploying the [helm chart](../../charts/intel-gpu-resource-driver/), use `--set kubeletPlugin.manageBinding.enabled=false`.
-During the non-Helm deployment, use `deployments/gpu/overlays/manage-binding-disabled` 
+During the non-Helm deployment, use `deployments/gpu/overlays/manage-binding-disabled`
 [kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/#bases-and-overlays)
 overlay, or uncomment the selector manually in the [DeviceClasses](../../deployments/gpu/base/device-class.yaml) YAML file.
 ## Known issues

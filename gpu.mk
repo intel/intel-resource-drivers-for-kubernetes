@@ -5,7 +5,7 @@
 #
 
 # Use a custom version for E2E tests if we are testing in CI
-GPU_VERSION ?= v0.11.0
+GPU_VERSION ?= v0.12.0
 GPU_IMAGE_NAME ?= intel-gpu-resource-driver
 GPU_IMAGE_VERSION ?= $(GPU_VERSION)
 GPU_IMAGE_TAG ?= $(REGISTRY)/$(GPU_IMAGE_NAME):$(GPU_IMAGE_VERSION)
