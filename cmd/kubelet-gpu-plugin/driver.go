@@ -182,10 +182,12 @@ func (d *driver) PrepareResourceClaims(ctx context.Context, claims []*resourceap
 func (d *driver) prepareResourceClaim(ctx context.Context, claim *resourceapi.ResourceClaim) (bool, kubeletplugin.PrepareResult) {
 	klog.V(5).Infof("prepareResourceClaim is called for claim %v", claim.UID)
 
-	// TODO: check all devices anyway?
 	if claimPreparation, found := d.state.Prepared[claim.UID]; found {
-		klog.V(3).Infof("Claim %v was already prepared, nothing to do", claim.UID)
-		return false, claimPreparation.PrepareResult()
+		klog.V(5).Infof("Claim %v was already prepared, validating", claim.UID)
+		if d.state.ValidatePreparedClaim(claim.UID) {
+			klog.V(5).Infof("Claim %v is still valid", claim.UID)
+			return false, claimPreparation.PrepareResult()
+		} // Else - prepare it again.
 	}
 
 	return d.state.Prepare(ctx, claim)

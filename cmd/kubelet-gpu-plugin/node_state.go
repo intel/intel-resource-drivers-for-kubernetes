@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -321,14 +322,21 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 }
 
 // deviceCDINames returns the names of the CDI devices that the kubelet should inject into the
-// container for the prepared device.
+// container for the prepared device. Both, VFIO and DRM devices are considered.
 func deviceCDINames(allocatableDevice *device.DeviceInfo, adminAccess bool) []string {
 	klog.V(5).Infof("Getting CDI device names for allocatable device %v with adminAccess %v", allocatableDevice.UID, adminAccess)
 
 	cdiNames := []string{}
+	// This function is called from ValidatePreparedClaim, so it may encounter devices that are no longer present
+	// or have changed since the claim was prepared.
+	if allocatableDevice.CurrentDriver == "" {
+		return cdiNames
+	}
 
-	// A device in survivability mode has no CDI device of its own, it has no DRM devices
-	if !allocatableDevice.Survivability && allocatableDevice.Health() != device.HealthUnhealthy {
+	// No CDI devices corresponding to DRM device are added in cases when:
+	// - the GPU is in survivability mode, in this mode there is no /dev/dri/ device;
+	// - the GPU is unhealthy and ResourceClaim is without AdminAccess;
+	if !allocatableDevice.Survivability && (adminAccess || allocatableDevice.Health() != device.HealthUnhealthy) {
 		cdiNames = append(cdiNames, allocatableDevice.CDIName())
 	}
 
@@ -340,6 +348,57 @@ func deviceCDINames(allocatableDevice *device.DeviceInfo, adminAccess bool) []st
 	}
 
 	return cdiNames
+}
+
+// ValidatePreparedClaim returns true if the cached preparation of the claim with given UID is
+// still up to date. Allocatable devices and their CDI devices are rediscovered on every driver
+// start, while prepared claims are restored from the checkpoint file, so what was prepared before
+// can be stale: a device may be gone from the node altogether, or its cardName, renderDName or
+// MEIName may have changed, e.g. after a node reboot. A stale claim has to be prepared again.
+func (s *nodeState) ValidatePreparedClaim(claimUID types.UID) bool {
+	s.Lock()
+	defer s.Unlock()
+
+	claimPreparation, found := s.Prepared[claimUID]
+	if !found {
+		klog.V(5).Infof("Claim %v is not prepared", claimUID)
+		return false
+	}
+
+	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
+
+	for _, preparedDevice := range claimPreparation.PreparedDevices {
+		deviceName := preparedDevice.KubeletpluginDevice.DeviceName
+
+		// ATM the only pool is cluster node's pool: all devices on current node.
+		if preparedDevice.KubeletpluginDevice.PoolName != s.NodeName {
+			klog.V(5).Infof("Prepared device %v of claim %v is from pool %v, expected pool %v",
+				deviceName, claimUID, preparedDevice.KubeletpluginDevice.PoolName, s.NodeName)
+			return false
+		}
+
+		allocatableDevice, found := allocatableDevices[deviceName]
+		if !found {
+			klog.V(5).Infof("Prepared device %v of claim %v is not among %v allocatable devices",
+				deviceName, claimUID, len(allocatableDevices))
+			return false
+		}
+
+		// The set of CDI devices of a GPU depends on its MEIName and on whether it is in
+		// survivability mode, both of which can have changed since the claim was prepared.
+		expectedCDINames := deviceCDINames(allocatableDevice, preparedDevice.AdminAccess)
+		if !slices.Equal(preparedDevice.KubeletpluginDevice.CDIDeviceIDs, expectedCDINames) {
+			klog.V(5).Infof("Prepared device %v of claim %v has CDI devices %v, expected %v",
+				deviceName, claimUID, preparedDevice.KubeletpluginDevice.CDIDeviceIDs, expectedCDINames)
+			return false
+		}
+
+		// There's no need to check CDI device contents because the kubelet is given just the
+		// identities of the CDI devices, and they can have deviceNodes different from the previous
+		// time when this claim was prepared.
+	}
+
+	return true
 }
 
 // isDeviceUsedExclusivelyAlready returns true if the device is already in use in some other claim and
