@@ -62,7 +62,7 @@ func replaceGPUCDISpecs(cdiCache *cdiapi.Cache, devices device.DevicesInfo) erro
 
 	klog.V(5).Infof("Adding %v GPU devices to new spec", len(devices))
 	gpuSpec := &specs.Spec{Kind: device.CDIKind}
-	addDevicesToSpec(devices, gpuSpec)
+	addGPUDevicesToGPUSpec(devices, gpuSpec)
 
 	if err := writeSpec(cdiCache, gpuSpec); err != nil {
 		return fmt.Errorf("failed adding devices to new GPU CDI spec: %v", err)
@@ -80,7 +80,7 @@ func replaceMEICDISpecs(cdiCache *cdiapi.Cache, devices device.DevicesInfo) erro
 
 	klog.V(5).Infof("Adding %v MEI devices to new spec", len(devices))
 	meiSpec := &specs.Spec{Kind: device.CDIMEIKind}
-	addMeiDevicesToSpec(devices, meiSpec)
+	addMeiDevicesToMEISpec(devices, meiSpec)
 
 	if err := writeSpec(cdiCache, meiSpec); err != nil {
 		return fmt.Errorf("failed adding devices to new MEI CDI spec: %v", err)
@@ -126,7 +126,7 @@ func writeSpec(cdiCache *cdiapi.Cache, spec *specs.Spec) error {
 	return nil
 }
 
-func addMeiDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
+func addMeiDevicesToMEISpec(devices device.DevicesInfo, spec *specs.Spec) {
 	seenMEI := make(map[string]bool)
 
 	for _, gpuDevice := range devices {
@@ -150,7 +150,7 @@ func addMeiDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
 	}
 }
 
-func addDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
+func addGPUDevicesToGPUSpec(devices device.DevicesInfo, spec *specs.Spec) {
 	for _, newDevice := range devices {
 		// A device in survivability mode has no DRM devices, only the MEI device that is used for
 		// firmware reflashing, and MEI devices have their own CDI spec.
@@ -264,7 +264,7 @@ func addBypathMounts(info *device.DeviceInfo, spec *specs.Device, dridevPath str
 }
 
 // UpdateGPUDevices removes existing entries from CDI registry and adds new entries based
-// on up supplied DevicesInfo.
+// on up supplied DevicesInfo. It is called when GPU is bound to the driver, not on discovery.
 func UpdateGPUDevices(cdiCache *cdiapi.Cache, devicesToUpdate []*device.DeviceInfo) error {
 	devicesToRemove := []string{}
 	for _, deviceToUpdate := range devicesToUpdate {
@@ -278,16 +278,19 @@ func UpdateGPUDevices(cdiCache *cdiapi.Cache, devicesToUpdate []*device.DeviceIn
 			klog.V(5).Infof("Device %v is not bound to any no driver, skipping CDI creation", deviceToAdd.UID)
 			continue
 		}
-		if err := AddGPUDevice(cdiCache, deviceToAdd); err != nil {
+		if err := addGPUDevice(cdiCache, deviceToAdd); err != nil {
 			return fmt.Errorf("failed to add updated GPU device to CDI spec: %v", err)
+		}
+		if err := addMEIDevice(cdiCache, deviceToAdd); err != nil {
+			return fmt.Errorf("failed to add updated MEI device to CDI spec: %v", err)
 		}
 	}
 
 	return nil
 }
 
-// AddGPUDevice adds a new GPU device entry into cdi registry.
-func AddGPUDevice(cdiCache *cdiapi.Cache, newDevice *device.DeviceInfo) error {
+// addGPUDevice adds a new GPU device entry into cdi registry.
+func addGPUDevice(cdiCache *cdiapi.Cache, newDevice *device.DeviceInfo) error {
 	gpuSpecs := getGPUSpecs(cdiCache)
 	var gpuSpec *specs.Spec
 	if len(gpuSpecs) == 0 {
@@ -295,10 +298,30 @@ func AddGPUDevice(cdiCache *cdiapi.Cache, newDevice *device.DeviceInfo) error {
 	} else {
 		gpuSpec = gpuSpecs[0].Spec
 	}
-	addDevicesToSpec(device.DevicesInfo{newDevice.UID: newDevice}, gpuSpec)
+
+	addGPUDevicesToGPUSpec(device.DevicesInfo{newDevice.UID: newDevice}, gpuSpec)
 
 	if err := writeSpec(cdiCache, gpuSpec); err != nil {
 		return fmt.Errorf("failed adding devices to new GPU CDI spec: %v", err)
+	}
+
+	return nil
+}
+
+// addMEIDevice adds a new MEI device entry into cdi registry.
+func addMEIDevice(cdiCache *cdiapi.Cache, newDevice *device.DeviceInfo) error {
+	meiSpecs := getMEISpecs(cdiCache)
+	var meiSpec *specs.Spec
+	if len(meiSpecs) == 0 {
+		meiSpec = &specs.Spec{Kind: device.CDIMEIKind}
+	} else {
+		meiSpec = meiSpecs[0].Spec
+	}
+
+	addMeiDevicesToMEISpec(device.DevicesInfo{newDevice.UID: newDevice}, meiSpec)
+
+	if err := writeSpec(cdiCache, meiSpec); err != nil {
+		return fmt.Errorf("failed adding devices to new MEI CDI spec: %v", err)
 	}
 
 	return nil
