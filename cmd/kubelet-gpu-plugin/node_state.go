@@ -279,7 +279,8 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		} else {
 			klog.V(5).Infof("Device %v is requested as regular GPU device, preparing with DRM driver", allocatableDevice.PCIAddress)
 			needToPublishSlice, err = s.prepareDRMDevice(allocatableDevice)
-			if err != nil {
+			// Skip error for adminAccess claims, xpumd might make use of the device still.
+			if !adminAccess && err != nil {
 				prepareResult.Err = fmt.Errorf("failed to prepare DRM device %v: %v", allocatableDevice.PCIAddress, err)
 				return
 			}
@@ -327,7 +328,7 @@ func deviceCDINames(allocatableDevice *device.DeviceInfo, adminAccess bool) []st
 	cdiNames := []string{}
 
 	// A device in survivability mode has no CDI device of its own, it has no DRM devices
-	if !allocatableDevice.Survivability {
+	if !allocatableDevice.Survivability && allocatableDevice.Health() != device.HealthUnhealthy {
 		cdiNames = append(cdiNames, allocatableDevice.CDIName())
 	}
 
@@ -528,14 +529,20 @@ func (s *nodeState) prepareVFIODevice(allocatableDevice *device.DeviceInfo) (boo
 		return needToPublishSlice, nil
 	}
 
-	needToPublishSlice, err = s.changeKernelDriver(allocatableDevice.PCIAddress, targetDriver)
+	err = s.changeKernelDriver(allocatableDevice.PCIAddress, targetDriver)
 	if err != nil {
+		// If the driver change failed, mark the device as unhealthy and return the error.
+		allocatableDevice.HealthStatus[device.DriverChangeFailed] = device.HealthUnhealthy
+		needToPublishSlice = true
+
 		return needToPublishSlice, fmt.Errorf("failed to change driver for device %v: %v", allocatableDevice.PCIAddress, err)
 	}
 	time.Sleep(device.DriverChangeDelay)
 
 	// update current driver in device info after successful driver change
 	allocatableDevice.CurrentDriver = targetDriver
+	// If the driver change succeeded, cleanup driver change failure taint.
+	delete(allocatableDevice.HealthStatus, device.DriverChangeFailed)
 	needToPublishSlice = true
 
 	vfioDevice, err := discovery.GetVFIODevice(allocatableDevice.PCIAddress)
@@ -588,8 +595,12 @@ func (s *nodeState) prepareDRMDevice(allocatableDevice *device.DeviceInfo) (need
 		return needToPublishSlice, nil
 	}
 
-	needToPublishSlice, unwrappedErr = s.changeKernelDriver(allocatableDevice.PCIAddress, allocatableDevice.Driver)
+	unwrappedErr = s.changeKernelDriver(allocatableDevice.PCIAddress, allocatableDevice.Driver)
 	if unwrappedErr != nil {
+		// If the driver change failed, mark the device as unhealthy and return the error.
+		allocatableDevice.HealthStatus[device.DriverChangeFailed] = device.HealthUnhealthy
+		needToPublishSlice = true
+
 		err = fmt.Errorf("failed to change driver for device %v: %v", allocatableDevice.PCIAddress, unwrappedErr)
 		return
 	}
@@ -597,6 +608,9 @@ func (s *nodeState) prepareDRMDevice(allocatableDevice *device.DeviceInfo) (need
 
 	// update current driver in device info after successful driver change
 	allocatableDevice.CurrentDriver = allocatableDevice.Driver
+	// If the driver change succeeded, cleanup driver change failure taint.
+	delete(allocatableDevice.HealthStatus, device.DriverChangeFailed)
+	needToPublishSlice = true
 
 	deviceSysfsDir := path.Join(s.SysfsRoot, device.SysfsPCIDevicesPath, allocatableDevice.PCIAddress)
 	cardName, renderDName, unwrappedErr := drm.DeduceCardAndRenderDNames(deviceSysfsDir)
@@ -629,7 +643,7 @@ func (s *nodeState) getAllocatableByPCIAddress(pciAddress string) (*device.Devic
 	return nil, fmt.Errorf("no device found with PCI address %s", pciAddress)
 }
 
-func (s *nodeState) changeKernelDriver(pciAddress, driverName string) (bool, error) {
+func (s *nodeState) changeKernelDriver(pciAddress, driverName string) error {
 	klog.V(5).Infof("Changing driver for device %v to %v", pciAddress, driverName)
 	supportedDrivers := map[string]struct{}{
 		device.SysfsI915DriverName:   {},
@@ -638,27 +652,28 @@ func (s *nodeState) changeKernelDriver(pciAddress, driverName string) (bool, err
 		device.SysfsXeVFIODriverName: {},
 	}
 	if _, found := supportedDrivers[driverName]; !found {
-		return false, fmt.Errorf("unsupported driver: %v", driverName)
+		return fmt.Errorf("unsupported driver: %v", driverName)
 	}
 
 	if !s.ManageBinding {
-		return false, fmt.Errorf("driver binding management is disabled, cannot change driver for device %v to %v", pciAddress, driverName)
+		klog.Errorf("driver binding management is disabled, cannot change driver for device %v to %v", pciAddress, driverName)
+		return fmt.Errorf("driver binding management is disabled, cannot change driver for device %v to %v", pciAddress, driverName)
 	}
 
 	if err := vfio.UnbindDeviceFromKernelDriver(pciAddress); err != nil {
 		klog.Errorf("error unbinding device %v from current driver: %v", pciAddress, err)
-		return false, fmt.Errorf("failed to unbind device %v from current driver: %v", pciAddress, err)
+		return fmt.Errorf("failed to unbind device %v from current driver: %v", pciAddress, err)
 	}
 
 	time.Sleep(device.DriverChangeDelay)
 
 	if err := vfio.BindDeviceToDriver(pciAddress, driverName); err != nil {
 		klog.Errorf("failed binding device %v to %v: %v", pciAddress, driverName, err)
-		return true, fmt.Errorf("failed to bind device %v to driver %v: %v", pciAddress, driverName, err)
+		return fmt.Errorf("failed to bind device %v to driver %v: %v", pciAddress, driverName, err)
 	}
 
 	klog.V(5).Infof("Successfully changed driver for device %v to %v", pciAddress, driverName)
-	return true, nil
+	return nil
 }
 
 func (s *nodeState) getRequestDeviceClassNameFromClaim(requestName string, claim *resourcev1.ResourceClaim) string {

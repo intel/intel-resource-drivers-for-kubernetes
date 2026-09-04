@@ -31,6 +31,8 @@ func EnsureKernelModuleLoaded(moduleName string) error {
 	return nil
 }
 
+// UnbindDeviceFromKernelDriver reads driver symlink under PCI device,
+// and unbinds the device from its current kernel driver.
 func UnbindDeviceFromKernelDriver(pciAddress string) error {
 	driverFilePath := path.Join(helpers.GetSysfsRoot("bus/pci/devices"), "bus/pci/devices", pciAddress, "driver")
 	driverLink, err := os.Readlink(driverFilePath)
