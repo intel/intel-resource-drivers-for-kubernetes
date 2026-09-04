@@ -179,7 +179,8 @@ func addDeviceContainerEdits(newdevice *device.DeviceInfo, cdiDevice *specs.Devi
 	if newdevice.IsVFIOBound() {
 		klog.V(5).Infof("Adding VFIO edits for device %v", newdevice.UID)
 		addVFIOEdits(newdevice, cdiDevice)
-	} else {
+	}
+	if newdevice.IsDRMBound() {
 		klog.V(5).Infof("Adding DRM edits for device %v", newdevice.UID)
 		addDRMEdits(newdevice, cdiDevice)
 	}

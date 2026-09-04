@@ -19,6 +19,7 @@ import (
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
 )
 
+//nolint:cyclop // test code
 func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 
 	tests := []struct {
@@ -26,6 +27,7 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 		existingSpecs    []*cdiapi.Spec
 		detectedDevices  device.DevicesInfo
 		expectedError    bool
+		expectedGPUNames []string
 		expectedMEINames []string
 	}{
 		{
@@ -33,10 +35,11 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 			existingSpecs:    nil,
 			detectedDevices:  device.DevicesInfo{},
 			expectedError:    false,
+			expectedGPUNames: nil,
 			expectedMEINames: nil,
 		},
 		{
-			name:          "No existing specs, add new devices",
+			name:          "No existing specs, only unbound devices are detected",
 			existingSpecs: nil,
 			detectedDevices: device.DevicesInfo{
 				"0000-0f-00-0-0x56c0": {
@@ -46,39 +49,64 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 					PCIAddress:  "0000:0f:00.0",
 					MemoryMiB:   8192,
 					DeviceType:  "gpu",
-					CardName:    "card0",
-					MEIName:     "mei0",
 					RenderDName: "renderD128",
 					Millicores:  1000,
 					UID:         "0000-0f-00-0-0x56c0",
 					MaxVFs:      16,
 				},
+			},
+			expectedError: false,
+		},
+		{
+			name:          "No existing specs, add two new devices",
+			existingSpecs: nil,
+			detectedDevices: device.DevicesInfo{
+				"0000-0f-00-0-0x56c0": {
+					Model:         "0x56c0",
+					ModelName:     "Flex 170",
+					FamilyName:    "Data Center Flex",
+					PCIAddress:    "0000:0f:00.0",
+					MemoryMiB:     8192,
+					DeviceType:    "gpu",
+					CardName:      "card0",
+					MEIName:       "mei0",
+					RenderDName:   "renderD128",
+					Millicores:    1000,
+					UID:           "0000-0f-00-0-0x56c0",
+					MaxVFs:        16,
+					Driver:        "i915",
+					CurrentDriver: "i915",
+				},
 				"0000-0f-00-1-0x56c0": {
-					Model:       "0x56c0",
-					ModelName:   "Flex 170",
-					FamilyName:  "Data Center Flex",
-					PCIAddress:  "0000:0f:00.1",
-					MemoryMiB:   8192,
-					DeviceType:  "vf",
-					ParentUID:   "0000-0f-00-0-0x56c0",
-					CardName:    "card1",
-					RenderDName: "renderD129",
-					Millicores:  1000,
-					UID:         "0000-0f-00-1-0x56c0",
-					MaxVFs:      0,
+					Model:         "0x56c0",
+					ModelName:     "Flex 170",
+					FamilyName:    "Data Center Flex",
+					PCIAddress:    "0000:0f:00.1",
+					MemoryMiB:     8192,
+					DeviceType:    "vf",
+					ParentUID:     "0000-0f-00-0-0x56c0",
+					CardName:      "card1",
+					RenderDName:   "renderD129",
+					Millicores:    1000,
+					UID:           "0000-0f-00-1-0x56c0",
+					MaxVFs:        0,
+					Driver:        "i915",
+					CurrentDriver: "i915",
 				},
 			},
 			expectedError:    false,
+			expectedGPUNames: []string{"0000-0f-00-0-0x56c0", "0000-0f-00-1-0x56c0"},
 			expectedMEINames: []string{"mei0"},
 		},
 		{
 			name:          "No existing MEI spec, add devices with MEI",
 			existingSpecs: nil,
 			detectedDevices: device.DevicesInfo{
-				"gpu0": {UID: "gpu0", CardName: "card0", RenderDName: "renderD128", MEIName: "mei0"},
-				"gpu1": {UID: "gpu1", CardName: "card1", RenderDName: "renderD129", MEIName: "mei1"},
+				"gpu0": {UID: "gpu0", CardName: "card0", RenderDName: "renderD128", MEIName: "mei0", CurrentDriver: "i915"},
+				"gpu1": {UID: "gpu1", CardName: "card1", RenderDName: "renderD129", MEIName: "mei1", CurrentDriver: "i915"},
 			},
 			expectedError:    false,
+			expectedGPUNames: []string{"gpu0", "gpu1"},
 			expectedMEINames: []string{"mei0", "mei1"},
 		},
 		{
@@ -102,9 +130,10 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 				},
 			},
 			detectedDevices: device.DevicesInfo{
-				"gpu0": {UID: "gpu0", CardName: "card0", RenderDName: "renderD128", MEIName: "mei0"},
+				"gpu0": {UID: "gpu0", CardName: "card0", RenderDName: "renderD128", MEIName: "mei0", CurrentDriver: "i915"},
 			},
 			expectedError:    false,
+			expectedGPUNames: []string{"gpu0"},
 			expectedMEINames: []string{"mei0"},
 		},
 		{
@@ -116,11 +145,11 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 						Version: "0.6.0",
 						Devices: []specs.Device{
 							{
-								Name: "gpu1",
+								Name: "gpu2",
 								ContainerEdits: specs.ContainerEdits{
 									DeviceNodes: []*specs.DeviceNode{
-										{Path: "/dev/dri/card0", HostPath: "/dev/dri/card0", Type: "c"},
-										{Path: "/dev/dri/renderD128", HostPath: "/dev/dri/renderD128", Type: "c"},
+										{Path: "/dev/dri/card1", HostPath: "/dev/dri/card1", Type: "c"},
+										{Path: "/dev/dri/renderD129", HostPath: "/dev/dri/renderD129", Type: "c"},
 									},
 								},
 							},
@@ -129,9 +158,10 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 				},
 			},
 			detectedDevices: device.DevicesInfo{
-				"gpu1": {UID: "gpu1", CardName: "card0", RenderDName: "renderD128"},
+				"gpu1": {UID: "gpu1", CardName: "card0", RenderDName: "renderD128", CurrentDriver: "i915"},
 			},
 			expectedError:    false,
+			expectedGPUNames: []string{"gpu1"},
 			expectedMEINames: nil,
 		},
 		{
@@ -156,9 +186,10 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 				},
 			},
 			detectedDevices: device.DevicesInfo{
-				"gpu1": {UID: "gpu1", CardName: "card0", RenderDName: "renderD128"},
+				"gpu1": {UID: "gpu1", CardName: "card0", RenderDName: "renderD128", CurrentDriver: "i915"},
 			},
 			expectedError:    false,
+			expectedGPUNames: []string{"gpu1"},
 			expectedMEINames: nil,
 		},
 		{
@@ -192,9 +223,48 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 				},
 			},
 			detectedDevices: device.DevicesInfo{
-				"gpu1": {UID: "gpu1", CardName: "card0", RenderDName: "renderD128"},
+				"gpu1": {UID: "gpu1", CardName: "card0", RenderDName: "renderD128", CurrentDriver: "i915"},
 			},
 			expectedError:    false,
+			expectedGPUNames: []string{"gpu1"},
+			expectedMEINames: nil,
+		},
+		{
+			name: "Existing specs, one device got unbound from DRM driver",
+			existingSpecs: []*cdiapi.Spec{
+				{
+					Spec: &specs.Spec{
+						Kind:    device.CDIKind,
+						Version: "0.6.0",
+						Devices: []specs.Device{
+							{
+								Name: "gpu1",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/dri/card0", HostPath: "/dev/dri/card0", Type: "c"},
+										{Path: "/dev/dri/renderD128", HostPath: "/dev/dri/renderD128", Type: "c"},
+									},
+								},
+							},
+							{
+								Name: "gpu2",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/dri/card1", HostPath: "/dev/dri/card1", Type: "c"},
+										{Path: "/dev/dri/renderD129", HostPath: "/dev/dri/renderD129", Type: "c"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			detectedDevices: device.DevicesInfo{
+				"gpu1": {UID: "gpu1", CardName: "card0", RenderDName: "renderD128", CurrentDriver: "i915"},
+				"gpu2": {UID: "gpu2", CardName: "card1", RenderDName: "renderD129", CurrentDriver: ""},
+			},
+			expectedError:    false,
+			expectedGPUNames: []string{"gpu1"},
 			expectedMEINames: nil,
 		},
 		{
@@ -229,6 +299,7 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 			},
 			detectedDevices:  device.DevicesInfo{},
 			expectedError:    false,
+			expectedGPUNames: nil,
 			expectedMEINames: nil,
 		},
 		{
@@ -253,9 +324,10 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 				},
 			},
 			detectedDevices: device.DevicesInfo{
-				"gpu2": {UID: "gpu2", CardName: "card1", RenderDName: "renderD129"},
+				"gpu2": {UID: "gpu2", CardName: "card1", RenderDName: "renderD129", CurrentDriver: "i915"},
 			},
 			expectedError:    false,
+			expectedGPUNames: []string{"gpu2"},
 			expectedMEINames: nil,
 		},
 	}
@@ -287,6 +359,28 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 
 			plugintesthelpers.CDICacheDelay()
 
+			/* GPU validation */
+			actualGPUNames := []string{}
+			for _, gpuSpec := range getGPUSpecs(cdiCache) {
+				for _, gpuDevice := range gpuSpec.Devices {
+					actualGPUNames = append(actualGPUNames, gpuDevice.Name)
+				}
+			}
+			sort.Strings(actualGPUNames)
+
+			expectedGPUNames := tt.expectedGPUNames
+			sort.Strings(expectedGPUNames)
+
+			if len(actualGPUNames) != len(expectedGPUNames) {
+				t.Fatalf("expected GPU CDI devices %v, got %v", expectedGPUNames, actualGPUNames)
+			}
+			for i := range actualGPUNames {
+				if actualGPUNames[i] != expectedGPUNames[i] {
+					t.Fatalf("expected GPU CDI devices %v, got %v", expectedGPUNames, actualGPUNames)
+				}
+			}
+
+			/* MEI validation */
 			actualMEINames := []string{}
 			for _, meiSpec := range getMEISpecs(cdiCache) {
 				for _, meiDevice := range meiSpec.Devices {
