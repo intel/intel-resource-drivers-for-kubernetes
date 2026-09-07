@@ -96,18 +96,7 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 			},
 			expectedError:    false,
 			expectedGPUNames: []string{"0000-0f-00-0-0x56c0", "0000-0f-00-1-0x56c0"},
-			expectedMEINames: []string{"mei0"},
-		},
-		{
-			name:          "No existing MEI spec, add devices with MEI",
-			existingSpecs: nil,
-			detectedDevices: device.DevicesInfo{
-				"gpu0": {UID: "gpu0", CardName: "card0", RenderDName: "renderD128", MEIName: "mei0", CurrentDriver: "i915"},
-				"gpu1": {UID: "gpu1", CardName: "card1", RenderDName: "renderD129", MEIName: "mei1", CurrentDriver: "i915"},
-			},
-			expectedError:    false,
-			expectedGPUNames: []string{"gpu0", "gpu1"},
-			expectedMEINames: []string{"mei0", "mei1"},
+			expectedMEINames: []string{"0000-0f-00-0-0x56c0"},
 		},
 		{
 			name: "Existing MEI spec is replaced",
@@ -130,11 +119,11 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 				},
 			},
 			detectedDevices: device.DevicesInfo{
-				"gpu0": {UID: "gpu0", CardName: "card0", RenderDName: "renderD128", MEIName: "mei0", CurrentDriver: "i915"},
+				"0000-0f-00-0-0x56c0": {UID: "0000-0f-00-0-0x56c0", CardName: "card0", RenderDName: "renderD128", MEIName: "mei0", CurrentDriver: "i915"},
 			},
 			expectedError:    false,
-			expectedGPUNames: []string{"gpu0"},
-			expectedMEINames: []string{"mei0"},
+			expectedGPUNames: []string{"0000-0f-00-0-0x56c0"},
+			expectedMEINames: []string{"0000-0f-00-0-0x56c0"},
 		},
 		{
 			name: "Existing specs, detected devices replace old ones",
@@ -158,10 +147,10 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 				},
 			},
 			detectedDevices: device.DevicesInfo{
-				"gpu1": {UID: "gpu1", CardName: "card0", RenderDName: "renderD128", CurrentDriver: "i915"},
+				"0000-0f-00-0-0x56c0": {UID: "0000-0f-00-0-0x56c0", CardName: "card0", RenderDName: "renderD128", CurrentDriver: "i915"},
 			},
 			expectedError:    false,
-			expectedGPUNames: []string{"gpu1"},
+			expectedGPUNames: []string{"0000-0f-00-0-0x56c0"},
 			expectedMEINames: nil,
 		},
 		{
@@ -221,13 +210,37 @@ func TestAddDetectedDevicesToCDIRegistry(t *testing.T) {
 						},
 					},
 				},
+				{
+					Spec: &specs.Spec{
+						Kind:    device.CDIMEIKind,
+						Version: "0.6.0",
+						Devices: []specs.Device{
+							{
+								Name: "gpu1",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/mei0", HostPath: "/dev/mei0", Type: "c"},
+									},
+								},
+							},
+							{
+								Name: "gpu2",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/mei1", HostPath: "/dev/mei1", Type: "c"},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			detectedDevices: device.DevicesInfo{
-				"gpu1": {UID: "gpu1", CardName: "card0", RenderDName: "renderD128", CurrentDriver: "i915"},
+				"gpu1": {UID: "gpu1", CardName: "card0", RenderDName: "renderD128", MEIName: "mei0", CurrentDriver: "i915"},
 			},
 			expectedError:    false,
 			expectedGPUNames: []string{"gpu1"},
-			expectedMEINames: nil,
+			expectedMEINames: []string{"gpu1"},
 		},
 		{
 			name: "Existing specs, one device got unbound from DRM driver",
@@ -411,8 +424,38 @@ func TestUpdateGPUDevices(t *testing.T) {
 		existingSpecs      []*cdiapi.Spec
 		detectedDevices    []*device.DeviceInfo
 		expectedError      bool
-		expectedCDIDevices []specs.Device
+		expectedGPUDevices []specs.Device
+		expectedMEIDevices []specs.Device
 	}{
+		{
+			name:          "No existing specs, update a device",
+			existingSpecs: []*cdiapi.Spec{},
+			detectedDevices: []*device.DeviceInfo{
+				{UID: "gpu1", CardName: "card0", RenderDName: "renderD128", MEIName: "mei0", Driver: "xe", CurrentDriver: "xe"},
+			},
+			expectedError: false,
+			expectedGPUDevices: []specs.Device{
+				{
+					Name: "gpu1",
+					ContainerEdits: specs.ContainerEdits{
+						DeviceNodes: []*specs.DeviceNode{
+							{Path: "/dev/dri/card0", HostPath: "/dev/dri/card0", Type: "c"},
+							{Path: "/dev/dri/renderD128", HostPath: "/dev/dri/renderD128", Type: "c"},
+						},
+					},
+				},
+			},
+			expectedMEIDevices: []specs.Device{
+				{
+					Name: "gpu1",
+					ContainerEdits: specs.ContainerEdits{
+						DeviceNodes: []*specs.DeviceNode{
+							{Path: "/dev/mei0", HostPath: "/dev/mei0", Type: "c"},
+						},
+					},
+				},
+			},
+		},
 		{
 			name: "Existing specs, update a device",
 			existingSpecs: []*cdiapi.Spec{
@@ -443,12 +486,37 @@ func TestUpdateGPUDevices(t *testing.T) {
 						},
 					},
 				},
+				{
+					Spec: &specs.Spec{
+						Kind:    device.CDIMEIKind,
+						Version: "0.6.0",
+
+						Devices: []specs.Device{
+							{
+								Name: "gpu1",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/mei0", HostPath: "/dev/mei0", Type: "c"},
+									},
+								},
+							},
+							{
+								Name: "gpu2",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/mei1", HostPath: "/dev/mei1", Type: "c"},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			detectedDevices: []*device.DeviceInfo{
 				{UID: "gpu2", VFIODevice: "vfio0", IOMMUGroup: "15", Driver: "xe", CurrentDriver: "xe-vfio-pci"},
 			},
 			expectedError: false,
-			expectedCDIDevices: []specs.Device{
+			expectedGPUDevices: []specs.Device{
 				{
 					Name: "gpu1",
 					ContainerEdits: specs.ContainerEdits{
@@ -469,10 +537,20 @@ func TestUpdateGPUDevices(t *testing.T) {
 					},
 				},
 			},
+			expectedMEIDevices: []specs.Device{
+				{
+					Name: "gpu1",
+					ContainerEdits: specs.ContainerEdits{
+						DeviceNodes: []*specs.DeviceNode{
+							{Path: "/dev/mei0", HostPath: "/dev/mei0", Type: "c"},
+						},
+					},
+				},
+			},
 		},
 		{
 			// Single-GPU host: rebinding the only GPU to a VFIO driver drops its
-			// DRM nodes, so removing the old entry empties the spec. CDI rejects
+			// MEI device, so removing the old entry empties the MEI spec. CDI rejects
 			// a spec with no devices, so the spec has to be deleted rather than
 			// written back empty.
 			name: "Existing spec, updating the only device empties the spec",
@@ -494,12 +572,28 @@ func TestUpdateGPUDevices(t *testing.T) {
 						},
 					},
 				},
+				{
+					Spec: &specs.Spec{
+						Kind:    device.CDIMEIKind,
+						Version: "0.6.0",
+						Devices: []specs.Device{
+							{
+								Name: "gpu1",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/mei0", HostPath: "/dev/mei0", Type: "c"},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			detectedDevices: []*device.DeviceInfo{
 				{UID: "gpu1", VFIODevice: "vfio0", IOMMUGroup: "15", Driver: "xe", CurrentDriver: "xe-vfio-pci"},
 			},
 			expectedError: false,
-			expectedCDIDevices: []specs.Device{
+			expectedGPUDevices: []specs.Device{
 				{
 					Name: "gpu1",
 					ContainerEdits: specs.ContainerEdits{
@@ -511,9 +605,10 @@ func TestUpdateGPUDevices(t *testing.T) {
 					},
 				},
 			},
+			expectedMEIDevices: []specs.Device{},
 		},
 		{
-			name: "Device in survivability mode is removed from the GPU spec",
+			name: "Device in survivability mode is removed from the GPU spec, MEI is unchanged",
 			existingSpecs: []*cdiapi.Spec{
 				{
 					Spec: &specs.Spec{
@@ -540,18 +635,60 @@ func TestUpdateGPUDevices(t *testing.T) {
 						},
 					},
 				},
+				{
+					Spec: &specs.Spec{
+						Kind:    device.CDIMEIKind,
+						Version: "0.6.0",
+						Devices: []specs.Device{
+							{
+								Name: "gpu1",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/mei0", HostPath: "/dev/mei0", Type: "c"},
+									},
+								},
+							},
+							{
+								Name: "gpu2",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/mei1", HostPath: "/dev/mei1", Type: "c"},
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			detectedDevices: []*device.DeviceInfo{
 				{UID: "gpu2", MEIName: "mei1", Driver: "xe", CurrentDriver: "xe", Survivability: true},
 			},
 			expectedError: false,
-			expectedCDIDevices: []specs.Device{
+			expectedGPUDevices: []specs.Device{
 				{
 					Name: "gpu1",
 					ContainerEdits: specs.ContainerEdits{
 						DeviceNodes: []*specs.DeviceNode{
 							{Path: "/dev/dri/card0", HostPath: "/dev/dri/card0", Type: "c"},
 							{Path: "/dev/dri/renderD128", HostPath: "/dev/dri/renderD128", Type: "c"},
+						},
+					},
+				},
+			},
+			expectedMEIDevices: []specs.Device{
+				{
+					Name: "gpu1",
+					ContainerEdits: specs.ContainerEdits{
+						DeviceNodes: []*specs.DeviceNode{
+							{Path: "/dev/mei0", HostPath: "/dev/mei0", Type: "c"},
+						},
+					},
+				},
+				{
+					Name: "gpu2",
+					ContainerEdits: specs.ContainerEdits{
+						DeviceNodes: []*specs.DeviceNode{
+							{Path: "/dev/mei1", HostPath: "/dev/mei1", Type: "c"},
 						},
 					},
 				},
@@ -572,7 +709,7 @@ func TestUpdateGPUDevices(t *testing.T) {
 			}
 
 			for _, existingSpec := range tt.existingSpecs {
-				if err := writeSpec(cdiCache, existingSpec.Spec); err != nil {
+				if err := writeSpecSpec(cdiCache, existingSpec.Spec, ""); err != nil {
 					t.Fatalf("failed to write spec, %v", err)
 				}
 			}
@@ -584,15 +721,28 @@ func TestUpdateGPUDevices(t *testing.T) {
 
 			plugintesthelpers.CDICacheDelay()
 
+			// Validate CDI GPU.
 			actualCDIDevices := []specs.Device{}
 			for _, gpuSpec := range getGPUSpecs(cdiCache) {
 				actualCDIDevices = append(actualCDIDevices, gpuSpec.Devices...)
 			}
 
 			actualJSON, _ := json.MarshalIndent(actualCDIDevices, "", "\t")
-			expectedJSON, _ := json.MarshalIndent(tt.expectedCDIDevices, "", "\t")
-			if !reflect.DeepEqual(actualCDIDevices, tt.expectedCDIDevices) {
-				t.Fatalf("expected GPU CDI devices %v, got %v", string(expectedJSON), string(actualJSON))
+			expectedJSON, _ := json.MarshalIndent(tt.expectedGPUDevices, "", "\t")
+			if !reflect.DeepEqual(actualCDIDevices, tt.expectedGPUDevices) {
+				t.Errorf("expected GPU CDI devices %v, got %v", string(expectedJSON), string(actualJSON))
+			}
+
+			// Validate CDI MEI.
+			actualCDIMEIDevices := []specs.Device{}
+			for _, meiSpec := range getMEISpecs(cdiCache) {
+				actualCDIMEIDevices = append(actualCDIMEIDevices, meiSpec.Devices...)
+			}
+
+			actualMEIJSON, _ := json.MarshalIndent(actualCDIMEIDevices, "", "\t")
+			expectedMEIJSON, _ := json.MarshalIndent(tt.expectedMEIDevices, "", "\t")
+			if !reflect.DeepEqual(actualCDIMEIDevices, tt.expectedMEIDevices) {
+				t.Errorf("expected MEI CDI devices %v, got %v", string(expectedMEIJSON), string(actualMEIJSON))
 			}
 		})
 	}

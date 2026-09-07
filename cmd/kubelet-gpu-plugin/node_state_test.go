@@ -212,13 +212,13 @@ func TestDeviceCDINames(t *testing.T) {
 			name:        "regular device with admin access",
 			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", CardName: "card0", CurrentDriver: "xe"},
 			adminAccess: true,
-			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0", "intel.com/gpu-mei=mei0"},
+			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0", "intel.com/gpu-mei=0000-00-02-0-0x56c0"},
 		},
 		{
 			name:        "unhealthy device with admin access",
 			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", CardName: "card0", CurrentDriver: "xe", HealthStatus: map[string]string{"health-xpumd-blabla": device.HealthUnhealthy}},
 			adminAccess: true,
-			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0", "intel.com/gpu-mei=mei0"},
+			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0", "intel.com/gpu-mei=0000-00-02-0-0x56c0"},
 		},
 		{
 			name:        "unhealthy device with no admin access",
@@ -235,13 +235,13 @@ func TestDeviceCDINames(t *testing.T) {
 		{
 			name:     "device in survivability mode",
 			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", Survivability: true, CurrentDriver: "xe"},
-			expected: []string{"intel.com/gpu-mei=mei0"},
+			expected: []string{"intel.com/gpu-mei=0000-00-02-0-0x56c0"},
 		},
 		{
 			name:        "device in survivability mode with admin access",
 			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", Survivability: true, CurrentDriver: "xe"},
 			adminAccess: true,
-			expected:    []string{"intel.com/gpu-mei=mei0"},
+			expected:    []string{"intel.com/gpu-mei=0000-00-02-0-0x56c0"},
 		},
 		{
 			name:     "device in survivability mode without MEI device",
@@ -452,7 +452,7 @@ func TestValidatePreparedClaim(t *testing.T) {
 		{
 			name:            "unchanged device with admin access",
 			claimUID:        "claim-1",
-			preparedDevices: []PreparedDevice{preparedDevice(true, []string{"intel.com/gpu=" + gpuUID, "intel.com/gpu-mei=mei0"})},
+			preparedDevices: []PreparedDevice{preparedDevice(true, []string{"intel.com/gpu=" + gpuUID, "intel.com/gpu-mei=" + gpuUID})},
 			expected:        true,
 		},
 		{

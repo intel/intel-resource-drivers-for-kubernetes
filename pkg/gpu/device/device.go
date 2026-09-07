@@ -148,7 +148,7 @@ func (g DeviceInfo) MEICDIName() string {
 		return ""
 	}
 
-	return fmt.Sprintf("%s=%s", CDIMEIKind, g.MEIName)
+	return fmt.Sprintf("%s=%s", CDIMEIKind, g.UID)
 }
 
 func (g *DeviceInfo) DeepCopy() *DeviceInfo {

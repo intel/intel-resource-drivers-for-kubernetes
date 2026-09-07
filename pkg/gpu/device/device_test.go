@@ -47,13 +47,16 @@ func TestMEICDIName(t *testing.T) {
 		{
 			name: "Valid MEI name",
 			device: DeviceInfo{
+				UID:     "gpu0",
 				MEIName: "mei1",
 			},
-			expected: "intel.com/gpu-mei=mei1",
+			expected: "intel.com/gpu-mei=gpu0",
 		},
 		{
-			name:     "Missing MEI name",
-			device:   DeviceInfo{},
+			name: "Missing MEI name",
+			device: DeviceInfo{
+				UID: "gpu0",
+			},
 			expected: "",
 		},
 	}
