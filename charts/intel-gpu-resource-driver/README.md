@@ -56,7 +56,7 @@ You may also run `helm show values` on this chart's dependencies for additional 
 | image.repository | string | `intel` ||
 | image.name | string | `"intel-gpu-resource-driver"` ||
 | image.pullPolicy | string | `"IfNotPresent"` ||
-| image.tag | string | `"v0.11.0"` ||
+| image.tag | string | `"v0.12.0"` ||
 | kubeletPlugin.healthMonitoring.enabled | bool | true | Enable (default) GPU details discovery method. Also, [health monitoring](../../doc/gpu/USAGE.md#health-monitoring-support). Requires [xpumd](https://github.com/intel/xpumanager/tree/v2.x/xpumd) |
 | kubeletPlugin.privileged | bool | false | Enable alternative method for discovering GPU details when health monitoring is disabled |
 | kubeletPlugin.manageBinding.enabled | bool | true | Enable dynamic switching between DRM and VFIO-PCI kernel drivers |
