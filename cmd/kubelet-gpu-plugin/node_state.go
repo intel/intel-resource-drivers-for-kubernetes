@@ -1,18 +1,8 @@
-/*
- * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+//
+// Copyright (C) 2022-2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package main
 
@@ -29,6 +19,7 @@ import (
 	resourcev1 "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/dynamic-resource-allocation/deviceattribute"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	"k8s.io/dynamic-resource-allocation/resourceslice"
@@ -142,6 +133,12 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 				"pciAddress": {
 					StringValue: &gpu.PCIAddress,
 				},
+				"subVendorId": {
+					StringValue: &gpu.SubVendorId,
+				},
+				"subDeviceId": {
+					StringValue: &gpu.SubDeviceId,
+				},
 				"health": {
 					StringValue: ptr.To(gpu.Health()),
 				},
@@ -169,26 +166,43 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 			}
 		}
 
-		// FIXME: TODO: K8s 1.33-1.34 only supports plain taint without description.
-		// See https://github.com/kubernetes/enhancements/issues/5055 .
-		if gpu.Health() == device.HealthUnhealthy {
-			// e.g. HealthIssues-memorytemperature_coretemperature:NoExecute
-			// The format will change in K8s 1.35+.
-			unhealthyTypes := []string{}
-			for healthType, healthStatus := range gpu.HealthStatus {
-				if healthStatus == device.HealthUnhealthy {
-					unhealthyTypes = append(unhealthyTypes, healthType)
-				}
+		// One DeviceTaint per unhealthy HealthStatus entry.
+		// driver-managed UnhealthyTypes get the "health-" prefix.
+		// xpumd-managed UnhealthyTypes get the "health-xpumd-" prefix.
+		unhealthyTypes := []string{}
+		for healthType, healthStatus := range gpu.HealthStatus {
+			if healthStatus == device.HealthUnhealthy {
+				unhealthyTypes = append(unhealthyTypes, healthType)
 			}
-			sort.Strings(unhealthyTypes)
-			key := "HealthIssues-" + strings.Join(unhealthyTypes, "_")
-			key = strings.ReplaceAll(key, "[", "")
-			key = strings.ReplaceAll(key, "]", "")
-			key = strings.ReplaceAll(key, ",", "_")
-			newDevice.Taints = []resourcev1.DeviceTaint{{
+		}
+
+		sort.Strings(unhealthyTypes)
+		unsupportedHealth := false
+		for _, healthType := range unhealthyTypes {
+			prefix := "health-"
+			if !device.HealthCustomList[healthType] {
+				prefix = "health-xpumd-"
+			}
+
+			key := prefix + healthType
+			if errs := validation.IsValidLabelValue(key); len(errs) > 0 {
+				klog.Errorf("Cannot taint device %v with health type %v: %q is not a valid label value: %v. Tainting with %q", gpuUID, healthType, key, errs, device.UnsupportedHealthTaintKey)
+				unsupportedHealth = true
+				continue
+			}
+
+			newDevice.Taints = append(newDevice.Taints, resourcev1.DeviceTaint{
 				Key:    key,
 				Effect: resourcev1.DeviceTaintEffectNoExecute,
-			}}
+			})
+		}
+
+		// Taint the device with a generic key if it has unsupported health type.
+		if unsupportedHealth {
+			newDevice.Taints = append(newDevice.Taints, resourcev1.DeviceTaint{
+				Key:    device.UnsupportedHealthTaintKey,
+				Effect: resourcev1.DeviceTaintEffectNoExecute,
+			})
 		}
 
 		// Taint the device if it is not bound to any kernel driver and binding
@@ -245,6 +259,14 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 			return
 		}
 
+		// Prevent cases where claim requests Unhealthy devices but without admin access, and the device is in survivability mode.
+		if !adminAccess && allocatableDevice.Survivability {
+			prepareResult.Err = fmt.Errorf(
+				"device %v (pool %v) is in survivability mode and cannot be prepared without adminAccess flag",
+				allocatedDevice.Device, allocatedDevice.Pool)
+			return
+		}
+
 		deviceClassName := s.getRequestDeviceClassNameFromClaim(allocatedDevice.Request, claim)
 		klog.V(5).Infof("Device class name for request %v: %v", allocatedDevice.Request, deviceClassName)
 		if deviceClassName == device.VFIODeviceClassName {
@@ -268,7 +290,7 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 				Requests:     []string{allocatedDevice.Request},
 				PoolName:     allocatedDevice.Pool,
 				DeviceName:   allocatedDevice.Device,
-				CDIDeviceIDs: []string{allocatableDevice.CDIName()},
+				CDIDeviceIDs: deviceCDINames(allocatableDevice, adminAccess),
 				Metadata: &kubeletplugin.DeviceMetadata{
 					Attributes: map[string]resourcev1.DeviceAttribute{
 						string(deviceattribute.StandardDeviceAttributePCIBusID): {
@@ -279,12 +301,6 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 			},
 			AdminAccess: adminAccess,
 		}
-
-		if adminAccess && allocatableDevice.MEIName != "" {
-			klog.V(5).Infof("Adding MEI CDI device for device %v with MEI name %v", allocatedDevice.Device, allocatableDevice.MEIName)
-			newDevice.KubeletpluginDevice.CDIDeviceIDs = append(newDevice.KubeletpluginDevice.CDIDeviceIDs, allocatableDevice.MEICDIName())
-		}
-
 		preparedDevices = append(preparedDevices, newDevice)
 	}
 
@@ -301,6 +317,28 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 	prepareResult = s.Prepared[claim.UID].PrepareResult()
 
 	return
+}
+
+// deviceCDINames returns the names of the CDI devices that the kubelet should inject into the
+// container for the prepared device.
+func deviceCDINames(allocatableDevice *device.DeviceInfo, adminAccess bool) []string {
+	klog.V(5).Infof("Getting CDI device names for allocatable device %v with adminAccess %v", allocatableDevice.UID, adminAccess)
+
+	cdiNames := []string{}
+
+	// A device in survivability mode has no CDI device of its own, it has no DRM devices
+	if !allocatableDevice.Survivability {
+		cdiNames = append(cdiNames, allocatableDevice.CDIName())
+	}
+
+	// MEI device is needed for the firmware reflashing of a device in survivability mode, and it is
+	// added to admin access claims, e.g. for the firmware version query of a monitoring deployment.
+	if (adminAccess || allocatableDevice.Survivability) && allocatableDevice.MEIName != "" {
+		klog.V(5).Infof("Adding MEI CDI device for device %v with MEI name %v", allocatableDevice.UID, allocatableDevice.MEIName)
+		cdiNames = append(cdiNames, allocatableDevice.MEICDIName())
+	}
+
+	return cdiNames
 }
 
 // isDeviceUsedExclusivelyAlready returns true if the device is already in use in some other claim and
@@ -359,37 +397,7 @@ func (s *nodeState) RefreshDeviceOnDriverEvent(pciAddress, expectedDriver string
 		allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
 		allocatableDevices[discovery.DetermineDeviceName(discoveredDeviceInfo, device.DefaultNamingStyle)] = discoveredDeviceInfo
 	default: // if cachedDeviceInfoErr == nil && discoveredDeviceInfoErr == nil
-		// Untaint if the device was observed as absent before.
-		if healthStatus, found := cachedDeviceInfo.HealthStatus[device.HealthStatusDeviceAbsent]; found && healthStatus == device.HealthUnhealthy {
-			cachedDeviceInfo.HealthStatus[device.HealthStatusDeviceAbsent] = device.HealthHealthy
-			needToPublish = true
-		}
-
-		if discoveredDeviceInfo.CurrentDriver != expectedDriver {
-			// TODO: FIXME: expectedDriver is from udev event. Was there too much lag / lock wait that the next udev already too place and is in queue,
-			// and we're processing old event? Ignore the change.
-			klog.Warningf("Device %s has unexpected driver after udev event. Expected: %s, actual: %s.", pciAddress, expectedDriver, discoveredDeviceInfo.CurrentDriver)
-		} else if cachedDeviceInfo.CurrentDriver != discoveredDeviceInfo.CurrentDriver {
-			// Something else than the DRA driver has changed the driver.
-			// - If the device was not prepared for workload Pod:
-			//   - just update the cached info, no need to taint it
-			// - If the device was prepared for workload Pod:
-			//   - update cached info
-			//   - taint the device
-			cachedDeviceInfo.CurrentDriver = discoveredDeviceInfo.CurrentDriver
-			cachedDeviceInfo.CardName = discoveredDeviceInfo.CardName
-			cachedDeviceInfo.RenderDName = discoveredDeviceInfo.RenderDName
-			cachedDeviceInfo.MemoryMiB = discoveredDeviceInfo.MemoryMiB
-			cachedDeviceInfo.MEIName = discoveredDeviceInfo.MEIName
-			cachedDeviceInfo.VFIODevice = discoveredDeviceInfo.VFIODevice
-			cachedDeviceInfo.IOMMUGroup = discoveredDeviceInfo.IOMMUGroup
-			cachedDeviceInfo.VFIndex = discoveredDeviceInfo.VFIndex
-			if s.isDeviceUsedExclusivelyAlready(cachedDeviceInfo.UID, s.NodeName, "") {
-				// This taint is removed when the device is unprepared.
-				cachedDeviceInfo.HealthStatus[device.HealthStatusUnexpectedDriver] = device.HealthUnhealthy
-			}
-			needToPublish = true
-		} // TODO: SR-IOV: handle number of VFs changed on PF.
+		needToPublish, needToUpdateCDI = s.refreshCachedDevice(cachedDeviceInfo, discoveredDeviceInfo, expectedDriver)
 	}
 
 	if needToUpdateCDI {
@@ -399,6 +407,86 @@ func (s *nodeState) RefreshDeviceOnDriverEvent(pciAddress, expectedDriver string
 	}
 
 	return needToPublish, nil
+}
+
+// refreshCachedDevice updates the cached device info of a still discoverable device based on the
+// freshly discovered info. It returns bools indicating whether a new ResourceSlice needs to be
+// published, and whether the CDI spec of the device needs to be updated.
+// The caller is expected to hold the nodeState lock.
+func (s *nodeState) refreshCachedDevice(cachedDeviceInfo, discoveredDeviceInfo *device.DeviceInfo, expectedDriver string) (bool, bool) {
+	needToPublish := false
+	needToUpdateCDI := false
+
+	// Untaint if the device was observed as absent before.
+	if healthStatus, found := cachedDeviceInfo.HealthStatus[device.HealthStatusDeviceAbsent]; found && healthStatus == device.HealthUnhealthy {
+		cachedDeviceInfo.HealthStatus[device.HealthStatusDeviceAbsent] = device.HealthHealthy
+		needToPublish = true
+	}
+
+	// Firmware reflashing, and re-probing of a device with broken firmware, change whether the
+	// device is in survivability mode. Both keep the device bound to the same driver, so this
+	// cannot be handled as part of the driver change below.
+	if syncSurvivabilityMode(cachedDeviceInfo, discoveredDeviceInfo) {
+		needToUpdateCDI = true
+		needToPublish = true
+	}
+
+	if discoveredDeviceInfo.CurrentDriver != expectedDriver {
+		// TODO: FIXME: expectedDriver is from udev event. Was there too much lag / lock wait that the next udev already too place and is in queue,
+		// and we're processing old event? Ignore the change.
+		klog.Warningf("Device %s has unexpected driver after udev event. Expected: %s, actual: %s.", cachedDeviceInfo.PCIAddress, expectedDriver, discoveredDeviceInfo.CurrentDriver)
+	} else if cachedDeviceInfo.CurrentDriver != discoveredDeviceInfo.CurrentDriver {
+		// Something else than the DRA driver has changed the driver.
+		// - If the device was not prepared for workload Pod:
+		//   - just update the cached info, no need to taint it
+		// - If the device was prepared for workload Pod:
+		//   - update cached info
+		//   - taint the device
+		cachedDeviceInfo.CurrentDriver = discoveredDeviceInfo.CurrentDriver
+		cachedDeviceInfo.CardName = discoveredDeviceInfo.CardName
+		cachedDeviceInfo.RenderDName = discoveredDeviceInfo.RenderDName
+		cachedDeviceInfo.MemoryMiB = discoveredDeviceInfo.MemoryMiB
+		cachedDeviceInfo.MEIName = discoveredDeviceInfo.MEIName
+		cachedDeviceInfo.VFIODevice = discoveredDeviceInfo.VFIODevice
+		cachedDeviceInfo.IOMMUGroup = discoveredDeviceInfo.IOMMUGroup
+		cachedDeviceInfo.VFIndex = discoveredDeviceInfo.VFIndex
+		if s.isDeviceUsedExclusivelyAlready(cachedDeviceInfo.UID, s.NodeName, "") {
+			// This taint is removed when the device is unprepared.
+			cachedDeviceInfo.HealthStatus[device.HealthStatusUnexpectedDriver] = device.HealthUnhealthy
+		}
+		// The CDI device nodes of the device depend on the kernel driver it is bound to: DRM device
+		// nodes, VFIO device nodes, or none at all when the device is unbound.
+		needToUpdateCDI = true
+		needToPublish = true
+	} // TODO: SR-IOV: handle number of VFs changed on PF.
+
+	return needToPublish, needToUpdateCDI
+}
+
+// syncSurvivabilityMode updates the cached device info when the device has entered or left the
+// survivability mode, and returns true if the cached info was changed. A device in survivability
+// mode has no DRM devices and is unusable until its firmware has been reflashed, so it is marked
+// unhealthy, which taints it in the published ResourceSlice.
+func syncSurvivabilityMode(cachedDeviceInfo, discoveredDeviceInfo *device.DeviceInfo) bool {
+	if cachedDeviceInfo.Survivability == discoveredDeviceInfo.Survivability {
+		return false
+	}
+
+	klog.Infof("Device %v survivability mode changed to %v", cachedDeviceInfo.PCIAddress, discoveredDeviceInfo.Survivability)
+
+	cachedDeviceInfo.Survivability = discoveredDeviceInfo.Survivability
+	cachedDeviceInfo.CardName = discoveredDeviceInfo.CardName
+	cachedDeviceInfo.RenderDName = discoveredDeviceInfo.RenderDName
+	cachedDeviceInfo.MEIName = discoveredDeviceInfo.MEIName
+
+	if discoveredDeviceInfo.Survivability {
+		cachedDeviceInfo.MemoryMiB = 0
+		cachedDeviceInfo.HealthStatus[device.HealthStatusSurvivability] = device.HealthUnhealthy
+	} else {
+		delete(cachedDeviceInfo.HealthStatus, device.HealthStatusSurvivability)
+	}
+
+	return true
 }
 
 // Unprepare handles single ResourceClaim devices unpreparation, including changing.
@@ -575,27 +663,35 @@ func (s *nodeState) changeKernelDriver(pciAddress, driverName string) (bool, err
 
 func (s *nodeState) getRequestDeviceClassNameFromClaim(requestName string, claim *resourcev1.ResourceClaim) string {
 	klog.V(5).Infof("Getting device class name for request %v in claim %v", requestName, claim.Name)
+
+	requestNameParts := strings.SplitN(requestName, "/", 2)
+
 	for _, deviceRequest := range claim.Spec.Devices.Requests {
 		klog.V(5).Infof("Checking device request %v: %+v", deviceRequest.Name, deviceRequest)
-		requestNameParts := strings.Split(requestName, "/")
-		if deviceRequest.Name == requestNameParts[0] {
-			if deviceRequest.Exactly != nil {
-				klog.V(5).Infof("Exact request %v: %+v", requestName, deviceRequest.Exactly)
-				return deviceRequest.Exactly.DeviceClassName
-			}
+		if deviceRequest.Name != requestNameParts[0] {
+			continue
+		}
 
-			if len(deviceRequest.FirstAvailable) > 0 && len(requestNameParts) == 2 {
-				for _, subRequest := range deviceRequest.FirstAvailable {
-					if subRequest.Name == requestNameParts[1] {
-						klog.V(5).Infof("FirstAvailable request %v: %+v", requestName, subRequest)
-						return subRequest.DeviceClassName
-					}
+		if deviceRequest.Exactly != nil {
+			klog.V(5).Infof("Exact request %v: %+v", requestName, deviceRequest.Exactly)
+			return deviceRequest.Exactly.DeviceClassName
+		}
+
+		if len(deviceRequest.FirstAvailable) > 0 && len(requestNameParts) == 2 {
+			for _, subRequest := range deviceRequest.FirstAvailable {
+				if subRequest.Name == requestNameParts[1] {
+					klog.V(5).Infof("FirstAvailable request %v: %+v", requestName, subRequest)
+					return subRequest.DeviceClassName
 				}
 			}
-
-			return ""
 		}
+
+		klog.Warningf("Could not find device class name for request %v in claim %v", requestName, claim.Name)
+
+		return ""
 	}
+
+	klog.Warningf("Could not find request %v in claim %v", requestName, claim.Name)
 
 	return ""
 }

@@ -16,7 +16,7 @@ as a package to GitHub OCI registry, and can be installed directly with Helm.
 helm install \
     --namespace "intel-qat-resource-driver" \
     --create-namespace \
-    intel-qat-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-qat-resource-driver-chart
+    intel-qat-resource-driver oci://ghcr.io/intel/intel-qat-resource-driver-chart
 ```
 
 See [details](../../charts/intel-qat-resource-driver/README.md) in the chart directory.

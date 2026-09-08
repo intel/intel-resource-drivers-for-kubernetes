@@ -4,6 +4,10 @@ kind: Kustomization
 resources:
   - ../../base
 
+# Uncomment if manage-binding=false is needed.
+#components:
+#  - ../../components/manage-binding-disabled
+
 patches:
   - path: add-health-monitoring-args.yaml
     target:

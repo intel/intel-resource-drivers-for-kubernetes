@@ -1,6 +1,6 @@
 ## Requirements
 
-- Kubernetes v1.34+, and  optionally [some cluster parameters](../../hack/clusterconfig.yaml) for advanced features, see [Cluster Setup](../CLUSTER_SETUP.md)
+- Kubernetes v1.36+, and  optionally [some cluster parameters](../../hack/clusterconfig.yaml) for advanced features, see [Cluster Setup](../CLUSTER_SETUP.md)
 - Container runtime needs to support CDI:
   - CRI-O v1.23.0 or newer
   - Containerd v1.7 or newer with CDI enabled
@@ -28,7 +28,7 @@ as a package to GitHub OCI registry, and can be installed directly with Helm.
 helm install \
     --namespace "intel-gpu-resource-driver" \
     --create-namespace \
-    intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver-chart
+    intel-gpu-resource-driver oci://ghcr.io/intel/intel-gpu-resource-driver-chart
 ```
 
 See [details](../../charts/intel-gpu-resource-driver/README.md) in the chart directory.
@@ -38,7 +38,7 @@ See [details](../../charts/intel-gpu-resource-driver/README.md) in the chart dir
 ```bash
 kubectl apply -k 'https://github.com/intel/intel-resource-drivers-for-kubernetes/deployments/gpu?ref=<RELEASE_VERSION>'
 ```
-Example RELEASE_VERSION: `gpu-v0.11.0`.
+Example RELEASE_VERSION: `gpu-v0.12.0`.
 
 By default, the kubelet-plugin is deployed on _all_ nodes in the cluster, as no nodeSelector is defined.
 To restrict the deployment to GPU-enabled nodes, follow these steps:
@@ -82,41 +82,41 @@ When deploying custom resource driver image, change `image:` lines in
 After kubelet-plugin pods are ready, check ResourceSlice objects and their contents:
 ```bash
 $ kubectl get resourceslices
-NAME                          NODE    DRIVER            POOL    AGE
-rpl-s-gpu.intel.com-mbr6p     rpl-s   gpu.intel.com     rpl-s   30s
+NAME                              NODE    DRIVER          POOL    AGE
+00000-gpu.intel.com-arrow-9wfdl   arrow   gpu.intel.com   arrow   3h22m
 ```
 
 Example contents of the ResourceSlice object:
 <details>
 
-```bash
-$ kubectl get resourceslice/rpl-s-gpu.intel.com-mbr6p -o yaml
+```yaml
+# kubectl get resourceslices/00000-gpu.intel.com-arrow-v4ltm -o yaml
 apiVersion: resource.k8s.io/v1
 kind: ResourceSlice
 metadata:
-  creationTimestamp: "2024-09-27T09:11:24Z"
-  generateName: rpl-s-gpu.intel.com-
-  generation: 1
-  name: rpl-s-gpu.intel.com-mbr6p
+  creationTimestamp: "2026-09-01T12:22:17Z"
+  generateName: 00000-gpu.intel.com-arrow-
+  generation: 3
+  name: 00000-gpu.intel.com-arrow-v4ltm
   ownerReferences:
   - apiVersion: v1
     controller: true
     kind: Node
-    name: rpl-s
-    uid: 0894e000-e7a3-49ad-8749-04b27be61c03
-  resourceVersion: "2479360"
-  uid: 305a8e03-fe9b-44ea-831e-01ce70edb1a7
+    name: arrow
+    uid: 6777b039-ec06-432e-9029-7c92d0aa98a9
+  resourceVersion: "674591"
+  uid: b01c7b40-1b22-4e95-b802-949777f9b3a8
 spec:
   devices:
   - attributes:
       driver:
         string: i915
       family:
-        string: Unknown
+        string: Intel Graphics
       health:
         string: Healthy
       model:
-        string: Unknown
+        string: Arrow Lake-S
       pciAddress:
         string: "0000:00:02.0"
       pciId:
@@ -129,6 +129,12 @@ spec:
         string: pci0000:00
       sriov:
         bool: true
+      subDeviceId:
+        string: "0x7d67"
+      subVendorId:
+        string: "0x1849"
+      type:
+        string: gpu
     capacity:
       memory:
         value: "0"
@@ -139,11 +145,11 @@ spec:
       driver:
         string: xe
       family:
-        string: Unknown
+        string: Arc Pro B-Series
       health:
         string: Healthy
       model:
-        string: Unknown
+        string: B60
       pciAddress:
         string: "0000:04:00.0"
       pciId:
@@ -156,6 +162,12 @@ spec:
         string: pci0000:00
       sriov:
         bool: true
+      subDeviceId:
+        string: "0x6023"
+      subVendorId:
+        string: "0x1849"
+      type:
+        string: gpu
     capacity:
       memory:
         value: 24480Mi
@@ -163,10 +175,10 @@ spec:
         value: 1k
     name: 0000-04-00-0-0xe211
   driver: gpu.intel.com
-  nodeName: rpl-s
+  nodeName: arrow
   pool:
-    generation: 0
-    name: rpl-s
+    generation: 1
+    name: arrow
     resourceSliceCount: 1
 ```
 
@@ -211,6 +223,10 @@ is processed by the scheduler sequentially until the currently processed request
 
 - `pciAddress` attribute of DRA device is deprecated and will eventually be removed (current target is v1.0), use `resource.kubernetes.io/pciBusID` instead.
 - added support for automated switching between DRM (i915, xe) and VFIO (vfio-pci, xe-vfio-pci) Linux kernel drivers (default: enabled) for [KubeVirt support](#kubevirt-support).
+
+### v0.12.0
+
+- `subDeviceId`, `subVendorId` DRA device attributes added, reflecting `subsystem_device` and `subsystem_vendor` from Linux kernel sysfs.
 
 ## Requesting resources
 
@@ -394,16 +410,35 @@ This feature was first introduced in K8s v1.33, it allows scheduler to handle Re
 similarly to how K8s Node Taints and Tolerations allow. Cluster admins can also create standalone
 DeviceTaintRule to prevent workloads being scheduled and / or executed on a particular GPU.
 
+### Survivability mode
+
+When the firmware of a GPU is broken, the Linux kernel driver probes the device in the so called
+survivability mode: no DRM devices are registered for the GPU, and the only thing that can be done
+with the device is reflashing its firmware through its MEI device. The GPU DRA driver detects this
+from the presence of the `/sys/bus/pci/devices/<pci-address>/survivability_mode` file, which the
+kernel driver creates only when the mode is active.
+
+Such GPU is still published in the `ResourceSlice`, with `health` attribute `Unhealthy` and a
+`health-Survivability` `DeviceTaint` (`NoExecute` effect), so that the cluster can tell why the
+device cannot be used, and so that workloads are not scheduled to it. No CDI device is created for
+such GPU, as it has no DRM devices, only its MEI device is announced as a CDI device
+(`intel.com/gpu-mei`). When such GPU is allocated to a Pod that tolerates the taint, the Pod gets
+the MEI device node (`/dev/meiX`) of the GPU, which allows reflashing the firmware.
+
+The taint is removed, and the DRM devices are picked up, when the kernel driver re-probes the device
+after a successful firmware reflashing.
+
 ## [KubeVirt](https://github.com/kubevirt/enhancements/blob/main/veps/sig-compute/10-dra-devices/vep.md) support: using GPU in VM in a PCI passthrough mode
 
 Starting [version v1.8.3](https://github.com/kubevirt/kubevirt/releases/v1.8.3), KubeVirt has
-experimental / alpha support for DRA-backed GPU allocation. This requires
-[Kubernetes v1.36](https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/5304-dra-attributes-downward-api/README.md)
-and GPU DRA driver >= `v0.11.0`.
+experimental / alpha support for DRA-backed GPU allocation. This requires:
+- enabling `GPUsWithDRA` [FeatureGate in KubeVirt](https://kubevirt.io/user-guide/cluster_admin/activating_feature_gates/)
+- Kubernetes v1.36+, because of [the feature](https://github.com/kubernetes/enhancements/blob/master/keps/sig-node/5304-dra-attributes-downward-api/README.md) (enabled by default)
+- Intel(R) GPU DRA driver >= `v0.11.0`
 
 `-b | --manage-binding` parameter (default: enabled) enables automated switching between
 DRM (i915, xe) and VFIO (vfio-pci, xe-vfio-pci) Linux kernel drivers with based on the `DeviceClass`.
-See [example Pod YAML](../../deployments/gpu/examples/pod-inline-vfio.yaml)
+See [example Pod YAML](../../deployments/gpu/examples/kubevirt-vmi-inline-gpu.yaml)
 
 When the active binding management is enabled, and a `gpu-vfio.intel.com` `DeviceClass` device
 is requested in the `ResourceClaim`, the GPU device will be unbound from the DRM kernel driver
@@ -414,10 +449,14 @@ bound to the respective DRM kernel driver when `gpu.intel.com` `DeviceClass` was
 in the `ResourceClaim` for a regular (non-VM) container workload.
 
 To prevent the GPU DRA driver fom switching the GPU kernel driver, set `-b | --manage-binding` to false
-in `DaemonSet` `command` or `args`. It is recommended to either delete `gpu-vfio.intel.com` `DeviceClass`,
-or uncomment its [selector for the `driver` attribute](../../deployments/gpu/base/device-class.yaml#L24)
-to prevent GPUs bound to DRM drivers from being allocated for VM workloads.
+in `DaemonSet` `command` or `args` (or set `MANAGE_BINDING=false` environment variable).
+In this case, both [DeviceClasses](../../deployments/gpu/base/device-class.yaml) need to have a `driver`
+selector to prevent the scheduler from allocating a GPU bound to an incompatible driver.
 
+When deploying the [helm chart](../../charts/intel-gpu-resource-driver/), use `--set kubeletPlugin.manageBinding.enabled=false`.
+During the non-Helm deployment, use `deployments/gpu/overlays/manage-binding-disabled`
+[kustomize](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/#bases-and-overlays)
+overlay, or uncomment the selector manually in the [DeviceClasses](../../deployments/gpu/base/device-class.yaml) YAML file.
 ## Known issues
 
 - In K8s v1.34.0 - v1.34.1 the kubelet might lose GRPC connection to a DRA driver after 30 minutes

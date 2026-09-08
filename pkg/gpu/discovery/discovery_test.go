@@ -1,6 +1,8 @@
-/* Copyright (C) 2025 Intel Corporation
- * SPDX-License-Identifier: Apache-2.0
- */
+//
+// Copyright (C) 2025-2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package discovery_test
 
@@ -74,6 +76,87 @@ func createFakeSysfsWithSingleVFIOGpu(sysfsRoot, devfsRoot string) error {
 	return nil
 }
 
+// createFakeSysfsWithSingleSurvivabilityGpu creates a GPU that the KMD probed in survivability
+// mode: no DRM devices, only the MEI device for firmware reflashing.
+func createFakeSysfsWithSingleSurvivabilityGpu(sysfsRoot, devfsRoot string) error {
+	if err := fakesysfs.FakeSysFsGpuContents(
+		sysfsRoot,
+		devfsRoot,
+		device.DevicesInfo{
+			"0000-0f-00-0-0xe211": {
+				Model:         "0xe211",
+				PCIAddress:    "0000:0f:00.0",
+				DeviceType:    "gpu",
+				MEIName:       "mei0",
+				Millicores:    1000,
+				UID:           "0000-0f-00-0-0xe211",
+				Driver:        device.SysfsXeDriverName,
+				CurrentDriver: device.SysfsXeDriverName,
+				Survivability: true,
+			},
+		},
+		false,
+	); err != nil {
+		return fmt.Errorf("could not set up fake sysfs gpu contents: %v", err)
+	}
+	return nil
+}
+
+func createFakeSysfsWithSinglePFTwoVFIOGpus(sysfsRoot, devfsRoot string) error {
+	if err := fakesysfs.FakeSysFsGpuContents(
+		sysfsRoot,
+		devfsRoot,
+		device.DevicesInfo{
+			"0000-0f-00-0-0xe211": {
+				Model:         "0xe211",
+				PCIAddress:    "0000:0f:00.0",
+				MemoryMiB:     8192,
+				DeviceType:    "gpu",
+				CardName:      "card0",
+				RenderDName:   "renderD128",
+				MEIName:       "mei0",
+				Millicores:    1000,
+				UID:           "0000-0f-00-0-0xe211",
+				MaxVFs:        7,
+				Driver:        device.SysfsXeDriverName,
+				CurrentDriver: device.SysfsXeDriverName,
+			},
+			"0000-0f-00-1-0xe211": {
+				Model:         "0xe211",
+				PCIAddress:    "0000:0f:00.1",
+				MemoryMiB:     8192,
+				DeviceType:    "vf",
+				VFIndex:       1,
+				VFIODevice:    "vfio0",
+				IOMMUGroup:    "15",
+				Millicores:    1000,
+				UID:           "0000-0f-00-1-0xe211",
+				Driver:        device.SysfsXeVFIODriverName,
+				CurrentDriver: device.SysfsXeVFIODriverName,
+				ParentUID:     "0000-0f-00-0-0xe211",
+			},
+			"0000-0f-00-2-0xe211": {
+				Model:         "0xe211",
+				PCIAddress:    "0000:0f:00.2",
+				MemoryMiB:     8192,
+				DeviceType:    "vf",
+				VFIndex:       2,
+				VFIODevice:    "vfio1",
+				IOMMUGroup:    "16",
+				Millicores:    1000,
+				UID:           "0000-0f-00-2-0xe211",
+				Driver:        device.SysfsXeVFIODriverName,
+				CurrentDriver: device.SysfsXeVFIODriverName,
+				ParentUID:     "0000-0f-00-0-0xe211",
+			},
+		},
+		false,
+	); err != nil {
+		return fmt.Errorf("could not set up fake sysfs gpu contents: %v", err)
+	}
+	return nil
+}
+
 //nolint:cyclop
 func TestDiscoverDevices(t *testing.T) {
 	tests := []struct {
@@ -97,6 +180,43 @@ func TestDiscoverDevices(t *testing.T) {
 					FamilyName:    "Data Center Flex",
 					PCIAddress:    "0000:0f:00.0",
 					PCIRoot:       "pci0000:00",
+					MemoryMiB:     0,
+					DeviceType:    "gpu",
+					CardName:      "card0",
+					MEIName:       "mei0",
+					RenderDName:   "renderD128",
+					Millicores:    1000,
+					UID:           "0000-0f-00-0-0x56c0",
+					MaxVFs:        16,
+					Driver:        device.SysfsI915DriverName,
+					CurrentDriver: device.SysfsI915DriverName,
+					HealthStatus:  map[string]string{},
+				},
+			},
+		},
+		{
+			name: "single device with subsystem vendor and device IDs",
+			setupFunc: func(sysfsRoot, devfsRoot string) error {
+				if err := createFakeSysfsWithSingleGpu(sysfsRoot, devfsRoot); err != nil {
+					return err
+				}
+
+				pciDeviceDir := path.Join(sysfsRoot, device.SysfsPCIDevicesPath, "0000:0f:00.0")
+				if err := helpers.WriteFile(path.Join(pciDeviceDir, "subsystem_vendor"), "0x1043"); err != nil {
+					return err
+				}
+
+				return helpers.WriteFile(path.Join(pciDeviceDir, "subsystem_device"), "0x8888")
+			},
+			expected: map[string]*device.DeviceInfo{
+				"0000-0f-00-0-0x56c0": {
+					Model:         "0x56c0",
+					ModelName:     "Flex 170",
+					FamilyName:    "Data Center Flex",
+					PCIAddress:    "0000:0f:00.0",
+					PCIRoot:       "pci0000:00",
+					SubVendorId:   "0x1043",
+					SubDeviceId:   "0x8888",
 					MemoryMiB:     0,
 					DeviceType:    "gpu",
 					CardName:      "card0",
@@ -329,6 +449,112 @@ func TestDiscoverDevices(t *testing.T) {
 					Driver:        device.SysfsXeDriverName,
 					CurrentDriver: device.SysfsXeVFIODriverName,
 					HealthStatus:  map[string]string{},
+				},
+			},
+		},
+		{
+			name:      "single device in survivability mode",
+			setupFunc: createFakeSysfsWithSingleSurvivabilityGpu,
+			expected: map[string]*device.DeviceInfo{
+				"0000-0f-00-0-0xe211": {
+					Model:         "0xe211",
+					ModelName:     "B60",
+					FamilyName:    "Arc Pro B-Series",
+					PCIAddress:    "0000:0f:00.0",
+					PCIRoot:       "pci0000:00",
+					MemoryMiB:     0,
+					DeviceType:    "gpu",
+					MEIName:       "mei0",
+					Millicores:    1000,
+					UID:           "0000-0f-00-0-0xe211",
+					Driver:        device.SysfsXeDriverName,
+					CurrentDriver: device.SysfsXeDriverName,
+					Survivability: true,
+					HealthStatus:  map[string]string{device.HealthStatusSurvivability: device.HealthUnhealthy},
+				},
+			},
+		},
+		{
+			name:        "single device in survivability mode with classic naming",
+			setupFunc:   createFakeSysfsWithSingleSurvivabilityGpu,
+			namingStyle: "classic",
+			expected: map[string]*device.DeviceInfo{
+				"0000-0f-00-0-0xe211": {
+					Model:         "0xe211",
+					ModelName:     "B60",
+					FamilyName:    "Arc Pro B-Series",
+					PCIAddress:    "0000:0f:00.0",
+					PCIRoot:       "pci0000:00",
+					MemoryMiB:     0,
+					DeviceType:    "gpu",
+					MEIName:       "mei0",
+					Millicores:    1000,
+					UID:           "0000-0f-00-0-0xe211",
+					Driver:        device.SysfsXeDriverName,
+					CurrentDriver: device.SysfsXeDriverName,
+					Survivability: true,
+					HealthStatus:  map[string]string{device.HealthStatusSurvivability: device.HealthUnhealthy},
+				},
+			},
+		},
+		{
+			name:        "one xe PF and two xe-vfio-pci VF devices",
+			namingStyle: "classic",
+			setupFunc:   createFakeSysfsWithSinglePFTwoVFIOGpus,
+			expected: map[string]*device.DeviceInfo{
+				"card0": {
+					Model:         "0xe211",
+					ModelName:     "B60",
+					FamilyName:    "Arc Pro B-Series",
+					PCIAddress:    "0000:0f:00.0",
+					PCIRoot:       "pci0000:00",
+					MemoryMiB:     0,
+					DeviceType:    "gpu",
+					CardName:      "card0",
+					RenderDName:   "renderD128",
+					MEIName:       "mei0",
+					Millicores:    1000,
+					UID:           "0000-0f-00-0-0xe211",
+					MaxVFs:        7,
+					Driver:        device.SysfsXeDriverName,
+					CurrentDriver: device.SysfsXeDriverName,
+					HealthStatus:  map[string]string{},
+				},
+				"vfio0": {
+					Model:         "0xe211",
+					ModelName:     "B60",
+					FamilyName:    "Arc Pro B-Series",
+					PCIAddress:    "0000:0f:00.1",
+					PCIRoot:       "pci0000:00",
+					MemoryMiB:     0,
+					DeviceType:    "vf",
+					VFIndex:       1,
+					VFIODevice:    "vfio0",
+					IOMMUGroup:    "15",
+					Millicores:    1000,
+					UID:           "0000-0f-00-1-0xe211",
+					Driver:        device.SysfsXeDriverName,
+					CurrentDriver: device.SysfsXeVFIODriverName,
+					HealthStatus:  map[string]string{},
+					ParentUID:     "0000-0f-00-0-0xe211",
+				},
+				"vfio1": {
+					Model:         "0xe211",
+					ModelName:     "B60",
+					FamilyName:    "Arc Pro B-Series",
+					PCIAddress:    "0000:0f:00.2",
+					PCIRoot:       "pci0000:00",
+					MemoryMiB:     0,
+					DeviceType:    "vf",
+					VFIndex:       2,
+					VFIODevice:    "vfio1",
+					IOMMUGroup:    "16",
+					Millicores:    1000,
+					UID:           "0000-0f-00-2-0xe211",
+					Driver:        device.SysfsXeDriverName,
+					CurrentDriver: device.SysfsXeVFIODriverName,
+					HealthStatus:  map[string]string{},
+					ParentUID:     "0000-0f-00-0-0xe211",
 				},
 			},
 		},

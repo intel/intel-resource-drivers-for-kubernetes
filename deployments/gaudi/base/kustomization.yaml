@@ -4,6 +4,6 @@ resources:
   - resource-driver.yaml
 
 #images:
-#  - name: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver
-#    newName: registry.local/intel-gaudi-resource-driver
+#  - name: ghcr.io/intel/intel-gaudi-resource-driver
+#    newName: ghcr.io/intel/intel-gaudi-resource-driver
 #    newTag: v0.6.0

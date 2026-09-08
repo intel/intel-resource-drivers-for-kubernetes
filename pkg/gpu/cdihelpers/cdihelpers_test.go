@@ -1,6 +1,8 @@
-/* Copyright (C) 2025 Intel Corporation
- * SPDX-License-Identifier: Apache-2.0
- */
+//
+// Copyright (C) 2025-2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package cdihelpers
 
@@ -411,6 +413,51 @@ func TestUpdateGPUDevices(t *testing.T) {
 							{Path: "/dev/vfio/15", HostPath: "/dev/vfio/15", Type: "c"},
 							{Path: "/dev/vfio/vfio", HostPath: "/dev/vfio/vfio", Type: "c"},
 							{Path: "/dev/vfio/devices/vfio0", HostPath: "/dev/vfio/devices/vfio0", Type: "c"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Device in survivability mode is removed from the GPU spec",
+			existingSpecs: []*cdiapi.Spec{
+				{
+					Spec: &specs.Spec{
+						Kind:    device.CDIKind,
+						Version: "0.6.0",
+						Devices: []specs.Device{
+							{
+								Name: "gpu1",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/dri/card0", HostPath: "/dev/dri/card0", Type: "c"},
+										{Path: "/dev/dri/renderD128", HostPath: "/dev/dri/renderD128", Type: "c"},
+									},
+								},
+							},
+							{
+								Name: "gpu2",
+								ContainerEdits: specs.ContainerEdits{
+									DeviceNodes: []*specs.DeviceNode{
+										{Path: "/dev/dri/card1", HostPath: "/dev/dri/card1", Type: "c"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			detectedDevices: []*device.DeviceInfo{
+				{UID: "gpu2", MEIName: "mei1", Driver: "xe", CurrentDriver: "xe", Survivability: true},
+			},
+			expectedError: false,
+			expectedCDIDevices: []specs.Device{
+				{
+					Name: "gpu1",
+					ContainerEdits: specs.ContainerEdits{
+						DeviceNodes: []*specs.DeviceNode{
+							{Path: "/dev/dri/card0", HostPath: "/dev/dri/card0", Type: "c"},
+							{Path: "/dev/dri/renderD128", HostPath: "/dev/dri/renderD128", Type: "c"},
 						},
 					},
 				},

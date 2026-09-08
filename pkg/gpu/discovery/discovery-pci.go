@@ -1,18 +1,8 @@
-/*
- * Copyright (c) 2026, Intel Corporation.  All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+//
+// Copyright (C) 2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package discovery
 
@@ -103,8 +93,15 @@ func DiscoverPCIDevice(deviceSysfsDir, sysfsRoot string) (*device.DeviceInfo, er
 	newDeviceInfo.UID = uid
 	newDeviceInfo.Model = deviceId
 	newDeviceInfo.SetModelInfo()
+	newDeviceInfo.SubVendorId, newDeviceInfo.SubDeviceId = readPCISubsystemInfo(deviceSysfsDir)
 
-	if newDeviceInfo.IsDRMBound() {
+	newDeviceInfo.Survivability = isInSurvivabilityMode(deviceSysfsDir)
+
+	switch {
+	case newDeviceInfo.Survivability:
+		newDeviceInfo.HealthStatus[device.HealthStatusSurvivability] = device.HealthUnhealthy
+		newDeviceInfo.MEIName = mei.DiscoverMEIDeviceForGPU(deviceSysfsDir, deviceSysfsDir)
+	case newDeviceInfo.IsDRMBound():
 		cardName, renderDName, err := drm.DeduceCardAndRenderDNames(deviceSysfsDir)
 		if err != nil {
 			klog.Errorf("device %v bound to %v: failed to detect DRM devices: %v", devicePCIAddress, currentDriver, err)
@@ -113,7 +110,7 @@ func DiscoverPCIDevice(deviceSysfsDir, sysfsRoot string) (*device.DeviceInfo, er
 		newDeviceInfo.CardName = cardName
 		newDeviceInfo.RenderDName = renderDName
 		newDeviceInfo.MEIName = mei.DiscoverMEIDeviceForGPU(deviceSysfsDir, deviceSysfsDir)
-	} else if newDeviceInfo.IsVFIOBound() {
+	case newDeviceInfo.IsVFIOBound():
 		vfioDevice, err := GetVFIODevice(devicePCIAddress)
 		if err != nil {
 			// TODO: try reverting driver change
@@ -166,6 +163,43 @@ func readPCIInfo(sysfsDevicePath string) (vendorId, deviceId, classId string) {
 	classId = strings.TrimSpace(string(classIdBytes))
 
 	return vendorId, deviceId, classId
+}
+
+// readPCISubsystemInfo reads the subsystem_vendor and subsystem_device IDs of the device.
+func readPCISubsystemInfo(sysfsDevicePath string) (subVendorId, subDeviceId string) {
+	subVendorIdBytes, err := os.ReadFile(path.Join(sysfsDevicePath, "subsystem_vendor"))
+	if err != nil {
+		klog.V(5).Infof("could not read subsystem_vendor file for device at %s: %v", sysfsDevicePath, err)
+	} else {
+		subVendorId = strings.TrimSpace(string(subVendorIdBytes))
+	}
+
+	subDeviceIdBytes, err := os.ReadFile(path.Join(sysfsDevicePath, "subsystem_device"))
+	if err != nil {
+		klog.V(5).Infof("could not read subsystem_device file for device at %s: %v", sysfsDevicePath, err)
+	} else {
+		subDeviceId = strings.TrimSpace(string(subDeviceIdBytes))
+	}
+
+	return subVendorId, subDeviceId
+}
+
+// isInSurvivabilityMode tells whether the KMD probed the device in survivability mode, which
+// happens when the device firmware is broken. The survivability_mode sysfs file exists only
+// when the mode is on, and it disappears after a successful firmware reflashing and reprobe.
+func isInSurvivabilityMode(sysfsDevicePath string) bool {
+	_, err := os.Stat(path.Join(sysfsDevicePath, device.SysfsSurvivabilityModeFile))
+	if err == nil {
+		return true
+	}
+
+	if os.IsNotExist(err) {
+		return false
+	}
+
+	klog.Warningf("could not stat survivability mode file for device at %s: %v", sysfsDevicePath, err)
+
+	return false
 }
 
 func GetPCIDeviceDriver(sysfsDevicePath string) string {

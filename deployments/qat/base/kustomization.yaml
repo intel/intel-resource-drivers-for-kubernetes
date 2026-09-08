@@ -4,5 +4,5 @@ resources:
   - resource-driver.yaml
 
 #images:
-#  - name: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-qat-resource-driver
+#  - name: ghcr.io/intel/intel-qat-resource-driver
 #    newTag: v0.4.0

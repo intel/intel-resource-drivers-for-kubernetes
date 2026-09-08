@@ -17,7 +17,7 @@ as a package to GitHub OCI registry, and can be installed directly with Helm.
 helm install \
     --namespace "intel-gaudi-resource-driver" \
     --create-namespace \
-    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver-chart
+    intel-gaudi-resource-driver oci://ghcr.io/intel/intel-gaudi-resource-driver-chart
 ```
 
 See [details](../../charts/intel-gaudi-resource-driver/README.md) in the chart directory.

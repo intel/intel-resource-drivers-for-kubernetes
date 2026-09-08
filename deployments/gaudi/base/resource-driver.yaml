@@ -19,7 +19,7 @@ spec:
       serviceAccountName: intel-gaudi-resource-driver-service-account
       containers:
       - name: kubelet-plugin
-        image: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gaudi-resource-driver:latest
+        image: ghcr.io/intel/intel-gaudi-resource-driver:latest
         command: ["/kubelet-gaudi-plugin"]
         env:
         - name: NODE_NAME

@@ -1,18 +1,8 @@
-/*
- * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+//
+// Copyright (C) 2022-2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package main
 
@@ -22,6 +12,7 @@ import (
 	"testing"
 
 	resourcev1 "k8s.io/api/resource/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 
@@ -126,6 +117,157 @@ func TestGetResourcesTaintsUnboundUnmanagedDevice(t *testing.T) {
 	}
 }
 
+func TestGetResourcesTaintsPerUnhealthyType(t *testing.T) {
+	state := &nodeState{
+		Allocatable: map[string]*device.DeviceInfo{
+			"gpu-unhealthy": {
+				UID:           "gpu-unhealthy",
+				PCIAddress:    "0000:00:01.0",
+				Driver:        "xe",
+				CurrentDriver: "xe",
+				HealthStatus: map[string]string{
+					"temperature.core.gpu":          device.HealthUnhealthy,
+					"frequency":                     device.HealthHealthy,
+					device.HealthStatusDeviceAbsent: device.HealthUnhealthy,
+				},
+			},
+		},
+		NodeName:      "test-node",
+		ManageBinding: true,
+	}
+
+	devices := state.GetResources().Pools["test-node"].Slices[0].Devices
+	if len(devices) != 1 {
+		t.Fatalf("expected 1 device, got %d", len(devices))
+	}
+
+	taints := devices[0].Taints
+	if len(taints) != 2 {
+		t.Fatalf("expected 2 taints, got %d: %v", len(taints), taints)
+	}
+
+	if taints[0].Key != "health-DeviceAbsent" || taints[0].Effect != resourcev1.DeviceTaintEffectNoExecute {
+		t.Errorf("unexpected taint[0]:  got key=%v, effect=%v, expected key=health-DeviceAbsent, effect=NoExecute", taints[0].Key, taints[0].Effect)
+	}
+
+	if taints[1].Key != "health-xpumd-temperature.core.gpu" || taints[1].Effect != resourcev1.DeviceTaintEffectNoExecute {
+		t.Errorf("unexpected taint[1]:  got key=%v, effect=%v, expected key=health-xpumd-temperature.core.gpu, effect=NoExecute", taints[1].Key, taints[1].Effect)
+	}
+}
+
+func TestGetResourcesTaintsSurvivabilityMode(t *testing.T) {
+	state := &nodeState{
+		Allocatable: map[string]*device.DeviceInfo{
+			"gpu-survivability": {
+				UID:           "gpu-survivability",
+				PCIAddress:    "0000:00:01.0",
+				Driver:        "xe",
+				CurrentDriver: "xe",
+				MEIName:       "mei0",
+				Survivability: true,
+				HealthStatus: map[string]string{
+					device.HealthStatusSurvivability: device.HealthUnhealthy,
+				},
+			},
+		},
+		NodeName:      "test-node",
+		ManageBinding: true,
+	}
+
+	devices := state.GetResources().Pools["test-node"].Slices[0].Devices
+	if len(devices) != 1 {
+		t.Fatalf("expected 1 device, got %d", len(devices))
+	}
+
+	if health := devices[0].Attributes["health"].StringValue; health == nil || *health != device.HealthUnhealthy {
+		t.Errorf("unexpected health attribute: %v, expected %v", health, device.HealthUnhealthy)
+	}
+
+	taints := devices[0].Taints
+	if len(taints) != 1 {
+		t.Fatalf("expected 1 taint, got %d: %v", len(taints), taints)
+	}
+
+	if taints[0].Key != "health-Survivability" || taints[0].Effect != resourcev1.DeviceTaintEffectNoExecute {
+		t.Errorf("unexpected taint: got key=%v, effect=%v, expected key=health-Survivability, effect=NoExecute", taints[0].Key, taints[0].Effect)
+	}
+}
+
+func TestDeviceCDINames(t *testing.T) {
+	testcases := []struct {
+		name        string
+		gpu         *device.DeviceInfo
+		adminAccess bool
+		expected    []string
+	}{
+		{
+			name:     "regular device",
+			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0"},
+			expected: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+		},
+		{
+			name:        "regular device with admin access",
+			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0"},
+			adminAccess: true,
+			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0", "intel.com/gpu-mei=mei0"},
+		},
+		{
+			name:        "regular device without MEI device with admin access",
+			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0"},
+			adminAccess: true,
+			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+		},
+		{
+			name:     "device in survivability mode",
+			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", Survivability: true},
+			expected: []string{"intel.com/gpu-mei=mei0"},
+		},
+		{
+			name:        "device in survivability mode with admin access",
+			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", Survivability: true},
+			adminAccess: true,
+			expected:    []string{"intel.com/gpu-mei=mei0"},
+		},
+		{
+			name:     "device in survivability mode without MEI device",
+			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", Survivability: true},
+			expected: []string{},
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			got := deviceCDINames(testcase.gpu, testcase.adminAccess)
+
+			if !reflect.DeepEqual(got, testcase.expected) {
+				t.Errorf("expected CDI device names %v, got %v", testcase.expected, got)
+			}
+		})
+	}
+}
+
+func TestGetResourcesTaintsUnsupportedHealth(t *testing.T) {
+	state := &nodeState{
+		Allocatable: map[string]*device.DeviceInfo{
+			"gpu-unhealthy": {
+				UID:          "gpu-unhealthy",
+				HealthStatus: map[string]string{"invalid category": device.HealthUnhealthy},
+			},
+		},
+		NodeName:      "test-node",
+		ManageBinding: true,
+	}
+
+	taints := state.GetResources().Pools["test-node"].Slices[0].Devices[0].Taints
+	if len(taints) != 1 {
+		t.Fatalf("expected 1 taint, got %d: %v", len(taints), taints)
+	}
+
+	if taints[0].Key != device.UnsupportedHealthTaintKey || taints[0].Effect != resourcev1.DeviceTaintEffectNoExecute {
+		t.Errorf("unexpected taint:  got key=%v, effect=%v, expected key=%v, effect=NoExecute", taints[0].Key, taints[0].Effect, device.UnsupportedHealthTaintKey)
+	}
+}
+
 func TestIsDeviceUsedExclusivelyAlready(t *testing.T) {
 	state := &nodeState{
 		Allocatable: map[string]*device.DeviceInfo{
@@ -226,6 +368,90 @@ func TestIsDeviceUsedExclusivelyAlready(t *testing.T) {
 
 			if got != testcase.expected {
 				t.Fatalf("expected IsDeviceUsedExclusivelyAlready()=%v, got %v", testcase.expected, got)
+			}
+		})
+	}
+}
+
+func TestGetRequestDeviceClassNameFromClaim(t *testing.T) {
+	claim := &resourcev1.ResourceClaim{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "namespace1", Name: "claim1"},
+		Spec: resourcev1.ResourceClaimSpec{
+			Devices: resourcev1.DeviceClaim{
+				Requests: []resourcev1.DeviceRequest{
+					{
+						Name:    "exact-request",
+						Exactly: &resourcev1.ExactDeviceRequest{DeviceClassName: device.DriverName, Count: 1},
+					},
+					{
+						Name: "prioritized-request",
+						FirstAvailable: []resourcev1.DeviceSubRequest{
+							{Name: "vfio", DeviceClassName: device.VFIODeviceClassName, Count: 1},
+							{Name: "drm", DeviceClassName: device.DriverName, Count: 1},
+						},
+					},
+					{
+						Name: "unknown-request-type",
+					},
+				},
+			},
+		},
+	}
+
+	testcases := []struct {
+		name        string
+		requestName string
+		expected    string
+	}{
+		{
+			name:        "exactly request",
+			requestName: "exact-request",
+			expected:    device.DriverName,
+		},
+		{
+			name:        "firstAvailable request, first subrequest selected",
+			requestName: "prioritized-request/vfio",
+			expected:    device.VFIODeviceClassName,
+		},
+		{
+			name:        "firstAvailable request, second subrequest selected",
+			requestName: "prioritized-request/drm",
+			expected:    device.DriverName,
+		},
+		{
+			name:        "firstAvailable request without subrequest name",
+			requestName: "prioritized-request",
+			expected:    "",
+		},
+		{
+			name:        "firstAvailable request with unknown subrequest name",
+			requestName: "prioritized-request/nonexistent",
+			expected:    "",
+		},
+		{
+			name:        "exactly request with unexpected subrequest name",
+			requestName: "exact-request/vfio",
+			expected:    device.DriverName,
+		},
+		{
+			name:        "request of unsupported type",
+			requestName: "unknown-request-type",
+			expected:    "",
+		},
+		{
+			name:        "unknown request",
+			requestName: "nonexistent-request",
+			expected:    "",
+		},
+	}
+
+	state := &nodeState{}
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			got := state.getRequestDeviceClassNameFromClaim(testcase.requestName, claim)
+
+			if got != testcase.expected {
+				t.Errorf("expected device class %q, got %q", testcase.expected, got)
 			}
 		})
 	}

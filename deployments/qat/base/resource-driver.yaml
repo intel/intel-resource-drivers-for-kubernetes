@@ -18,7 +18,7 @@ spec:
       serviceAccountName: intel-qat-resource-driver-service-account
       containers:
       - name: kubelet-plugin
-        image: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-qat-resource-driver:latest
+        image: ghcr.io/intel/intel-qat-resource-driver:latest
         imagePullPolicy: IfNotPresent
         command: ["/kubelet-qat-plugin"]
         env:

@@ -1,18 +1,8 @@
-/*
- * Copyright (c) 2026, Intel Corporation.  All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+//
+// Copyright (C) 2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package main
 
@@ -23,7 +13,7 @@ import (
 	"io"
 	"time"
 
-	xpumapi "github.com/intel/xpumanager/xpumd/exporter/api/deviceinfo/v1alpha1"
+	xpumapi "github.com/intel/xpumanager/xpumd/exporter/intelxpuinfo/api/deviceinfo/v1alpha1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"k8s.io/klog/v2"
@@ -247,12 +237,6 @@ func (s *nodeState) applyDeviceUpdates(newDevicesInfo device.DevicesInfo) (bool,
 }
 
 func applyHealthStatus(foundDevice, newDeviceInfo *device.DeviceInfo) (needToPublish bool) {
-	// If the Health status was previously HealthUnknown with 0 entries,
-	// and now has some health information - publish new ResourceSlice.
-	previouslyUnknown := foundDevice.Health() == device.HealthUnknown
-	if previouslyUnknown && newDeviceInfo.Health() != device.HealthHealthy {
-		needToPublish = true
-	}
 
 	// Only overall foundDevice.Health() is exposed in the ResourceSlice Device, and not foundDevice.HealthStatus.
 	// Overall health is a logical AND of all HealthStatus elements. If any HealthStatus[X] changes - the new

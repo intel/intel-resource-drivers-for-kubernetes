@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Copyright (C) 2025-2026 Intel Corporation
+#
+# SPDX-License-Identifier: Apache-2.0
+
 set -euo pipefail
 
 RESULT=$(make "$1" | awk '/total:/ {print ($3+0)}')

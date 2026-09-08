@@ -1,0 +1,21 @@
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: gpu.intel.com
+spec:
+  selectors:
+  - cel:
+      expression: device.driver == "gpu.intel.com"
+  - cel:
+      expression: device.attributes["gpu.intel.com"].driver == 'i915' || device.attributes["gpu.intel.com"].driver == 'xe'
+---
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: gpu-vfio.intel.com
+spec:
+  selectors:
+  - cel:
+      expression: device.driver == "gpu.intel.com"
+  - cel:
+      expression: device.attributes["gpu.intel.com"].driver == 'vfio-pci' || device.attributes["gpu.intel.com"].driver == 'xe-vfio-pci'

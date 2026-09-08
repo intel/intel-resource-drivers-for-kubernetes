@@ -1,18 +1,8 @@
-/*
- * Copyright (c) 2024, Intel Corporation.  All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+//
+// Copyright (C) 2023-2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package fakesysfs
 
@@ -363,10 +353,21 @@ func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.Devices
 
 		pciDeviceDir := path.Join(sysfsRoot, device.SysfsPCIDevicesPath, gpu.PCIAddress)
 		fileWrites := map[string]string{
-			path.Join(pciDeviceDir, "device"):          gpu.Model,
-			path.Join(pciDeviceDir, "vendor"):          device.PCIVendorId,
-			path.Join(pciDeviceDir, "class"):           device.PCIVGAClassID,
-			path.Join(pciDeviceDir, "driver_override"): "",
+			path.Join(pciDeviceDir, "device"):           gpu.Model,
+			path.Join(pciDeviceDir, "vendor"):           device.PCIVendorId,
+			path.Join(pciDeviceDir, "class"):            device.PCIVGAClassID,
+			path.Join(pciDeviceDir, "subsystem_vendor"): gpu.SubVendorId,
+			path.Join(pciDeviceDir, "subsystem_device"): gpu.SubDeviceId,
+			path.Join(pciDeviceDir, "driver_override"):  "",
+		}
+		if gpu.Survivability {
+			if gpu.CardName != "" || gpu.RenderDName != "" {
+				return fmt.Errorf("GPU %v is in survivability mode, but has DRM devices assigned (card: %v, render: %v)",
+					gpu.UID, gpu.CardName, gpu.RenderDName)
+			}
+
+			// KMD creates the file only when the device was probed in survivability mode.
+			fileWrites[path.Join(pciDeviceDir, device.SysfsSurvivabilityModeFile)] = "1"
 		}
 		for filePath, content := range fileWrites {
 			if writeErr := helpers.WriteFile(filePath, content); writeErr != nil {
@@ -380,7 +381,14 @@ func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.Devices
 				return fmt.Errorf("creating fake sysfs PCI driver binding, err: %v", err)
 			}
 
-			if gpu.IsDRMBound() {
+			switch {
+			case gpu.Survivability:
+				// No DRM devices are registered in survivability mode, only the MEI device that
+				// can be used for reflashing the firmware.
+				if err := fakeGpuMEI(sysfsRoot, devfsRoot, gpu.PCIRoot, gpu.PCIAddress, gpu.MEIName, gpu.CurrentDriver, realDevices); err != nil {
+					return fmt.Errorf("creating fake mei sysfs: %v", err)
+				}
+			case gpu.IsDRMBound():
 				if err := fakeGpuDRI(sysfsRoot, devfsRoot, gpu.PCIAddress, gpu.CardName, gpu.RenderDName, realDevices); err != nil {
 					return fmt.Errorf("creating fake sysfs DRI devices, err: %v", err)
 				}
@@ -389,7 +397,7 @@ func fakeSysFsGpuDevices(sysfsRoot string, devfsRoot string, gpus device.Devices
 						return fmt.Errorf("creating fake mei sysfs: %v", err)
 					}
 				}
-			} else if gpu.IsVFIOBound() {
+			case gpu.IsVFIOBound():
 				if err := fakeGpuVFIO(sysfsRoot, devfsRoot, gpu.VFIODevice, gpu.IOMMUGroup, gpu.PCIAddress, realDevices); err != nil {
 					return fmt.Errorf("creating fake sysfs VFIO devices, err: %v", err)
 				}

@@ -1,20 +1,12 @@
-# Copyright (c) 2024, Intel Corporation.  All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Copyright (C) 2022-2026 Intel Corporation
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# SPDX-License-Identifier: Apache-2.0
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 ARG LOCAL_LICENSES
 
-FROM golang:1.26.3@sha256:6b3de2e6b4ccfc5fae404042cb1a025b1de13c73458e50455e3143bf12e98eae AS build
+FROM golang:1.26.7@sha256:dc2521c2a906db43073b8b4d99f491b6341cf15610b6ebbab187c45153f9959e AS build
 WORKDIR /build
 COPY . .
 
@@ -30,6 +22,8 @@ cp bin/kubelet-gpu-plugin /install_root/
 FROM scratch
 WORKDIR /
 LABEL description="Intel GPU resource driver for Kubernetes"
+LABEL org.opencontainers.image.source="https://github.com/intel/intel-resource-drivers-for-kubernetes"
+LABEL org.opencontainers.image.description="Intel GPU resource driver for Kubernetes"
 
 COPY --from=build /install_root /
 CMD ["/kubelet-gpu-plugin"]

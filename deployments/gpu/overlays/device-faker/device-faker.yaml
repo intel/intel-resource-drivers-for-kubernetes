@@ -29,7 +29,7 @@ spec:
       - name: kubelet-plugin
         command: ["/kubelet-gpu-plugin", "-v", "5"]
         # TODO: change to :devel when public CI is in place
-        image: ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver:latest
+        image: ghcr.io/intel/intel-gpu-resource-driver:latest
         # TODO: pull policy is needed when :devel is used instead of :latest
         imagePullPolicy: Always
         env:

@@ -1,18 +1,8 @@
-/*
- * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+//
+// Copyright (C) 2023-2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package main
 
@@ -633,6 +623,136 @@ func TestPrepareResourceClaims(t *testing.T) {
 			},
 			driverChange: true,
 		},
+		{
+			// The first subrequest of the prioritized list is selected by the
+			// scheduler: plain GPU, no driver change is needed.
+			name: "firstAvailable request, GPU subrequest selected",
+			request: []*resourceapi.ResourceClaim{
+				testhelpers.NewClaimFirstAvailable(
+					"namespacefa", "claimfa", "uidfa", "requestfa", "gpu.intel.com", "node1",
+					[]testhelpers.SubRequest{
+						{Name: "gpu", DeviceClass: "gpu.intel.com"},
+						{Name: "vfio", DeviceClass: "gpu-vfio.intel.com"},
+					},
+					0,
+					[]string{"0000-00-02-0-0x56c0"}),
+			},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uidfa": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"requestfa/gpu"},
+							PoolName:     "node1",
+							DeviceName:   "0000-00-02-0-0x56c0",
+							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+							Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:02.0"}[0]}}},
+						},
+					},
+				},
+			},
+			initialPreparedClaims: ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{
+				"uidfa": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"requestfa/gpu"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-02-0-0x56c0",
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+								Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:02.0"}[0]}}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "firstAvailable request, VFIO subrequest selected, no driver change",
+			request: []*resourceapi.ResourceClaim{
+				testhelpers.NewClaimFirstAvailable(
+					"namespacefa", "claimfa", "uidfa", "requestfa", "gpu.intel.com", "node1",
+					[]testhelpers.SubRequest{
+						{Name: "gpu", DeviceClass: "gpu.intel.com"},
+						{Name: "vfio", DeviceClass: "gpu-vfio.intel.com"},
+					},
+					1,
+					[]string{"0000-00-06-0-0xe211"}),
+			},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uidfa": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"requestfa/vfio"},
+							PoolName:     "node1",
+							DeviceName:   "0000-00-06-0-0xe211",
+							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-06-0-0xe211"},
+							Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:06.0"}[0]}}},
+						},
+					},
+				},
+			},
+			initialPreparedClaims: ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{
+				"uidfa": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"requestfa/vfio"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-06-0-0xe211",
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-06-0-0xe211"},
+								Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:06.0"}[0]}}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			// selected VFIO subrequest requires the kernel driver of the device to be changed from xe to xe-vfio-pci.
+			name: "firstAvailable request, VFIO subrequest selected, driver change from xe to xe-vfio-pci",
+			request: []*resourceapi.ResourceClaim{
+				testhelpers.NewClaimFirstAvailable(
+					"namespacefa", "claimfa", "uidfa", "requestfa", "gpu.intel.com", "node1",
+					[]testhelpers.SubRequest{
+						{Name: "vfio", DeviceClass: "gpu-vfio.intel.com"},
+						{Name: "gpu", DeviceClass: "gpu.intel.com"},
+					},
+					0,
+					[]string{"0000-00-05-0-0xe211"}),
+			},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uidfa": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"requestfa/vfio"},
+							PoolName:     "node1",
+							DeviceName:   "0000-00-05-0-0xe211",
+							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0xe211"},
+							Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:05.0"}[0]}}},
+						},
+					},
+				},
+			},
+			initialPreparedClaims: ClaimPreparations{},
+			expectedPreparedClaims: ClaimPreparations{
+				"uidfa": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"requestfa/vfio"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-05-0-0xe211",
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-05-0-0xe211"},
+								Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:05.0"}[0]}}},
+							},
+						},
+					},
+				},
+			},
+			driverChange: true,
+		},
 	}
 
 	for _, testcase := range testcases {
@@ -1054,6 +1174,365 @@ func TestRefreshDeviceOnDriverEvent(t *testing.T) {
 			t.Errorf("expected RenderDName to be %q, got %q", testcase.expectedRenderDName, updated.RenderDName)
 		}
 
+	}
+}
+
+// fakeSurvivabilityGpu re-creates fake sysfs and devfs with a single GPU that is either in
+// survivability mode - no DRM devices, only MEI - or fully functional.
+func fakeSurvivabilityGpu(t *testing.T, testDirs testhelpers.TestDirsType, deviceUID string, survivability bool) {
+	t.Helper()
+
+	gpu := &device.DeviceInfo{
+		UID:           deviceUID,
+		PCIAddress:    "0000:00:02.0",
+		Model:         "0x56c0",
+		MEIName:       "mei0",
+		DeviceType:    "gpu",
+		Driver:        device.SysfsXeDriverName,
+		CurrentDriver: device.SysfsXeDriverName,
+		Survivability: survivability,
+	}
+	if !survivability {
+		gpu.CardName = "card0"
+		gpu.RenderDName = "renderD128"
+	}
+
+	recreateFakeGpu(t, testDirs, gpu)
+}
+
+// recreateFakeGpu wipes the fake sysfs and devfs contents and recreates them with a single GPU
+// in the described state.
+func recreateFakeGpu(t *testing.T, testDirs testhelpers.TestDirsType, gpu *device.DeviceInfo) {
+	t.Helper()
+
+	for _, toDelete := range []string{"bus", "devices", "class"} {
+		if err := os.RemoveAll(path.Join(testDirs.SysfsRoot, toDelete)); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("setup error: failed removing fake sysfs dir: %v", err)
+		}
+	}
+	for _, toDelete := range []string{"dri", "vfio"} {
+		if err := os.RemoveAll(path.Join(testDirs.DevfsRoot, toDelete)); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("setup error: failed removing fake devfs dir: %v", err)
+		}
+	}
+
+	if err := fakesysfs.FakeSysFsGpuContents(
+		testDirs.SysfsRoot, testDirs.DevfsRoot, device.DevicesInfo{gpu.UID: gpu}, false); err != nil {
+		t.Fatalf("setup error: could not create fake sysfs: %v", err)
+	}
+}
+
+// gpuCDIDeviceExists tells whether the GPU CDI device of the device UID is in the CDI registry.
+func gpuCDIDeviceExists(t *testing.T, state *nodeState, deviceUID string) bool {
+	t.Helper()
+
+	testhelpers.CDICacheDelay()
+
+	return state.CdiCache.GetDevice(device.CDIKind+"="+deviceUID) != nil
+}
+
+//nolint:cyclop // test code
+func TestRefreshDeviceOnSurvivabilityChange(t *testing.T) {
+	testDirs, err := testhelpers.NewTestDirs(device.DriverName)
+	defer testhelpers.CleanupTest(t, "TestRefreshDeviceOnSurvivabilityChange", testDirs.TestRoot)
+	if err != nil {
+		t.Fatalf("setup error: %v", err)
+	}
+
+	const deviceUID = "0000-00-02-0-0x56c0"
+	const pciAddress = "0000:00:02.0"
+
+	os.Setenv(helpers.DevfsEnvVarName, testDirs.DevfsRoot)
+	defer os.Unsetenv(helpers.DevfsEnvVarName)
+
+	// The GPU has broken firmware when the driver starts.
+	fakeSurvivabilityGpu(t, testDirs, deviceUID, true)
+
+	drv, err := getFakeDriver(testDirs)
+	if err != nil {
+		t.Fatalf("could not create fake driver: %v", err)
+	}
+	defer func() { _ = drv.Shutdown(context.TODO()) }()
+	drv.state.SysfsRoot = testDirs.SysfsRoot
+
+	//nolint:forcetypeassert
+	allocatable := drv.state.Allocatable.(map[string]*device.DeviceInfo)
+	discovered := allocatable[deviceUID]
+	if discovered == nil {
+		t.Fatalf("expected device %v in allocatable devices: %+v", deviceUID, allocatable)
+	}
+	if !discovered.Survivability || discovered.Health() != device.HealthUnhealthy {
+		t.Errorf("expected discovered device to be in survivability mode and unhealthy, got: %+v", discovered)
+	}
+	if discovered.MEIName != "mei0" {
+		t.Errorf("expected MEI device to be discovered for device in survivability mode, got: %+v", discovered)
+	}
+	if gpuCDIDeviceExists(t, drv.state, deviceUID) {
+		t.Errorf("expected no GPU CDI device for device %v in survivability mode", deviceUID)
+	}
+
+	// Firmware was reflashed, the device is functional again.
+	fakeSurvivabilityGpu(t, testDirs, deviceUID, false)
+
+	needToPublish, err := drv.state.RefreshDeviceOnDriverEvent(pciAddress, device.SysfsXeDriverName)
+	if err != nil {
+		t.Fatalf("unexpected error refreshing device: %v", err)
+	}
+	if !needToPublish {
+		t.Error("expected ResourceSlice publishing to be needed after leaving survivability mode")
+	}
+	if discovered.Survivability {
+		t.Errorf("expected device to be healthy after leaving survivability mode, got: %+v", discovered)
+	}
+	if _, found := discovered.HealthStatus[device.HealthStatusSurvivability]; found {
+		t.Errorf("expected device to not have survivability health status, got: %+v", discovered)
+	}
+	if discovered.CardName != "card0" || discovered.RenderDName != "renderD128" {
+		t.Errorf("expected DRM devices to be discovered after leaving survivability mode, got: %+v", discovered)
+	}
+	if !gpuCDIDeviceExists(t, drv.state, deviceUID) {
+		t.Errorf("expected GPU CDI device for device %v after leaving survivability mode", deviceUID)
+	}
+
+	// Firmware broke again.
+	fakeSurvivabilityGpu(t, testDirs, deviceUID, true)
+
+	needToPublish, err = drv.state.RefreshDeviceOnDriverEvent(pciAddress, device.SysfsXeDriverName)
+	if err != nil {
+		t.Fatalf("unexpected error refreshing device: %v", err)
+	}
+	if !needToPublish {
+		t.Error("expected ResourceSlice publishing to be needed after entering survivability mode")
+	}
+	if !discovered.Survivability || discovered.Health() != device.HealthUnhealthy {
+		t.Errorf("expected device to be in survivability mode and unhealthy, got: %+v", discovered)
+	}
+	if discovered.CardName != "" || discovered.RenderDName != "" {
+		t.Errorf("expected no DRM devices for device in survivability mode, got: %+v", discovered)
+	}
+	if gpuCDIDeviceExists(t, drv.state, deviceUID) {
+		t.Errorf("expected no GPU CDI device for device %v in survivability mode", deviceUID)
+	}
+}
+
+// TestRefreshDeviceOnRebindAfterSurvivability covers the recovery of a device with broken firmware
+// through kernel driver unbinding: the survivability_mode sysfs file is gone already when the
+// kernel driver is unbound, so the CDI spec of the device has to be updated when the device is
+// bound back to the kernel driver, based on the changed kernel driver alone.
+func TestRefreshDeviceOnRebindAfterSurvivability(t *testing.T) {
+	testDirs, err := testhelpers.NewTestDirs(device.DriverName)
+	defer testhelpers.CleanupTest(t, "TestRefreshDeviceOnRebindAfterSurvivability", testDirs.TestRoot)
+	if err != nil {
+		t.Fatalf("setup error: %v", err)
+	}
+
+	const deviceUID = "0000-00-02-0-0x56c0"
+	const pciAddress = "0000:00:02.0"
+
+	os.Setenv(helpers.DevfsEnvVarName, testDirs.DevfsRoot)
+	defer os.Unsetenv(helpers.DevfsEnvVarName)
+
+	// The GPU has broken firmware when the driver starts.
+	fakeSurvivabilityGpu(t, testDirs, deviceUID, true)
+
+	drv, err := getFakeDriver(testDirs)
+	if err != nil {
+		t.Fatalf("could not create fake driver: %v", err)
+	}
+	defer func() { _ = drv.Shutdown(context.TODO()) }()
+	drv.state.SysfsRoot = testDirs.SysfsRoot
+
+	//nolint:forcetypeassert
+	discovered := drv.state.Allocatable.(map[string]*device.DeviceInfo)[deviceUID]
+	if discovered == nil || !discovered.Survivability {
+		t.Fatalf("expected device %v to be discovered in survivability mode, got: %+v", deviceUID, discovered)
+	}
+
+	// Kernel driver is unbound from the device for the firmware reflashing.
+	recreateFakeGpu(t, testDirs, &device.DeviceInfo{
+		UID:        deviceUID,
+		PCIAddress: pciAddress,
+		Model:      "0x56c0",
+		DeviceType: "gpu",
+		Driver:     device.SysfsXeDriverName,
+	})
+
+	if _, err = drv.state.RefreshDeviceOnDriverEvent(pciAddress, ""); err != nil {
+		t.Fatalf("unexpected error refreshing unbound device: %v", err)
+	}
+	if discovered.CurrentDriver != "" || discovered.Survivability {
+		t.Errorf("expected unbound device without survivability mode, got: %+v", discovered)
+	}
+	if gpuCDIDeviceExists(t, drv.state, deviceUID) {
+		t.Errorf("expected no GPU CDI device for unbound device %v", deviceUID)
+	}
+
+	// Firmware was reflashed and the kernel driver is bound back to the device.
+	fakeSurvivabilityGpu(t, testDirs, deviceUID, false)
+
+	needToPublish, err := drv.state.RefreshDeviceOnDriverEvent(pciAddress, device.SysfsXeDriverName)
+	if err != nil {
+		t.Fatalf("unexpected error refreshing rebound device: %v", err)
+	}
+	if !needToPublish {
+		t.Error("expected ResourceSlice publishing to be needed after the device was bound back")
+	}
+	if discovered.CardName != "card0" || discovered.RenderDName != "renderD128" {
+		t.Errorf("expected DRM devices to be discovered for rebound device, got: %+v", discovered)
+	}
+	if !gpuCDIDeviceExists(t, drv.state, deviceUID) {
+		t.Errorf("expected GPU CDI device for rebound device %v", deviceUID)
+	}
+}
+
+// TestPrepareSurvivabilityDevice covers preparing a claim for a device in survivability mode:
+// the device is unusable as a GPU until its firmware has been reflashed, so only claims with the
+// adminAccess flag - e.g. the firmware reflashing or monitoring deployment - can be prepared for it.
+func TestPrepareSurvivabilityDevice(t *testing.T) {
+	const deviceUID = "0000-00-02-0-0x56c0"
+	const pciAddress = "0000:00:02.0"
+
+	pciAddressAttributes := &kubeletplugin.DeviceMetadata{
+		Attributes: map[string]resourceapi.DeviceAttribute{
+			"resource.kubernetes.io/pciBusID": {StringValue: &[]string{pciAddress}[0]},
+		},
+	}
+
+	type testCase struct {
+		name                   string
+		survivability          bool
+		request                *resourceapi.ResourceClaim
+		expectedResponse       map[types.UID]kubeletplugin.PrepareResult
+		expectedPreparedClaims ClaimPreparations
+	}
+
+	testcases := []testCase{
+		{
+			name:          "claim without admin access is rejected for device in survivability mode",
+			survivability: true,
+			request: testhelpers.NewClaim(
+				"namespace1", "claim1", "uid1", "request1", "gpu.intel.com", "node1", "gpu.intel.com", []string{deviceUID}, false),
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid1": {
+					Err: errors.New("device 0000-00-02-0-0x56c0 (pool node1) is in survivability mode and cannot be prepared without adminAccess flag"),
+				},
+			},
+			expectedPreparedClaims: ClaimPreparations{},
+		},
+		{
+			name:          "claim with admin access gets the MEI device of the device in survivability mode",
+			survivability: true,
+			request: testhelpers.NewMonitoringClaim(
+				"namespace2", "monitor", "uid2", "monitor", "gpu.intel.com", "node1", []string{deviceUID}),
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid2": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"monitor"},
+							PoolName:     "node1",
+							DeviceName:   deviceUID,
+							CDIDeviceIDs: []string{"intel.com/gpu-mei=mei0"},
+							Metadata:     pciAddressAttributes,
+						},
+					},
+				},
+			},
+			expectedPreparedClaims: ClaimPreparations{
+				"uid2": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"monitor"},
+								PoolName:     "node1",
+								DeviceName:   deviceUID,
+								CDIDeviceIDs: []string{"intel.com/gpu-mei=mei0"},
+								Metadata:     pciAddressAttributes,
+							},
+							AdminAccess: true,
+						},
+					},
+				},
+			},
+		},
+		{
+			// Control case: the same claim is prepared when the firmware of the device is intact.
+			name:          "claim without admin access is prepared for functional device",
+			survivability: false,
+			request: testhelpers.NewClaim(
+				"namespace1", "claim1", "uid1", "request1", "gpu.intel.com", "node1", "gpu.intel.com", []string{deviceUID}, false),
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid1": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"request1"},
+							PoolName:     "node1",
+							DeviceName:   deviceUID,
+							CDIDeviceIDs: []string{"intel.com/gpu=" + deviceUID},
+							Metadata:     pciAddressAttributes,
+						},
+					},
+				},
+			},
+			expectedPreparedClaims: ClaimPreparations{
+				"uid1": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"request1"},
+								PoolName:     "node1",
+								DeviceName:   deviceUID,
+								CDIDeviceIDs: []string{"intel.com/gpu=" + deviceUID},
+								Metadata:     pciAddressAttributes,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			testDirs, err := testhelpers.NewTestDirs(device.DriverName)
+			defer testhelpers.CleanupTest(t, testcase.name, testDirs.TestRoot)
+			if err != nil {
+				t.Fatalf("setup error: %v", err)
+			}
+
+			os.Setenv(helpers.DevfsEnvVarName, testDirs.DevfsRoot)
+			defer os.Unsetenv(helpers.DevfsEnvVarName)
+
+			fakeSurvivabilityGpu(t, testDirs, deviceUID, testcase.survivability)
+
+			preparedClaimFilePath := path.Join(testDirs.KubeletPluginDir, device.PreparedClaimsFileName)
+			if err := WritePreparedClaimsToFile(preparedClaimFilePath, ClaimPreparations{}); err != nil {
+				t.Fatalf("setup error: could not write prepared claims to file: %v", err)
+			}
+
+			drv, err := getFakeDriver(testDirs)
+			if err != nil {
+				t.Fatalf("could not create fake driver: %v", err)
+			}
+			defer func() { _ = drv.Shutdown(context.TODO()) }()
+
+			response, err := drv.PrepareResourceClaims(context.TODO(), []*resourceapi.ResourceClaim{testcase.request})
+			if err != nil {
+				t.Fatalf("unexpected error preparing claim: %v", err)
+			}
+
+			if !testhelpers.DeepEqualPrepareResults(testcase.expectedResponse, response) {
+				t.Errorf("unexpected response: %v, expected response: %v", response, testcase.expectedResponse)
+			}
+
+			preparedClaims, err := readPreparedClaimsFromFile(preparedClaimFilePath)
+			if err != nil {
+				t.Fatalf("unexpected error reading prepared claims: %v", err)
+			}
+
+			if !reflect.DeepEqual(testcase.expectedPreparedClaims, preparedClaims) {
+				t.Errorf("unexpected PreparedClaims: %v, expected PreparedClaims: %v", preparedClaims, testcase.expectedPreparedClaims)
+			}
+		})
 	}
 }
 

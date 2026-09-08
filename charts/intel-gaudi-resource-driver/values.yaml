@@ -10,7 +10,7 @@ extendedResourceName: intel.com/gaudi
 
 imagePullSecrets: []
 image:
-  repository: ghcr.io/intel/intel-resource-drivers-for-kubernetes
+  repository: ghcr.io/intel
   name: intel-gaudi-resource-driver
   pullPolicy: IfNotPresent
   tag: "v0.7.2"

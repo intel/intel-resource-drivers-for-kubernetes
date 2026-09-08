@@ -1,16 +1,8 @@
-# Copyright (c) 2024, Intel Corporation.  All Rights Reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+# Copyright (C) 2022-2026 Intel Corporation
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# SPDX-License-Identifier: Apache-2.0
 #
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 .PHONY: list-targets
 list-targets:
@@ -177,7 +169,7 @@ gaudi-licenses: clean-licenses
 	save "." --save_path $(CURDIR)/licenses
 
 # linting targets for Go and other code
-.PHONY: lint format cilint vet shellcheck yamllint lint-containerized
+.PHONY: lint format cilint vet shellcheck yamllint noreplace lint-containerized
 
 lint-containerized:
 	$(DOCKER) run \
@@ -189,7 +181,7 @@ lint-containerized:
 	"$(TEST_IMAGE)" \
 	bash -c "cd src && make lint"
 
-lint: vendor cilint vet klogformat shellcheck yamllint
+lint: vendor cilint vet klogformat noreplace shellcheck yamllint
 
 format:
 	gofmt -w -s -l ./
@@ -206,6 +198,14 @@ vet:
 klogformat:
 	@echo -e "\ntesting/klog: format calls without format args, or vice verse:"
 	! git grep -n -e '\bt\..*f("[^%]*")' -e 'klog\..*f("[^%]*")' -e 'klog\..*[^f]("[^)]*%'
+
+# "go install <pkg>@<version>" refuses any module whose go.mod has replace directives, so the
+# root go.mod must stay free of them for the released commands to be installable that way. The
+# gaudi plugin module is exempt: its "replace => ../../" is what lets it build against the parent
+# module without a published version, and it is not installable via "go install" anyway.
+noreplace:
+	@echo -e "\nnoreplace: root go.mod must have no replace directives (breaks 'go install pkg@version'):"
+	! grep -q -e '^replace' -e '^[[:space:]]*replace[[:space:]]' go.mod
 
 # exclude env.sh + SC1091, shellcheck external file handling is broken
 shellcheck:

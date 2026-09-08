@@ -1,0 +1,58 @@
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: pgpu-resource-claim-tmpl
+spec:
+  metadata: {}
+  spec:
+    devices:
+      requests:
+      - exactly:
+          deviceClassName: gpu-vfio.intel.com
+          # change to 'vf' to allocate SR-IOV VF only
+          selectors:
+          - cel:
+              expression: device.attributes["gpu.intel.com"].type == 'gpu'
+        name: pgpu
+---
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstance
+metadata:
+  labels:
+    special: vmi-dra-pgpu
+  name: vmi-dra-pgpu
+spec:
+  domain:
+    devices:
+      disks:
+      - disk:
+          bus: virtio
+        name: containerdisk
+      - disk:
+          bus: virtio
+        name: cloudinitdisk
+      gpus:
+      - claimName: pgpu-resource-claim
+        name: example-gpu
+        requestName: pgpu
+      rng: {}
+    memory:
+      guest: 4096M
+    cpu:
+      cores: 4
+    resources: {}
+  resourceClaims:
+  - name: pgpu-resource-claim
+    resourceClaimTemplateName: pgpu-resource-claim-tmpl
+  terminationGracePeriodSeconds: 0
+  volumes:
+  - containerDisk:
+      image: registry:5000/kubevirt/fedora-with-test-tooling-container-disk:devel
+    name: containerdisk
+  - cloudInitNoCloud:
+      userData: |-
+        #cloud-config
+        password: fedora
+        chpasswd: { expire: False }
+    name: cloudinitdisk

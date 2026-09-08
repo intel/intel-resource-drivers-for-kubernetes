@@ -1,18 +1,8 @@
-/*
- * Copyright (c) 2025, Intel Corporation.  All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+//
+// Copyright (C) 2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package main
 
@@ -144,6 +134,7 @@ func (d *driver) watchDevices(ctx context.Context) {
 		{"SUBSYSTEM": "pci"},
 		{"SUBSYSTEM": "pci", "PCI_CLASS": device.UDEVPCIDisplayClassID},
 		{"SUBSYSTEM": "pci", "PCI_CLASS": device.UDEVPCIVGAClassID},
+		{"SUBSYSTEM": "pci", "PCI_CLASS": device.UDEVPCIProcessingAcceleratorClassID},
 	}
 	filteredEvents := make(chan *udev.Event, 64)
 
@@ -168,7 +159,7 @@ func (d *driver) watchDevices(ctx context.Context) {
 		case evt := <-filteredEvents:
 			// Ignore all events that are not binding / unbinding or that are for non Intel GPU class.
 			class := evt.Properties["PCI_CLASS"]
-			if class != device.UDEVPCIDisplayClassID && class != device.UDEVPCIVGAClassID {
+			if class != device.UDEVPCIDisplayClassID && class != device.UDEVPCIVGAClassID && class != device.UDEVPCIProcessingAcceleratorClassID {
 				klog.V(5).Infof("Ignoring udev event for non-GPU PCI class device: %+v", evt)
 				continue
 			}

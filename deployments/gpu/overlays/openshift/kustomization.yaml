@@ -6,3 +6,7 @@ resources:
   - clusterRoleBinding.yaml
   - ../../base
   - securityContextConstraints.yaml
+
+# Uncomment if manage-binding=false is needed.
+#components:
+#  - ../../components/manage-binding-disabled

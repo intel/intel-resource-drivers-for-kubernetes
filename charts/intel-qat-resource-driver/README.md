@@ -13,7 +13,7 @@ More info: [Intel Resource Drivers for Kubernetes](https://github.com/intel/inte
 helm install \
     --namespace intel-qat-resource-driver \
     --create-namespace \
-    intel-qat-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-qat-resource-driver
+    intel-qat-resource-driver oci://ghcr.io/intel/intel-qat-resource-driver
 ```
 
 > [!NOTE]
@@ -25,7 +25,7 @@ kubectl create namespace intel-qat-resource-driver
 kubectl label --overwrite namespace intel-qat-resource-driver pod-security.kubernetes.io/enforce=privileged
 helm install \
     --namespace intel-qat-resource-driver \
-    intel-qat-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-qat-resource-driver
+    intel-qat-resource-driver oci://ghcr.io/intel/intel-qat-resource-driver
 ```
 
 ## Uninstalling the chart
@@ -41,7 +41,7 @@ kubectl delete ns intel-qat-resource-driver
 See [Customizing the Chart Before Installing](https://helm.sh/docs/intro/using_helm/#customizing-the-chart-before-installing). To see all configurable options with detailed comments:
 
 ```console
-helm show values oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-qat-resource-driver
+helm show values oci://ghcr.io/intel/intel-qat-resource-driver
 ```
 
 You may also run `helm show values` on this chart's dependencies for additional options.
@@ -83,7 +83,7 @@ helm install \
     --set openshift.version=4.20 \
     --namespace "intel-qat-resource-driver" \
     --create-namespace \
-    intel-qat-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-qat-resource-driver-chart
+    intel-qat-resource-driver oci://ghcr.io/intel/intel-qat-resource-driver-chart
 ```
 
 ### OpenShift 4.21+
@@ -94,7 +94,7 @@ helm install \
     --set openshift.enabled=true \
     --namespace "intel-qat-resource-driver" \
     --create-namespace \
-    intel-qat-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-qat-resource-driver-chart
+    intel-qat-resource-driver oci://ghcr.io/intel/intel-qat-resource-driver-chart
 ```
 
 > [!NOTE]

@@ -13,7 +13,7 @@ More info: [Intel Resource Drivers for Kubernetes](https://github.com/intel/inte
 helm install \
     --namespace "intel-gpu-resource-driver" \
     --create-namespace \
-    intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver-chart
+    intel-gpu-resource-driver oci://ghcr.io/intel/intel-gpu-resource-driver-chart
 ```
 
 > [!NOTE]
@@ -30,7 +30,7 @@ kubectl create namespace intel-gpu-resource-driver
 kubectl label --overwrite namespace intel-gpu-resource-driver pod-security.kubernetes.io/enforce=privileged
 helm install \
     --namespace intel-gpu-resource-driver \
-    intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver-chart
+    intel-gpu-resource-driver oci://ghcr.io/intel/intel-gpu-resource-driver-chart
 ```
 
 ## Uninstalling the chart
@@ -46,7 +46,7 @@ kubectl delete ns intel-gpu-resource-driver
 See [Customizing the Chart Before Installing](https://helm.sh/docs/intro/using_helm/#customizing-the-chart-before-installing). To see all configurable options with detailed comments:
 
 ```console
-helm show values oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver-chart
+helm show values oci://ghcr.io/intel/intel-gpu-resource-driver-chart
 ```
 
 You may also run `helm show values` on this chart's dependencies for additional options.
@@ -56,7 +56,7 @@ You may also run `helm show values` on this chart's dependencies for additional 
 | image.repository | string | `intel` ||
 | image.name | string | `"intel-gpu-resource-driver"` ||
 | image.pullPolicy | string | `"IfNotPresent"` ||
-| image.tag | string | `"v0.11.0"` ||
+| image.tag | string | `"v0.12.0"` ||
 | kubeletPlugin.healthMonitoring.enabled | bool | true | Enable (default) GPU details discovery method. Also, [health monitoring](../../doc/gpu/USAGE.md#health-monitoring-support). Requires [xpumd](https://github.com/intel/xpumanager/tree/v2.x/xpumd) |
 | kubeletPlugin.privileged | bool | false | Enable alternative method for discovering GPU details when health monitoring is disabled |
 | kubeletPlugin.manageBinding.enabled | bool | true | Enable dynamic switching between DRM and VFIO-PCI kernel drivers |
@@ -71,7 +71,7 @@ helm install \
     --set openshift.version=4.20 \
     --namespace "intel-gpu-resource-driver" \
     --create-namespace \
-    intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver-chart
+    intel-gpu-resource-driver oci://ghcr.io/intel/intel-gpu-resource-driver-chart
 ```
 
 ### OpenShift 4.21+
@@ -82,7 +82,7 @@ helm install \
     --set openshift.enabled=true \
     --namespace "intel-gpu-resource-driver" \
     --create-namespace \
-    intel-gpu-resource-driver oci://ghcr.io/intel/intel-resource-drivers-for-kubernetes/intel-gpu-resource-driver-chart
+    intel-gpu-resource-driver oci://ghcr.io/intel/intel-gpu-resource-driver-chart
 ```
 
 > [!NOTE]

@@ -1,18 +1,8 @@
-/*
- * Copyright (c) 2024, Intel Corporation.  All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+//
+// Copyright (C) 2024-2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package device
 
@@ -39,16 +29,17 @@ const (
 
 	// driver.sysfsI915Dir and driver.sysfsDRMDir are sysfsI915path and sysfsDRMpath
 	// respectively prefixed with $SYSFS_ROOT.
-	SysfsPCIDevicesPath   = "bus/pci/devices"
-	SysfsPCIDriversPath   = "bus/pci/drivers"
-	SysfsI915DriverName   = "i915"
-	SysfsXeDriverName     = "xe"
-	SysfsVFIODriverName   = "vfio-pci"
-	SysfsXeVFIODriverName = "xe-vfio-pci"
-	SysfsDRMpath          = "class/drm/"
-	SysfsMEIpath          = "class/mei/"
-	DevfsVFIOPath         = "vfio"
-	DevfsVFIODevicesPath  = "vfio/devices"
+	SysfsPCIDevicesPath        = "bus/pci/devices"
+	SysfsPCIDriversPath        = "bus/pci/drivers"
+	SysfsI915DriverName        = "i915"
+	SysfsXeDriverName          = "xe"
+	SysfsVFIODriverName        = "vfio-pci"
+	SysfsXeVFIODriverName      = "xe-vfio-pci"
+	SysfsDRMpath               = "class/drm/"
+	SysfsMEIpath               = "class/mei/"
+	SysfsSurvivabilityModeFile = "survivability_mode"
+	DevfsVFIOPath              = "vfio"
+	DevfsVFIODevicesPath       = "vfio/devices"
 
 	CDIVendor   = "intel.com"
 	CDIGPUClass = "gpu"
@@ -74,17 +65,21 @@ const (
 	HealthUnknown   = "Unknown"
 	HealthHealthy   = "Healthy"
 	HealthUnhealthy = "Unhealthy"
-	// These three are used manually in particular scenarios.
+	// These four are used manually in particular scenarios.
 	HealthStatusDeviceAbsent     = "DeviceAbsent"     // part of HealthCustomList
 	HealthStatusUnexpectedDriver = "UnexpectedDriver" // part of HealthCustomList
+	HealthStatusSurvivability    = "Survivability"    // part of HealthCustomList
 	UnboundUnmanagedTaintKey     = "UnboundUnmanaged" // part of HealthCustomList
+	UnsupportedHealthTaintKey    = "UnsupportedHealth"
 
-	PCIVendorId           = "0x8086"
-	PCIVGAClassID         = "0x030000"
-	PCIDisplayClassID     = "0x038000"
-	UDEVPCIVendorId       = "8086"
-	UDEVPCIVGAClassID     = "30000"
-	UDEVPCIDisplayClassID = "38000"
+	PCIVendorId                         = "0x8086"
+	PCIVGAClassID                       = "0x030000"
+	PCIDisplayClassID                   = "0x038000"
+	PCIProcessingAcceleratorClassID     = "0x120000"
+	UDEVPCIVendorId                     = "8086"
+	UDEVPCIVGAClassID                   = "30000"
+	UDEVPCIDisplayClassID               = "38000"
+	UDEVPCIProcessingAcceleratorClassID = "120000"
 )
 
 // VfAttributeFiles is a list of filenames that needs to be configured for a VF
@@ -107,6 +102,7 @@ var VfAttributeFiles = []string{
 var HealthCustomList = map[string]bool{
 	HealthStatusDeviceAbsent:     true,
 	HealthStatusUnexpectedDriver: true,
+	HealthStatusSurvivability:    true,
 	UnboundUnmanagedTaintKey:     true,
 }
 
@@ -116,6 +112,8 @@ type DeviceInfo struct {
 	// Consists of PCIAddress and Model with colons and dots replaced with hyphens, e.g. 0000-01-02-0-0x1234.
 	UID           string            `json:"uid"`
 	PCIAddress    string            `json:"pciaddress"`    // PCI address in Linux DBDF notation for use with sysfs, e.g. 0000:00:00.0
+	SubVendorId   string            `json:"subvendorid"`   // PCI subvendor ID, identifies the board vendor, e.g. 0x8086 for Intel
+	SubDeviceId   string            `json:"subdeviceid"`   // PCI subdevice ID, identifies the board vendor's product, e.g. 0x0aef for Flex 140
 	Model         string            `json:"model"`         // PCI device ID
 	ModelName     string            `json:"modelname"`     // SKU name, usually Series + Model, e.g. Flex 140
 	FamilyName    string            `json:"familyname"`    // SKU family name, usually Series, e.g. Flex or Max
@@ -136,6 +134,7 @@ type DeviceInfo struct {
 	HealthStatus  map[string]string `json:"healthstatus"`  // Detailed per-category health status information
 	VFIODevice    string            `json:"vfiodevice"`    // VFIO device name, e.g. vfio0
 	IOMMUGroup    string            `json:"iommugroup"`    // IOMMU group of the device, e.g. 12
+	Survivability bool              `json:"survivability"` // survivability mode
 }
 
 func (g DeviceInfo) CDIName() string {
@@ -237,5 +236,5 @@ func GetDriDevPath() string {
 }
 
 func IsGPUClass(classId string) bool {
-	return classId == PCIVGAClassID || classId == PCIDisplayClassID
+	return classId == PCIVGAClassID || classId == PCIDisplayClassID || classId == PCIProcessingAcceleratorClassID
 }

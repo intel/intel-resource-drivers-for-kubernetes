@@ -1,3 +1,9 @@
+//
+// Copyright (C) 2025-2026 Intel Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+
 package gpu
 
 import (
@@ -143,6 +149,16 @@ func describeGpuDraDriver() {
 				deployMsg:     "deploying pod with multiple containers sharing GPU",
 				podName:       "multi-container-test",
 				containerName: "first-container",
+			},
+			{
+				// The first subrequest of the prioritized list cannot be
+				// satisfied, so the allocation result refers to the second one
+				// with the "<request>/<subrequest>" request name.
+				testName:      "selects GPU with firstAvailable request",
+				yamlFile:      "deployments/gpu/tests/first-available/first-available-pod.yaml",
+				deployMsg:     "deploying pod with prioritized list (firstAvailable) GPU request",
+				podName:       "first-available-test",
+				containerName: "with-resource",
 			},
 		}
 
