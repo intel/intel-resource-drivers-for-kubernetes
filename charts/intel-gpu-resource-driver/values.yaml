@@ -35,6 +35,10 @@ kubeletPlugin:
   # With health monitoring enabled, hardware details come from xpumd and privileged mode is not required.
   privileged: false
 
+  # Extra command line arguments for the kubelet-plugin container, whitespace-separated.
+  # For instance: extraArgs: "-v 5"
+  extraArgs: ""
+
   resources: {}
     # limits:
     #   cpu: 100m

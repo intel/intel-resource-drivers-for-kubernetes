@@ -31,6 +31,11 @@ spec:
         - --manage-binding=false
         {{- end }}
         {{- end }}
+        {{- range .Values.kubeletPlugin.extraArgs | default "" | splitList " " }}
+        {{- if . }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- end }}
         {{- if gt (int .Values.kubeletPlugin.healthcheckPort) 0 }}
         ports:
         - name: healthcheck

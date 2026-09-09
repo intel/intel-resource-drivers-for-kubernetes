@@ -61,6 +61,7 @@ You may also run `helm show values` on this chart's dependencies for additional 
 | kubeletPlugin.privileged | bool | false | Enable alternative method for discovering GPU details when health monitoring is disabled |
 | kubeletPlugin.manageBinding.enabled | bool | true | Enable dynamic switching between DRM and VFIO-PCI kernel drivers |
 | kubeletPlugin.resources | object | `{}` | Compute resource requests/limits for kubelet-plugin container |
+| kubeletPlugin.extraArgs | string | `""` | Extra whitespace-separated command line arguments for the kubelet-plugin container, e.g. `"-v 5"` |
 
 ## Deploying to RedHat OpenShift Container Platform
 
