@@ -270,11 +270,11 @@ gpu-and-qat-test: vendor
 ifeq ("$(container)","yes")
 		@echo setting safe directory
 		go test -buildvcs=false -v -coverprofile=$(COVERAGE_FILE) \
-		$(shell go list ./... | grep -v "test/e2e")
+		$(shell go list ./... | grep -v -e "test/e2e" -e "pkg/fakehlml")
 else
 		@echo running tests
 		go test -v -coverprofile=$(COVERAGE_FILE) \
-		$(shell go list ./... | grep -v "test/e2e")
+		$(shell go list ./... | grep -v -e "test/e2e" -e "pkg/fakehlml")
 endif
 
 gaudi-test: vendor
