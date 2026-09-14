@@ -86,7 +86,7 @@ func describeGpuDraDriver() {
 		e2ekubectl.RunKubectlOrDie(gpuNamespace, "delete", "-f", gpuNamespaceYamlPath)
 	})
 
-	ginkgo.Context("When GPU DRA driver is running", func() {
+	ginkgo.Context("When GPU DRA driver is running in bare metal", func() {
 		ginkgo.It("deploys a GPU sample application pod", func(ctx context.Context) {
 			gpuSampleAppKustomizeDir, err := utils.LocateRepoFile(gpuSampleAppKustomizationYaml)
 			if err != nil {
