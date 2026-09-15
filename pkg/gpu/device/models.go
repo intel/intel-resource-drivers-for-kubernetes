@@ -107,6 +107,34 @@ var ModelDetails = map[string]map[string]string{
 		"family": "Data Center Max",
 		"driver": "i915",
 	},
+	/* temporary until CRI models are announced */
+	/* https://github.com/torvalds/linux/blob/587858367581b9c55c3690f4e63382ad622719d4/include/drm/intel/pciids.h#L900 */
+	"0x674c": {
+		"model":  "CRI",
+		"family": "CRI",
+		"driver": "xe",
+	},
+	"0x674d": {
+		"model":  "CRI",
+		"family": "CRI",
+		"driver": "xe",
+	},
+	"0x674e": {
+		"model":  "CRI",
+		"family": "CRI",
+		"driver": "xe",
+	},
+	"0x674f": {
+		"model":  "CRI",
+		"family": "CRI",
+		"driver": "xe",
+	},
+	"0x6750": {
+		"model":  "CRI",
+		"family": "CRI",
+		"driver": "xe",
+	},
+	/* end of temporary CRI models */
 	"0xa7a0": {
 		"model":  "Raptor Lake-P",
 		"family": "Iris Xe",
