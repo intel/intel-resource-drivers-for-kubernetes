@@ -93,17 +93,54 @@ func TestWriteFile(t *testing.T) {
 
 func TestStartPlugin(t *testing.T) {
 	tests := []struct {
-		name        string
-		config      *Config
-		newDriver   func(ctx context.Context, config *Config) (Driver, error)
-		setup       func()
-		expectError bool
+		name          string
+		config        *Config
+		newDriver     func(ctx context.Context, config *Config) (Driver, error)
+		setup         func()
+		expectedError string
 	}{
 		{
-			name: "CDI root is not a directory",
+			name: "KubeletPluginDir cannot be created",
 			config: &Config{
 				CommonFlags: &Flags{
-					KubeletPluginDir: "/tmp/testplugin",
+					KubeletPluginDir: "/tmp/testfile",
+				},
+			},
+			setup: func() {
+				if err := os.WriteFile("/tmp/testfile", []byte("not a directory"), 0644); err != nil {
+					t.Fatalf("Failed to write file: %v", err)
+				}
+			},
+			expectedError: "mkdir /tmp/testfile: not a directory",
+		},
+		{
+			name: "CdiRoot does not exist - create a new directory successfully",
+			config: &Config{
+				CommonFlags: &Flags{
+					KubeletPluginDir: "/tmp/testKubeletPluginDir",
+					CdiRoot:          "/tmp/testCdiRoot",
+				},
+			},
+			newDriver: func(ctx context.Context, config *Config) (Driver, error) {
+				return nil, fmt.Errorf("fake error")
+			},
+			expectedError: "fake error",
+		},
+		{
+			name: "os.Stat fails for CdiRoot",
+			config: &Config{
+				CommonFlags: &Flags{
+					KubeletPluginDir: "/tmp/testKubeletPluginDir",
+					CdiRoot:          "/dev/null/cdi",
+				},
+			},
+			expectedError: "stat /dev/null/cdi: not a directory",
+		},
+		{
+			name: "CdiRoot does not exist - path is not a directory",
+			config: &Config{
+				CommonFlags: &Flags{
+					KubeletPluginDir: "/tmp/testKubeletPluginDir",
 					CdiRoot:          "/tmp/testfile",
 				},
 			},
@@ -112,39 +149,7 @@ func TestStartPlugin(t *testing.T) {
 					t.Fatalf("Failed to write file: %v", err)
 				}
 			},
-			expectError: true,
-		},
-		{
-			name: "KubeletPluginDir does not exist",
-			config: &Config{
-				CommonFlags: &Flags{
-					KubeletPluginDir: "/does-not-exist",
-				},
-			},
-			expectError: true,
-		},
-		{
-			name: "CDIRoot does not exist",
-			config: &Config{
-				CommonFlags: &Flags{
-					KubeletPluginDir: AddRandomString("/tmp/test"),
-					CdiRoot:          "/does-not-exist",
-				},
-			},
-			expectError: true,
-		},
-		{
-			name: "NewDriver returns error",
-			config: &Config{
-				CommonFlags: &Flags{
-					KubeletPluginDir: "/tmp/testplugin",
-					CdiRoot:          "/tmp/testcdi",
-				},
-			},
-			newDriver: func(ctx context.Context, config *Config) (Driver, error) {
-				return nil, fmt.Errorf("fake error %v", "from newDriver")
-			},
-			expectError: true,
+			expectedError: "path for CDI file generation is not a directory: '<nil>'",
 		},
 	}
 
@@ -153,14 +158,14 @@ func TestStartPlugin(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup()
 			}
-			defer os.RemoveAll("/tmp/testplugin")
-			defer os.RemoveAll("/tmp/testcdi")
+			defer os.RemoveAll(tt.config.CommonFlags.KubeletPluginDir)
+			defer os.RemoveAll(tt.config.CommonFlags.CdiRoot)
 			defer os.Remove("/tmp/testfile")
 
 			ctx := context.Background()
 			err := StartPlugin(ctx, tt.config, tt.newDriver)
-			if (err != nil) != tt.expectError {
-				t.Errorf("StartPlugin() error = %v, expectError %v", err, tt.expectError)
+			if err.Error() != tt.expectedError {
+				t.Errorf("StartPlugin() error = %v, expected error %v", err, tt.expectedError)
 			}
 		})
 	}
