@@ -1,0 +1,79 @@
+name: Cosign Release Image
+
+on:
+  push:
+    tags:
+      - '*-v*'
+    tags-ignore:
+      - '*-v*-chart'
+  workflow_dispatch:
+    inputs:
+      image_type:
+        description: 'Image type to sign: gpu, gaudi, qat'
+        required: true
+        type: choice
+        options:
+          - gpu
+          - gaudi
+          - qat
+      version:
+        description: 'Version of the image to sign, e.g. v0.10.0'
+        required: true
+        type: string
+
+jobs:
+  cosign-release-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      packages: write
+      contents: read
+    env:
+      OCI_REGISTRY: oci://ghcr.io/intel
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Parse tag
+        id: parse
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            IMAGE_TYPE="${TAG%%-v*}"
+          else
+            IMAGE_TYPE="${{ inputs.image_type }}"
+            TAG="${{ inputs.image_type }}-${{ inputs.version }}"
+          fi
+
+          echo "image_type=$IMAGE_TYPE" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Get image digest
+        id: get_image_digest
+        run: |
+          DIGEST=$(docker inspect "${{ env.OCI_REGISTRY }}/intel-${{ steps.parse.outputs.image_type }}-resource-driver:${{ steps.parse.outputs.image_tag }}" | jq -r '.[0].RepoDigests[0]' | cut -d'@' -f2)
+          # Exit if digest is empty or does not start with sha256
+          if [ -z "$DIGEST" ] || [[ "$DIGEST" != sha256* ]]; then
+            echo "Failed to get valid image digest"
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Login to GHCR
+        run: |
+            echo "${{ secrets.GITHUB_TOKEN }}" | \
+            docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Sign image
+        if: ${{ github.event_name == 'push' }}
+        env:
+          IMAGE_TYPE: ${{ steps.parse.outputs.image_type }}
+          IMAGE_TAG: ${{ steps.parse.outputs.image_tag }}
+          DIGEST: ${{ steps.get_image_digest.outputs.digest }}
+        run: cosign sign --yes ${{ env.OCI_REGISTRY }}/intel-${{ env.IMAGE_TYPE }}-resource-driver:${{ env.IMAGE_TAG }}@${{ env.DIGEST }}
