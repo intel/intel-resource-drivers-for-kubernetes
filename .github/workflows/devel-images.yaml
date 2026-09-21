@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  repo: ghcr.io/intel/intel-resource-drivers-for-kubernetes
+  repo: ghcr.io/intel
 
 jobs:
   build-and-push:
