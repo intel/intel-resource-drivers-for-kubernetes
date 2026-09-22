@@ -228,11 +228,6 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 	s.Lock()
 	defer s.Unlock()
 
-	if claim.Status.Allocation == nil {
-		prepareResult.Err = fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
-		return
-	}
-
 	var err error
 	preparedDevices := []PreparedDevice{}
 	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
@@ -244,19 +239,27 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 			continue
 		}
 
-		// Protection against force-deleted claims making cluster think the device is free.
-		adminAccess := ptr.Deref(allocatedDevice.AdminAccess, false)
-		if !adminAccess && s.isDeviceUsedExclusivelyAlready(allocatedDevice.Device, allocatedDevice.Pool, claim.UID) {
-			prepareResult.Err = fmt.Errorf(
-				"device %v (pool %v) is already allocated to another claim and cannot be prepared without adminAccess flag",
-				allocatedDevice.Device, allocatedDevice.Pool)
-			return
-		}
-
 		allocatableDevice, found := allocatableDevices[allocatedDevice.Device]
 		if !found {
 			prepareResult.Err = fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
 			return
+		}
+
+		// Protection against force-deleted claims making cluster think the device is free.
+		adminAccess := ptr.Deref(allocatedDevice.AdminAccess, false)
+		deviceOccupied := s.isDeviceUsedExclusivelyAlready(allocatedDevice.Device, allocatedDevice.Pool, claim.UID)
+		if deviceOccupied {
+			if !adminAccess {
+				prepareResult.Err = fmt.Errorf(
+					"device %v (pool %v) is already allocated to another claim and cannot be prepared without adminAccess flag",
+					allocatedDevice.Device, allocatedDevice.Pool)
+				return
+			}
+			// else: adminAccess.
+			if allocatableDevice.IsVFIOBound() {
+				klog.FromContext(ctx).Info("GPU is bound to VFIO, ignoring this device for adminAccess", "device", allocatableDevice.PCIAddress)
+				continue
+			}
 		}
 
 		// Prevent cases where claim requests Unhealthy devices but without admin access, and the device is in survivability mode.

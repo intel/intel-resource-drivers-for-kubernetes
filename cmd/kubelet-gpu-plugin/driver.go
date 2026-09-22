@@ -190,6 +190,12 @@ func (d *driver) prepareResourceClaim(ctx context.Context, claim *resourceapi.Re
 		} // Else - prepare it again.
 	}
 
+	if claim.Status.Allocation == nil {
+		return false, kubeletplugin.PrepareResult{
+			Err: fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name),
+		}
+	}
+
 	return d.state.Prepare(ctx, claim)
 }
 
