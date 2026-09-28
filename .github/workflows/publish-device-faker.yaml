@@ -64,3 +64,8 @@ jobs:
       env:
         DIGEST: ${{ steps.build_and_push.outputs.digest }}
       run: cosign sign --yes ${{ env.repo }}/intel-device-faker:${{ env.IMAGE_TAG }}@${{ env.DIGEST }}
+
+    - name: Update latest tag
+      run: |
+        docker tag ${{ env.repo }}/intel-device-faker:${{ env.IMAGE_TAG }} ${{ env.repo }}/intel-device-faker:latest
+        docker push ${{ env.repo }}/intel-device-faker:latest
