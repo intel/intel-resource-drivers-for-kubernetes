@@ -11,7 +11,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 
 	"k8s.io/klog/v2"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
@@ -26,12 +25,6 @@ const (
 	containerDevPath     = "/dev"
 	containerDevVFIOPath = "/dev/vfio"
 )
-
-// specName returns the spec name RemoveSpec expects (without extension), not
-// the full file path. Example: /var/run/cdi/intel.com_gpu.yaml -> intel.com_gpu .
-func specName(spec *cdiapi.Spec) string {
-	return strings.TrimSuffix(filepath.Base(spec.GetPath()), filepath.Ext(spec.GetPath()))
-}
 
 func getGPUSpecs(cdiCache *cdiapi.Cache) []*cdiapi.Spec {
 	gpuSpecs := []*cdiapi.Spec{}
@@ -55,16 +48,16 @@ func getMEISpecs(cdiCache *cdiapi.Cache) []*cdiapi.Spec {
 
 func replaceGPUCDISpecs(cdiCache *cdiapi.Cache, devices device.DevicesInfo) error {
 	for _, spec := range getGPUSpecs(cdiCache) {
-		if err := cdiCache.RemoveSpec(specName(spec)); err != nil {
+		if err := cdiCache.RemoveSpec(filepath.Base(spec.GetPath())); err != nil {
 			return fmt.Errorf("failed to remove old GPU CDI spec %v: %v", spec, err)
 		}
 	}
 
 	klog.V(5).Infof("Adding %v GPU devices to new spec", len(devices))
 	gpuSpec := &specs.Spec{Kind: device.CDIKind}
-	addDevicesToSpec(devices, gpuSpec)
+	addGPUDevicesToGPUSpec(devices, gpuSpec)
 
-	if err := writeSpec(cdiCache, gpuSpec); err != nil {
+	if err := writeSpecSpec(cdiCache, gpuSpec, ""); err != nil {
 		return fmt.Errorf("failed adding devices to new GPU CDI spec: %v", err)
 	}
 
@@ -73,16 +66,16 @@ func replaceGPUCDISpecs(cdiCache *cdiapi.Cache, devices device.DevicesInfo) erro
 
 func replaceMEICDISpecs(cdiCache *cdiapi.Cache, devices device.DevicesInfo) error {
 	for _, spec := range getMEISpecs(cdiCache) {
-		if err := cdiCache.RemoveSpec(specName(spec)); err != nil {
+		if err := cdiCache.RemoveSpec(filepath.Base(spec.GetPath())); err != nil {
 			return fmt.Errorf("failed to remove old MEI CDI spec %v: %v", spec, err)
 		}
 	}
 
 	klog.V(5).Infof("Adding %v MEI devices to new spec", len(devices))
 	meiSpec := &specs.Spec{Kind: device.CDIMEIKind}
-	addMeiDevicesToSpec(devices, meiSpec)
+	addMEIDevicesToMEISpec(devices, meiSpec)
 
-	if err := writeSpec(cdiCache, meiSpec); err != nil {
+	if err := writeSpecSpec(cdiCache, meiSpec, ""); err != nil {
 		return fmt.Errorf("failed adding devices to new MEI CDI spec: %v", err)
 	}
 
@@ -98,10 +91,29 @@ func AddDetectedDevicesToCDIRegistry(cdiCache *cdiapi.Cache, detectedDevices dev
 	return replaceMEICDISpecs(cdiCache, detectedDevices)
 }
 
-// writeSpec writes a prepared CDI spec into cache.
-func writeSpec(cdiCache *cdiapi.Cache, spec *specs.Spec) error {
-	klog.V(5).Infof("spec devices length: %v", len(spec.Devices))
+// writeSpecSpec writes a CDI spec.Spec, generates a new name, if no name is given.
+func writeSpecSpec(cdiCache *cdiapi.Cache, spec *specs.Spec, name string) error {
+	specname := name
+	var err error
+
+	if specname == "" {
+		specname, err = cdiapi.GenerateNameForSpec(spec)
+		if err != nil {
+			return fmt.Errorf("failed to generate name for cdi device spec: %+v", err)
+		}
+		klog.V(5).Infof("new name for new CDI spec: %v", specname)
+	}
+
+	// A CDI spec without devices is invalid and cannot be written,
+	// remove the file if a name was given.
 	if len(spec.Devices) == 0 {
+		if name != "" {
+			if err := cdiCache.RemoveSpec(specname); err != nil {
+				return fmt.Errorf("failed to remove empty CDI spec %v: %v", specname, err)
+			}
+			klog.Infof("Removed empty CDI Spec %v", specname)
+		}
+
 		return nil
 	}
 
@@ -109,14 +121,7 @@ func writeSpec(cdiCache *cdiapi.Cache, spec *specs.Spec) error {
 	if err != nil {
 		return fmt.Errorf("failed to get minimum required CDI spec version: %v", err)
 	}
-	klog.V(5).Infof("CDI version required for new spec: %v", cdiVersion)
 	spec.Version = cdiVersion
-
-	specname, err := cdiapi.GenerateNameForSpec(spec)
-	if err != nil {
-		return fmt.Errorf("failed to generate name for cdi device spec: %+v", err)
-	}
-	klog.V(5).Infof("new name for new CDI spec: %v", specname)
 
 	err = cdiCache.WriteSpec(spec, specname)
 	if err != nil {
@@ -126,22 +131,19 @@ func writeSpec(cdiCache *cdiapi.Cache, spec *specs.Spec) error {
 	return nil
 }
 
-func addMeiDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
-	seenMEI := make(map[string]bool)
-
-	for _, gpuDevice := range devices {
-		if gpuDevice.MEIName == "" || seenMEI[gpuDevice.MEIName] {
+func addMEIDevicesToMEISpec(devices device.DevicesInfo, spec *specs.Spec) {
+	for _, newDevice := range devices {
+		if newDevice.MEIName == "" {
 			continue
 		}
-		seenMEI[gpuDevice.MEIName] = true
 
 		spec.Devices = append(spec.Devices, specs.Device{
-			Name: gpuDevice.MEIName,
+			Name: newDevice.UID,
 			ContainerEdits: specs.ContainerEdits{
 				DeviceNodes: []*specs.DeviceNode{
 					{
-						Path:     path.Join(containerDevPath, gpuDevice.MEIName),
-						HostPath: path.Join(helpers.GetDevfsRoot(""), gpuDevice.MEIName),
+						Path:     path.Join(containerDevPath, newDevice.MEIName),
+						HostPath: path.Join(helpers.GetDevfsRoot(""), newDevice.MEIName),
 						Type:     "c",
 					},
 				},
@@ -150,7 +152,7 @@ func addMeiDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
 	}
 }
 
-func addDevicesToSpec(devices device.DevicesInfo, spec *specs.Spec) {
+func addGPUDevicesToGPUSpec(devices device.DevicesInfo, spec *specs.Spec) {
 	for _, newDevice := range devices {
 		// A device in survivability mode has no DRM devices, only the MEI device that is used for
 		// firmware reflashing, and MEI devices have their own CDI spec.
@@ -179,7 +181,8 @@ func addDeviceContainerEdits(newdevice *device.DeviceInfo, cdiDevice *specs.Devi
 	if newdevice.IsVFIOBound() {
 		klog.V(5).Infof("Adding VFIO edits for device %v", newdevice.UID)
 		addVFIOEdits(newdevice, cdiDevice)
-	} else {
+	}
+	if newdevice.IsDRMBound() {
 		klog.V(5).Infof("Adding DRM edits for device %v", newdevice.UID)
 		addDRMEdits(newdevice, cdiDevice)
 	}
@@ -263,7 +266,8 @@ func addBypathMounts(info *device.DeviceInfo, spec *specs.Device, dridevPath str
 }
 
 // UpdateGPUDevices removes existing entries from CDI registry and adds new entries based
-// on up supplied DevicesInfo.
+// on up supplied DevicesInfo. It is called from udev monitoring when GPU is bound to the
+// driver, not during startup discovery.
 func UpdateGPUDevices(cdiCache *cdiapi.Cache, devicesToUpdate []*device.DeviceInfo) error {
 	devicesToRemove := []string{}
 	for _, deviceToUpdate := range devicesToUpdate {
@@ -277,40 +281,66 @@ func UpdateGPUDevices(cdiCache *cdiapi.Cache, devicesToUpdate []*device.DeviceIn
 			klog.V(5).Infof("Device %v is not bound to any no driver, skipping CDI creation", deviceToAdd.UID)
 			continue
 		}
-		if err := AddGPUDevice(cdiCache, deviceToAdd); err != nil {
+		if err := addGPUDevice(cdiCache, deviceToAdd); err != nil {
 			return fmt.Errorf("failed to add updated GPU device to CDI spec: %v", err)
+		}
+		if err := addMEIDevice(cdiCache, deviceToAdd); err != nil {
+			return fmt.Errorf("failed to add updated MEI device to CDI spec: %v", err)
 		}
 	}
 
 	return nil
 }
 
-// AddGPUDevice adds a new GPU device entry into cdi registry.
-func AddGPUDevice(cdiCache *cdiapi.Cache, newDevice *device.DeviceInfo) error {
+// addGPUDevice adds a new GPU device entry into cdi registry.
+func addGPUDevice(cdiCache *cdiapi.Cache, newDevice *device.DeviceInfo) error {
 	gpuSpecs := getGPUSpecs(cdiCache)
 	var gpuSpec *specs.Spec
+	var name string
 	if len(gpuSpecs) == 0 {
 		gpuSpec = &specs.Spec{Kind: device.CDIGPUKind}
 	} else {
 		gpuSpec = gpuSpecs[0].Spec
+		name = filepath.Base(gpuSpecs[0].GetPath())
 	}
-	addDevicesToSpec(device.DevicesInfo{newDevice.UID: newDevice}, gpuSpec)
 
-	if err := writeSpec(cdiCache, gpuSpec); err != nil {
+	addGPUDevicesToGPUSpec(device.DevicesInfo{newDevice.UID: newDevice}, gpuSpec)
+
+	if err := writeSpecSpec(cdiCache, gpuSpec, name); err != nil {
 		return fmt.Errorf("failed adding devices to new GPU CDI spec: %v", err)
 	}
 
 	return nil
 }
 
-func RemoveDevices(cdiCache *cdiapi.Cache, devicesToRemove []string) error {
-	gpuSpecs := getGPUSpecs(cdiCache)
-	if len(gpuSpecs) == 0 {
-		return nil
+// addMEIDevice adds a new MEI device entry into cdi registry.
+func addMEIDevice(cdiCache *cdiapi.Cache, newDevice *device.DeviceInfo) error {
+	meiSpecs := getMEISpecs(cdiCache)
+	var meiSpec *specs.Spec
+	var name string
+	if len(meiSpecs) == 0 {
+		meiSpec = &specs.Spec{Kind: device.CDIMEIKind}
+	} else {
+		meiSpec = meiSpecs[0].Spec
+		name = filepath.Base(meiSpecs[0].GetPath())
 	}
 
-	for _, oldDevice := range devicesToRemove {
-		for _, spec := range gpuSpecs {
+	addMEIDevicesToMEISpec(device.DevicesInfo{newDevice.UID: newDevice}, meiSpec)
+
+	if err := writeSpecSpec(cdiCache, meiSpec, name); err != nil {
+		return fmt.Errorf("failed adding devices to new MEI CDI spec: %v", err)
+	}
+
+	return nil
+}
+
+// RemoveDevices removes the CDI devices from both - GPU and MEI specs.
+func RemoveDevices(cdiCache *cdiapi.Cache, deviceUIDs []string) error {
+	supportedSpecs := getGPUSpecs(cdiCache)
+	supportedSpecs = append(supportedSpecs, getMEISpecs(cdiCache)...)
+
+	for _, oldDevice := range deviceUIDs {
+		for _, spec := range supportedSpecs {
 			remainingDevices := []specs.Device{}
 			for _, cdiDevice := range spec.Devices {
 				if cdiDevice.Name == oldDevice {
@@ -319,34 +349,15 @@ func RemoveDevices(cdiCache *cdiapi.Cache, devicesToRemove []string) error {
 				}
 				remainingDevices = append(remainingDevices, cdiDevice)
 			}
+
+			if len(remainingDevices) == len(spec.Devices) {
+				// No devices were removed, skip writing the spec.
+				continue
+			}
+
 			spec.Devices = remainingDevices
-
-			// CDI rejects a spec with no devices, so removing the last device
-			// has to delete the spec rather than write it back empty. This is
-			// reachable on single-GPU hosts: binding the only GPU to a VFIO
-			// driver drops its DRM nodes, emptying the spec.
-			if len(spec.Devices) == 0 {
-				name := specName(spec)
-				if err := cdiCache.RemoveSpec(name); err != nil {
-					return fmt.Errorf("failed to remove empty CDI spec %v: %v", name, err)
-				}
-				continue
-			}
-
-			// WriteSpec, unlike RemoveSpec, expects the file name with extension.
-			specname := path.Base(spec.GetPath())
-			// A CDI spec without devices is invalid and cannot be written, remove the file instead.
-			if len(spec.Devices) == 0 {
-				klog.V(5).Infof("Removing CDI spec %v without devices", specname)
-				if err := cdiCache.RemoveSpec(specname); err != nil {
-					return fmt.Errorf("failed to remove empty CDI spec %v: %v", specname, err)
-				}
-
-				continue
-			}
-
-			if err := cdiCache.WriteSpec(spec.Spec, specname); err != nil {
-				return fmt.Errorf("failed to write CDI spec %v: %v", specname, err)
+			if err := writeSpecSpec(cdiCache, spec.Spec, filepath.Base(spec.GetPath())); err != nil {
+				return fmt.Errorf("failed to write CDI spec %v: %v", spec.GetPath(), err)
 			}
 		}
 	}

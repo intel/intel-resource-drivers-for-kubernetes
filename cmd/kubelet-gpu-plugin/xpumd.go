@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	DefaultSocketFilename  = "intelxpuinfo.sock"
+	DefaultSocketFilename  = "intel_xpu_info.sock"
 	DefaultXPUMDSocketPath = "/run/xpumd/" + DefaultSocketFilename
 
 	// Within 5 minutes xpumd should start and provide device health information,

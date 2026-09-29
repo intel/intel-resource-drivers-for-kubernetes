@@ -66,10 +66,11 @@ const (
 	HealthHealthy   = "Healthy"
 	HealthUnhealthy = "Unhealthy"
 	// These four are used manually in particular scenarios.
-	HealthStatusDeviceAbsent     = "DeviceAbsent"     // part of HealthCustomList
-	HealthStatusUnexpectedDriver = "UnexpectedDriver" // part of HealthCustomList
-	HealthStatusSurvivability    = "Survivability"    // part of HealthCustomList
-	UnboundUnmanagedTaintKey     = "UnboundUnmanaged" // part of HealthCustomList
+	HealthStatusDeviceAbsent     = "DeviceAbsent"       // part of HealthCustomList
+	HealthStatusUnexpectedDriver = "UnexpectedDriver"   // part of HealthCustomList
+	HealthStatusSurvivability    = "Survivability"      // part of HealthCustomList
+	UnboundUnmanagedTaintKey     = "UnboundUnmanaged"   // part of HealthCustomList
+	DriverChangeFailed           = "DriverChangeFailed" // part of HealthCustomList
 	UnsupportedHealthTaintKey    = "UnsupportedHealth"
 
 	PCIVendorId                         = "0x8086"
@@ -104,6 +105,7 @@ var HealthCustomList = map[string]bool{
 	HealthStatusUnexpectedDriver: true,
 	HealthStatusSurvivability:    true,
 	UnboundUnmanagedTaintKey:     true,
+	DriverChangeFailed:           true,
 }
 
 // DeviceInfo is an internal structure type to store info about discovered device.
@@ -146,7 +148,7 @@ func (g DeviceInfo) MEICDIName() string {
 		return ""
 	}
 
-	return fmt.Sprintf("%s=%s", CDIMEIKind, g.MEIName)
+	return fmt.Sprintf("%s=%s", CDIMEIKind, g.UID)
 }
 
 func (g *DeviceInfo) DeepCopy() *DeviceInfo {

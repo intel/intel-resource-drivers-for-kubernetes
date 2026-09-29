@@ -15,8 +15,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
+	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 
+	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
+	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/plugintesthelpers"
 )
 
 func TestDeviceInfoDeepCopy(t *testing.T) {
@@ -202,35 +205,52 @@ func TestDeviceCDINames(t *testing.T) {
 	}{
 		{
 			name:     "regular device",
-			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0"},
+			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", CardName: "card0", CurrentDriver: "xe"},
 			expected: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
 		},
 		{
 			name:        "regular device with admin access",
-			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0"},
+			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", CardName: "card0", CurrentDriver: "xe"},
 			adminAccess: true,
-			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0", "intel.com/gpu-mei=mei0"},
+			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0", "intel.com/gpu-mei=0000-00-02-0-0x56c0"},
+		},
+		{
+			name:        "unhealthy device with admin access",
+			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", CardName: "card0", CurrentDriver: "xe", HealthStatus: map[string]string{"health-xpumd-blabla": device.HealthUnhealthy}},
+			adminAccess: true,
+			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0", "intel.com/gpu-mei=0000-00-02-0-0x56c0"},
+		},
+		{
+			name:        "unhealthy device with no admin access",
+			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", CardName: "card0", CurrentDriver: "xe", HealthStatus: map[string]string{"health-xpumd-blabla": device.HealthUnhealthy}},
+			adminAccess: false,
+			expected:    []string{},
 		},
 		{
 			name:        "regular device without MEI device with admin access",
-			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0"},
+			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", CardName: "card0", CurrentDriver: "xe"},
 			adminAccess: true,
 			expected:    []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
 		},
 		{
 			name:     "device in survivability mode",
-			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", Survivability: true},
-			expected: []string{"intel.com/gpu-mei=mei0"},
+			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", Survivability: true, CurrentDriver: "xe"},
+			expected: []string{"intel.com/gpu-mei=0000-00-02-0-0x56c0"},
 		},
 		{
 			name:        "device in survivability mode with admin access",
-			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", Survivability: true},
+			gpu:         &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", MEIName: "mei0", Survivability: true, CurrentDriver: "xe"},
 			adminAccess: true,
-			expected:    []string{"intel.com/gpu-mei=mei0"},
+			expected:    []string{"intel.com/gpu-mei=0000-00-02-0-0x56c0"},
 		},
 		{
 			name:     "device in survivability mode without MEI device",
-			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", Survivability: true},
+			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0", Survivability: true, CurrentDriver: "xe"},
+			expected: []string{},
+		},
+		{
+			name:     "unbound device",
+			gpu:      &device.DeviceInfo{UID: "0000-00-02-0-0x56c0"},
 			expected: []string{},
 		},
 	}
@@ -368,6 +388,143 @@ func TestIsDeviceUsedExclusivelyAlready(t *testing.T) {
 
 			if got != testcase.expected {
 				t.Fatalf("expected IsDeviceUsedExclusivelyAlready()=%v, got %v", testcase.expected, got)
+			}
+		})
+	}
+}
+
+func TestValidatePreparedClaim(t *testing.T) {
+	testDirs, err := plugintesthelpers.NewTestDirs(device.DriverName)
+	defer plugintesthelpers.CleanupTest(t, "TestValidatePreparedClaim", testDirs.TestRoot)
+	if err != nil {
+		t.Fatalf("could not create fake system dirs: %v", err)
+	}
+
+	gpuUID := "0000-0f-00-0-0x56c0"
+	detectedDevice := &device.DeviceInfo{
+		UID:           gpuUID,
+		PCIAddress:    "0000:0f:00.0",
+		Model:         "0x56c0",
+		DeviceType:    "gpu",
+		CardName:      "card0",
+		RenderDName:   "renderD128",
+		MEIName:       "mei0",
+		Driver:        "xe",
+		CurrentDriver: "xe",
+	}
+
+	cdiCache, err := cdiapi.NewCache(cdiapi.WithSpecDirs(testDirs.CdiRoot))
+	if err != nil {
+		t.Fatalf("failed to create CDI cache: %v", err)
+	}
+
+	if err := cdihelpers.AddDetectedDevicesToCDIRegistry(cdiCache, device.DevicesInfo{gpuUID: detectedDevice}); err != nil {
+		t.Fatalf("failed to add detected devices to CDI registry: %v", err)
+	}
+	plugintesthelpers.CDICacheDelay()
+
+	preparedDevice := func(adminAccess bool, cdiDeviceIDs []string) PreparedDevice {
+		return PreparedDevice{
+			AdminAccess: adminAccess,
+			KubeletpluginDevice: kubeletplugin.Device{
+				PoolName:     "test-node",
+				DeviceName:   gpuUID,
+				CDIDeviceIDs: cdiDeviceIDs,
+			},
+		}
+	}
+
+	testcases := []struct {
+		name string
+		// changeAllocatable emulates changes in the device info discovered after driver restart.
+		changeAllocatable func(*device.DeviceInfo)
+		removeAllocatable bool
+		claimUID          types.UID
+		preparedDevices   []PreparedDevice
+		expected          bool
+	}{
+		{
+			name:            "unchanged device",
+			claimUID:        "claim-1",
+			preparedDevices: []PreparedDevice{preparedDevice(false, []string{"intel.com/gpu=" + gpuUID})},
+			expected:        true,
+		},
+		{
+			name:            "unchanged device with admin access",
+			claimUID:        "claim-1",
+			preparedDevices: []PreparedDevice{preparedDevice(true, []string{"intel.com/gpu=" + gpuUID, "intel.com/gpu-mei=" + gpuUID})},
+			expected:        true,
+		},
+		{
+			name:            "claim was not prepared",
+			claimUID:        "claim-2",
+			preparedDevices: []PreparedDevice{preparedDevice(false, []string{"intel.com/gpu=" + gpuUID})},
+			expected:        false,
+		},
+		{
+			name:              "device is gone from allocatable devices",
+			claimUID:          "claim-1",
+			removeAllocatable: true,
+			preparedDevices:   []PreparedDevice{preparedDevice(false, []string{"intel.com/gpu=" + gpuUID})},
+			expected:          false,
+		},
+		{
+			name:              "cardName changed",
+			claimUID:          "claim-1",
+			changeAllocatable: func(di *device.DeviceInfo) { di.CardName = "card1" },
+			preparedDevices:   []PreparedDevice{preparedDevice(false, []string{"intel.com/gpu=" + gpuUID})},
+			expected:          true,
+		},
+		{
+			name:              "renderDName changed",
+			claimUID:          "claim-1",
+			changeAllocatable: func(di *device.DeviceInfo) { di.RenderDName = "renderD129" },
+			preparedDevices:   []PreparedDevice{preparedDevice(false, []string{"intel.com/gpu=" + gpuUID})},
+			expected:          true,
+		},
+		{
+			name:              "MEIName changed, MEI device in claim",
+			claimUID:          "claim-1",
+			changeAllocatable: func(di *device.DeviceInfo) { di.MEIName = "mei1" },
+			preparedDevices:   []PreparedDevice{preparedDevice(true, []string{"intel.com/gpu=" + gpuUID, "intel.com/gpu-mei=mei0"})},
+			expected:          false,
+		},
+		{
+			name:              "device entered survivability mode",
+			claimUID:          "claim-1",
+			changeAllocatable: func(di *device.DeviceInfo) { di.Survivability = true },
+			preparedDevices:   []PreparedDevice{preparedDevice(false, []string{"intel.com/gpu=" + gpuUID})},
+			expected:          false,
+		},
+		{
+			name:            "device is from another pool",
+			claimUID:        "claim-1",
+			preparedDevices: []PreparedDevice{{KubeletpluginDevice: kubeletplugin.Device{PoolName: "other-node", DeviceName: gpuUID}}},
+			expected:        false,
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			allocatableDevice := detectedDevice.DeepCopy()
+			if testcase.changeAllocatable != nil {
+				testcase.changeAllocatable(allocatableDevice)
+			}
+
+			allocatable := map[string]*device.DeviceInfo{gpuUID: allocatableDevice}
+			if testcase.removeAllocatable {
+				allocatable = map[string]*device.DeviceInfo{}
+			}
+
+			state := &nodeState{
+				CdiCache:    cdiCache,
+				Allocatable: allocatable,
+				Prepared:    ClaimPreparations{"claim-1": {PreparedDevices: testcase.preparedDevices}},
+				NodeName:    "test-node",
+			}
+
+			if got := state.ValidatePreparedClaim(testcase.claimUID); got != testcase.expected {
+				t.Errorf("expected claim %v validity %v, got %v", testcase.claimUID, testcase.expected, got)
 			}
 		})
 	}

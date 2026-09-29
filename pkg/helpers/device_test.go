@@ -29,7 +29,7 @@ func TestGetSysfsRoot(t *testing.T) {
 		},
 		{
 			name:        "Custom sysfs location does not exist",
-			envVarValue: "/invalid/sys",
+			envVarValue: "/dev/null/invalid/sysfs",
 			sysfsPath:   "devices",
 			expected:    sysfsDefaultRoot,
 			setupEnv:    true,
@@ -82,7 +82,7 @@ func TestGetDevRoot(t *testing.T) {
 		},
 		{
 			name:        "Custom devfs location does not exist",
-			envVarValue: "/invalid/dev",
+			envVarValue: "/dev/null/invalid/devfs",
 			devPath:     "devices",
 			expected:    devfsDefaultRoot,
 			setupEnv:    true,

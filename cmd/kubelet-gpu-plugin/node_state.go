@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -30,7 +31,6 @@ import (
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/device"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/discovery"
-	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/drm"
 	"github.com/intel/intel-resource-drivers-for-kubernetes/pkg/vfio"
 )
 
@@ -228,11 +228,6 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 	s.Lock()
 	defer s.Unlock()
 
-	if claim.Status.Allocation == nil {
-		prepareResult.Err = fmt.Errorf("no allocation found in claim %v/%v status", claim.Namespace, claim.Name)
-		return
-	}
-
 	var err error
 	preparedDevices := []PreparedDevice{}
 	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
@@ -244,19 +239,27 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 			continue
 		}
 
-		// Protection against force-deleted claims making cluster think the device is free.
-		adminAccess := ptr.Deref(allocatedDevice.AdminAccess, false)
-		if !adminAccess && s.isDeviceUsedExclusivelyAlready(allocatedDevice.Device, allocatedDevice.Pool, claim.UID) {
-			prepareResult.Err = fmt.Errorf(
-				"device %v (pool %v) is already allocated to another claim and cannot be prepared without adminAccess flag",
-				allocatedDevice.Device, allocatedDevice.Pool)
-			return
-		}
-
 		allocatableDevice, found := allocatableDevices[allocatedDevice.Device]
 		if !found {
 			prepareResult.Err = fmt.Errorf("could not find allocatable device %v (pool %v)", allocatedDevice.Device, allocatedDevice.Pool)
 			return
+		}
+
+		// Protection against force-deleted claims making cluster think the device is free.
+		adminAccess := ptr.Deref(allocatedDevice.AdminAccess, false)
+		deviceOccupied := s.isDeviceUsedExclusivelyAlready(allocatedDevice.Device, allocatedDevice.Pool, claim.UID)
+		if deviceOccupied {
+			if !adminAccess {
+				prepareResult.Err = fmt.Errorf(
+					"device %v (pool %v) is already allocated to another claim and cannot be prepared without adminAccess flag",
+					allocatedDevice.Device, allocatedDevice.Pool)
+				return
+			}
+			// else: adminAccess.
+			if allocatableDevice.IsVFIOBound() {
+				klog.FromContext(ctx).Info("GPU is bound to VFIO, ignoring this device for adminAccess", "device", allocatableDevice.PCIAddress)
+				continue
+			}
 		}
 
 		// Prevent cases where claim requests Unhealthy devices but without admin access, and the device is in survivability mode.
@@ -279,7 +282,8 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		} else {
 			klog.V(5).Infof("Device %v is requested as regular GPU device, preparing with DRM driver", allocatableDevice.PCIAddress)
 			needToPublishSlice, err = s.prepareDRMDevice(allocatableDevice)
-			if err != nil {
+			// Skip error for adminAccess claims, xpumd might make use of the device still.
+			if !adminAccess && err != nil {
 				prepareResult.Err = fmt.Errorf("failed to prepare DRM device %v: %v", allocatableDevice.PCIAddress, err)
 				return
 			}
@@ -320,14 +324,21 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 }
 
 // deviceCDINames returns the names of the CDI devices that the kubelet should inject into the
-// container for the prepared device.
+// container for the prepared device. Both, VFIO and DRM devices are considered.
 func deviceCDINames(allocatableDevice *device.DeviceInfo, adminAccess bool) []string {
 	klog.V(5).Infof("Getting CDI device names for allocatable device %v with adminAccess %v", allocatableDevice.UID, adminAccess)
 
 	cdiNames := []string{}
+	// This function is called from ValidatePreparedClaim, so it may encounter devices that are no longer present
+	// or have changed since the claim was prepared.
+	if allocatableDevice.CurrentDriver == "" {
+		return cdiNames
+	}
 
-	// A device in survivability mode has no CDI device of its own, it has no DRM devices
-	if !allocatableDevice.Survivability {
+	// No CDI devices corresponding to DRM device are added in cases when:
+	// - the GPU is in survivability mode, in this mode there is no /dev/dri/ device;
+	// - the GPU is unhealthy and ResourceClaim is without AdminAccess;
+	if !allocatableDevice.Survivability && (adminAccess || allocatableDevice.Health() != device.HealthUnhealthy) {
 		cdiNames = append(cdiNames, allocatableDevice.CDIName())
 	}
 
@@ -339,6 +350,57 @@ func deviceCDINames(allocatableDevice *device.DeviceInfo, adminAccess bool) []st
 	}
 
 	return cdiNames
+}
+
+// ValidatePreparedClaim returns true if the cached preparation of the claim with given UID is
+// still up to date. Allocatable devices and their CDI devices are rediscovered on every driver
+// start, while prepared claims are restored from the checkpoint file, so what was prepared before
+// can be stale: a device may be gone from the node altogether, or its cardName, renderDName or
+// MEIName may have changed, e.g. after a node reboot. A stale claim has to be prepared again.
+func (s *nodeState) ValidatePreparedClaim(claimUID types.UID) bool {
+	s.Lock()
+	defer s.Unlock()
+
+	claimPreparation, found := s.Prepared[claimUID]
+	if !found {
+		klog.V(5).Infof("Claim %v is not prepared", claimUID)
+		return false
+	}
+
+	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
+
+	for _, preparedDevice := range claimPreparation.PreparedDevices {
+		deviceName := preparedDevice.KubeletpluginDevice.DeviceName
+
+		// ATM the only pool is cluster node's pool: all devices on current node.
+		if preparedDevice.KubeletpluginDevice.PoolName != s.NodeName {
+			klog.V(5).Infof("Prepared device %v of claim %v is from pool %v, expected pool %v",
+				deviceName, claimUID, preparedDevice.KubeletpluginDevice.PoolName, s.NodeName)
+			return false
+		}
+
+		allocatableDevice, found := allocatableDevices[deviceName]
+		if !found {
+			klog.V(5).Infof("Prepared device %v of claim %v is not among %v allocatable devices",
+				deviceName, claimUID, len(allocatableDevices))
+			return false
+		}
+
+		// The set of CDI devices of a GPU depends on its MEIName and on whether it is in
+		// survivability mode, both of which can have changed since the claim was prepared.
+		expectedCDINames := deviceCDINames(allocatableDevice, preparedDevice.AdminAccess)
+		if !slices.Equal(preparedDevice.KubeletpluginDevice.CDIDeviceIDs, expectedCDINames) {
+			klog.V(5).Infof("Prepared device %v of claim %v has CDI devices %v, expected %v",
+				deviceName, claimUID, preparedDevice.KubeletpluginDevice.CDIDeviceIDs, expectedCDINames)
+			return false
+		}
+
+		// There's no need to check CDI device contents because the kubelet is given just the
+		// identities of the CDI devices, and they can have deviceNodes different from the previous
+		// time when this claim was prepared.
+	}
+
+	return true
 }
 
 // isDeviceUsedExclusivelyAlready returns true if the device is already in use in some other claim and
@@ -499,11 +561,7 @@ func (s *nodeState) Unprepare(ctx context.Context, claimUID types.UID) (needToPu
 		return
 	}
 
-	needToPublishSlice, unwrappedErr = s.unprepareDevices(ctx, claimUID)
-	if unwrappedErr != nil {
-		err = fmt.Errorf("failed to unprepare devices for claim %v: %v", claimUID, unwrappedErr)
-		return
-	}
+	needToPublishSlice = s.unprepareDevices(claimUID)
 
 	klog.V(5).Infof("Freeing devices from claim %v", claimUID)
 	delete(s.Prepared, claimUID)
@@ -528,14 +586,27 @@ func (s *nodeState) prepareVFIODevice(allocatableDevice *device.DeviceInfo) (boo
 		return needToPublishSlice, nil
 	}
 
-	needToPublishSlice, err = s.changeKernelDriver(allocatableDevice.PCIAddress, targetDriver)
+	// Remove old CDI device if it exists, if the device was bound.
+	if allocatableDevice.IsDRMBound() {
+		if err := cdihelpers.RemoveDevices(s.CdiCache, []string{allocatableDevice.UID}); err != nil {
+			return needToPublishSlice, fmt.Errorf("failed to remove old GPU devices from CDI spec: %v", err)
+		}
+	}
+
+	err = s.changeKernelDriver(allocatableDevice.PCIAddress, targetDriver)
 	if err != nil {
+		// If the driver change failed, mark the device as unhealthy and return the error.
+		allocatableDevice.HealthStatus[device.DriverChangeFailed] = device.HealthUnhealthy
+		needToPublishSlice = true
+
 		return needToPublishSlice, fmt.Errorf("failed to change driver for device %v: %v", allocatableDevice.PCIAddress, err)
 	}
 	time.Sleep(device.DriverChangeDelay)
 
 	// update current driver in device info after successful driver change
 	allocatableDevice.CurrentDriver = targetDriver
+	// If the driver change succeeded, cleanup driver change failure taint.
+	delete(allocatableDevice.HealthStatus, device.DriverChangeFailed)
 	needToPublishSlice = true
 
 	vfioDevice, err := discovery.GetVFIODevice(allocatableDevice.PCIAddress)
@@ -588,8 +659,19 @@ func (s *nodeState) prepareDRMDevice(allocatableDevice *device.DeviceInfo) (need
 		return needToPublishSlice, nil
 	}
 
-	needToPublishSlice, unwrappedErr = s.changeKernelDriver(allocatableDevice.PCIAddress, allocatableDevice.Driver)
+	// Remove old CDI device if it exists, if the device was bound.
+	if allocatableDevice.IsVFIOBound() {
+		if err := cdihelpers.RemoveDevices(s.CdiCache, []string{allocatableDevice.UID}); err != nil {
+			return needToPublishSlice, fmt.Errorf("failed to remove old GPU devices from CDI spec: %v", err)
+		}
+	}
+
+	unwrappedErr = s.changeKernelDriver(allocatableDevice.PCIAddress, allocatableDevice.Driver)
 	if unwrappedErr != nil {
+		// If the driver change failed, mark the device as unhealthy and return the error.
+		allocatableDevice.HealthStatus[device.DriverChangeFailed] = device.HealthUnhealthy
+		needToPublishSlice = true
+
 		err = fmt.Errorf("failed to change driver for device %v: %v", allocatableDevice.PCIAddress, unwrappedErr)
 		return
 	}
@@ -597,15 +679,19 @@ func (s *nodeState) prepareDRMDevice(allocatableDevice *device.DeviceInfo) (need
 
 	// update current driver in device info after successful driver change
 	allocatableDevice.CurrentDriver = allocatableDevice.Driver
+	// If the driver change succeeded, cleanup driver change failure taint.
+	delete(allocatableDevice.HealthStatus, device.DriverChangeFailed)
+	needToPublishSlice = true
 
 	deviceSysfsDir := path.Join(s.SysfsRoot, device.SysfsPCIDevicesPath, allocatableDevice.PCIAddress)
-	cardName, renderDName, unwrappedErr := drm.DeduceCardAndRenderDNames(deviceSysfsDir)
-	if unwrappedErr != nil {
-		err = fmt.Errorf("failed to get DRM device for PCI address %v: %v", allocatableDevice.PCIAddress, unwrappedErr)
+	discoveredDeviceInfo, discoveryErr := discovery.DiscoverPCIDevice(deviceSysfsDir, s.SysfsRoot)
+	if discoveryErr != nil {
+		err = fmt.Errorf("failed to get DRM device for PCI address %v: %v", allocatableDevice.PCIAddress, discoveryErr)
 		return
 	}
-	allocatableDevice.CardName = cardName
-	allocatableDevice.RenderDName = renderDName
+	allocatableDevice.CardName = discoveredDeviceInfo.CardName
+	allocatableDevice.RenderDName = discoveredDeviceInfo.RenderDName
+	allocatableDevice.MEIName = discoveredDeviceInfo.MEIName
 
 	// Save new CDI device
 	if unwrappedErr := cdihelpers.UpdateGPUDevices(s.CdiCache, []*device.DeviceInfo{allocatableDevice}); unwrappedErr != nil {
@@ -629,7 +715,7 @@ func (s *nodeState) getAllocatableByPCIAddress(pciAddress string) (*device.Devic
 	return nil, fmt.Errorf("no device found with PCI address %s", pciAddress)
 }
 
-func (s *nodeState) changeKernelDriver(pciAddress, driverName string) (bool, error) {
+func (s *nodeState) changeKernelDriver(pciAddress, driverName string) error {
 	klog.V(5).Infof("Changing driver for device %v to %v", pciAddress, driverName)
 	supportedDrivers := map[string]struct{}{
 		device.SysfsI915DriverName:   {},
@@ -638,27 +724,28 @@ func (s *nodeState) changeKernelDriver(pciAddress, driverName string) (bool, err
 		device.SysfsXeVFIODriverName: {},
 	}
 	if _, found := supportedDrivers[driverName]; !found {
-		return false, fmt.Errorf("unsupported driver: %v", driverName)
+		return fmt.Errorf("unsupported driver: %v", driverName)
 	}
 
 	if !s.ManageBinding {
-		return false, fmt.Errorf("driver binding management is disabled, cannot change driver for device %v to %v", pciAddress, driverName)
+		klog.Errorf("driver binding management is disabled, cannot change driver for device %v to %v", pciAddress, driverName)
+		return fmt.Errorf("driver binding management is disabled, cannot change driver for device %v to %v", pciAddress, driverName)
 	}
 
 	if err := vfio.UnbindDeviceFromKernelDriver(pciAddress); err != nil {
 		klog.Errorf("error unbinding device %v from current driver: %v", pciAddress, err)
-		return false, fmt.Errorf("failed to unbind device %v from current driver: %v", pciAddress, err)
+		return fmt.Errorf("failed to unbind device %v from current driver: %v", pciAddress, err)
 	}
 
 	time.Sleep(device.DriverChangeDelay)
 
 	if err := vfio.BindDeviceToDriver(pciAddress, driverName); err != nil {
 		klog.Errorf("failed binding device %v to %v: %v", pciAddress, driverName, err)
-		return true, fmt.Errorf("failed to bind device %v to driver %v: %v", pciAddress, driverName, err)
+		return fmt.Errorf("failed to bind device %v to driver %v: %v", pciAddress, driverName, err)
 	}
 
 	klog.V(5).Infof("Successfully changed driver for device %v to %v", pciAddress, driverName)
-	return true, nil
+	return nil
 }
 
 func (s *nodeState) getRequestDeviceClassNameFromClaim(requestName string, claim *resourcev1.ResourceClaim) string {
@@ -696,22 +783,18 @@ func (s *nodeState) getRequestDeviceClassNameFromClaim(requestName string, claim
 	return ""
 }
 
-// unprepareDevices checks if any taints need to be cleaned up from devices, and CDI devices removed from CDI cache.
-func (s *nodeState) unprepareDevices(ctx context.Context, claimUID types.UID) (bool, error) {
+// unprepareDevices checks if any taints need to be cleaned up from devices.
+func (s *nodeState) unprepareDevices(claimUID types.UID) bool {
 	preparedClaim, found := s.Prepared[claimUID]
 	needToPublishSlice := false
 	if !found {
-		return needToPublishSlice, nil
+		return needToPublishSlice
 	}
 
 	klog.V(5).Infof("Freeing devices from claim %v", claimUID)
 
-	allocatableDevices, ok := s.Allocatable.(map[string]*device.DeviceInfo)
-	if !ok {
-		return needToPublishSlice, fmt.Errorf("failed to cast allocatable devices")
-	}
+	allocatableDevices, _ := s.Allocatable.(map[string]*device.DeviceInfo)
 
-	cdiDevicesToRemove := []string{}
 	for _, preparedDevice := range preparedClaim.PreparedDevices {
 		klog.V(5).Infof(
 			"Unpreparing device %v (CDI ids: %v) for claim %v",
@@ -725,23 +808,13 @@ func (s *nodeState) unprepareDevices(ctx context.Context, claimUID types.UID) (b
 			continue
 		}
 
-		// cleanup UnexpectedDevice taint that could have been places when the device was in use / in prepared claim, and the driver was changed.
+		// cleanup UnexpectedDriver taint that could have been placed when the device was in use / in prepared claim, and the driver was changed.
 		if allocatableDevice.HealthStatus[device.HealthStatusUnexpectedDriver] == device.HealthUnhealthy {
 			klog.Infof("Cleaning up %v taint from device %v", device.HealthStatusUnexpectedDriver, allocatableDevice.PCIAddress)
 			allocatableDevice.HealthStatus[device.HealthStatusUnexpectedDriver] = device.HealthHealthy
 			needToPublishSlice = true
 		}
-
-		klog.V(5).Infof("Found allocatable device %v for CDI device %v", allocatableDevice.PCIAddress, preparedDevice.KubeletpluginDevice.DeviceName)
-		switch {
-		case allocatableDevice.IsVFIOBound():
-			cdiDevicesToRemove = append(cdiDevicesToRemove, preparedDevice.KubeletpluginDevice.CDIDeviceIDs...)
-		case allocatableDevice.IsDRMBound():
-			cdiDevicesToRemove = append(cdiDevicesToRemove, preparedDevice.KubeletpluginDevice.CDIDeviceIDs...)
-		default:
-			klog.Warningf("Device %v is neither a VFIO device nor a DRM device during unpreparing.", allocatableDevice.PCIAddress)
-		}
 	}
 
-	return needToPublishSlice, cdihelpers.RemoveDevices(s.CdiCache, cdiDevicesToRemove)
+	return needToPublishSlice
 }

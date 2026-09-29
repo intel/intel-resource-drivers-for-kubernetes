@@ -60,6 +60,7 @@ func DiscoverPCIDevice(deviceSysfsDir, sysfsRoot string) (*device.DeviceInfo, er
 	currentDriver := GetPCIDeviceDriver(deviceSysfsDir)
 	devicePCIAddress := path.Base(deviceSysfsDir)
 	vendorId, deviceId, classId := readPCIInfo(deviceSysfsDir)
+	// IsGPUClass can be false-positive for other devices, e.g., also Intel NPU (0x1200).
 	if vendorId != device.PCIVendorId || !device.IsGPUClass(classId) {
 		klog.V(5).Infof("ignoring device %v (vendorId: %v, classId: %v): not an Intel GPU", devicePCIAddress, vendorId, classId)
 		return nil, fmt.Errorf("not an Intel GPU")
