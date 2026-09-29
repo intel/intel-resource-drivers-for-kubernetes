@@ -3,9 +3,9 @@ name: Cosign Release Image
 on:
   push:
     tags:
-      - '*-v*'
-    tags-ignore:
-      - '*-v*-chart'
+      - 'gpu-v[0-9]+.[0-9]+.[0-9]+'
+      - 'gaudi-v[0-9]+.[0-9]+.[0-9]+'
+      - 'qat-v[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
     inputs:
       image_type:
