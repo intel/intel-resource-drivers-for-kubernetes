@@ -43,18 +43,20 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then
             TAG="${GITHUB_REF#refs/tags/}"
             IMAGE_TYPE="${TAG%%-v*}"
+            IMAGE_VERSION="${TAG#*-}"
           else
             IMAGE_TYPE="${{ inputs.image_type }}"
-            TAG="${{ inputs.image_type }}-${{ inputs.version }}"
+            IMAGE_VERSION="${{ inputs.version }}"
           fi
 
           echo "image_type=$IMAGE_TYPE" >> "$GITHUB_OUTPUT"
-          echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "image_version=$IMAGE_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Get image digest
         id: get_image_digest
         run: |
-          DIGEST=$(docker inspect "${{ env.OCI_REGISTRY }}/intel-${{ steps.parse.outputs.image_type }}-resource-driver:${{ steps.parse.outputs.image_tag }}" | jq -r '.[0].RepoDigests[0]' | cut -d'@' -f2)
+          docker pull "${{ env.OCI_REGISTRY }}/intel-${{ steps.parse.outputs.image_type }}-resource-driver:${{ steps.parse.outputs.image_version }}"
+          DIGEST=$(docker inspect "${{ env.OCI_REGISTRY }}/intel-${{ steps.parse.outputs.image_type }}-resource-driver:${{ steps.parse.outputs.image_version }}" | jq -r '.[0].RepoDigests[0]' | cut -d'@' -f2)
           # Exit if digest is empty or does not start with sha256
           if [ -z "$DIGEST" ] || [[ "$DIGEST" != sha256* ]]; then
             echo "Failed to get valid image digest"
@@ -74,6 +76,6 @@ jobs:
         if: ${{ github.event_name == 'push' }}
         env:
           IMAGE_TYPE: ${{ steps.parse.outputs.image_type }}
-          IMAGE_TAG: ${{ steps.parse.outputs.image_tag }}
+          IMAGE_VERSION: ${{ steps.parse.outputs.image_version }}
           DIGEST: ${{ steps.get_image_digest.outputs.digest }}
-        run: cosign sign --yes ${{ env.OCI_REGISTRY }}/intel-${{ env.IMAGE_TYPE }}-resource-driver:${{ env.IMAGE_TAG }}@${{ env.DIGEST }}
+        run: cosign sign --yes ${{ env.OCI_REGISTRY }}/intel-${{ env.IMAGE_TYPE }}-resource-driver:${{ env.IMAGE_VERSION }}@${{ env.DIGEST }}
