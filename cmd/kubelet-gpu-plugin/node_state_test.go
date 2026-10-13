@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
+	"k8s.io/utils/ptr"
 	cdiapi "tags.cncf.io/container-device-interface/pkg/cdi"
 
 	cdihelpers "github.com/intel/intel-resource-drivers-for-kubernetes/pkg/gpu/cdihelpers"
@@ -288,6 +289,62 @@ func TestGetResourcesTaintsUnsupportedHealth(t *testing.T) {
 	}
 }
 
+func TestGetResourcesConsumableShares(t *testing.T) {
+	for _, mode := range []string{"", "disabled", "2"} {
+		state := &nodeState{
+			Allocatable:      map[string]*device.DeviceInfo{"gpu": {UID: "gpu", MemoryMiB: 16384}},
+			NodeName:         "test-node",
+			ConsumableShares: mode,
+		}
+
+		dev := state.GetResources().Pools["test-node"].Slices[0].Devices[0]
+		shared := mode == "2"
+		if ptr.Deref(dev.AllowMultipleAllocations, false) != shared {
+			t.Errorf("mode %q: expected AllowMultipleAllocations=%v, got %v", mode, shared, dev.AllowMultipleAllocations)
+		}
+		if _, found := dev.Capacity["shares"]; found != shared {
+			t.Errorf("mode %q: expected shares capacity=%v, got %v", mode, shared, dev.Capacity)
+		}
+	}
+}
+
+// A device that claims still hold shares of is tainted NoSchedule while it is published as
+// exclusive, so that the scheduler does not allocate the whole device to a new claim.
+func TestGetResourcesSharedClaimsDrainingTaint(t *testing.T) {
+	shareID := types.UID("share-1")
+	prepared := ClaimPreparations{
+		"claim-shared": {PreparedDevices: []PreparedDevice{
+			{KubeletpluginDevice: kubeletplugin.Device{DeviceName: "gpu", PoolName: "test-node", ShareID: &shareID}},
+		}},
+	}
+	for _, tc := range []struct {
+		mode     string
+		prepared ClaimPreparations
+		tainted  bool
+	}{
+		{mode: "disabled", prepared: prepared, tainted: true},
+		{mode: "disabled", prepared: ClaimPreparations{}, tainted: false},
+		{mode: "2", prepared: prepared, tainted: false},
+	} {
+		state := &nodeState{
+			Allocatable:      map[string]*device.DeviceInfo{"gpu": {UID: "gpu", MemoryMiB: 16384}},
+			NodeName:         "test-node",
+			ConsumableShares: tc.mode,
+			Prepared:         tc.prepared,
+		}
+		dev := state.GetResources().Pools["test-node"].Slices[0].Devices[0]
+		tainted := false
+		for _, taint := range dev.Taints {
+			if taint.Key == device.SharedClaimsDrainingTaintKey && taint.Effect == resourcev1.DeviceTaintEffectNoSchedule {
+				tainted = true
+			}
+		}
+		if tainted != tc.tainted {
+			t.Errorf("mode %q with %d prepared claims: expected draining taint=%v, got taints %v", tc.mode, len(tc.prepared), tc.tainted, dev.Taints)
+		}
+	}
+}
+
 func TestIsDeviceUsedExclusivelyAlready(t *testing.T) {
 	state := &nodeState{
 		Allocatable: map[string]*device.DeviceInfo{
@@ -306,6 +363,10 @@ func TestIsDeviceUsedExclusivelyAlready(t *testing.T) {
 			"gpu-prepared-with-admin-access": {
 				UID:        "gpu-prepared-with-admin-access",
 				PCIAddress: "0000:00:01.0",
+			},
+			"gpu-shared": {
+				UID:        "gpu-shared",
+				PCIAddress: "0000:00:05.0",
 			},
 		},
 		Prepared: ClaimPreparations{
@@ -330,6 +391,17 @@ func TestIsDeviceUsedExclusivelyAlready(t *testing.T) {
 					},
 				},
 			},
+			"claim-3": {
+				PreparedDevices: []PreparedDevice{
+					{
+						KubeletpluginDevice: kubeletplugin.Device{
+							DeviceName: "gpu-shared",
+							PoolName:   "pool0",
+							ShareID:    ptr.To(types.UID("share-3")),
+						},
+					},
+				},
+			},
 			"claim-new": {
 				PreparedDevices: []PreparedDevice{
 					{
@@ -349,6 +421,7 @@ func TestIsDeviceUsedExclusivelyAlready(t *testing.T) {
 		expected    bool
 		expectError bool
 		claimUid    types.UID
+		shareID     *types.UID
 	}{
 		{
 			name:     "prepared device",
@@ -380,11 +453,31 @@ func TestIsDeviceUsedExclusivelyAlready(t *testing.T) {
 			claimUid: "claim-new",
 			expected: false, // AdminAccess devices should not be considered prepared for exclusivity checks.
 		},
+		{
+			name:     "shared device, new share",
+			uid:      "gpu-shared",
+			claimUid: "claim-x",
+			shareID:  ptr.To(types.UID("share-x")),
+			expected: false,
+		},
+		{
+			name:     "shared device, exclusive claim",
+			uid:      "gpu-shared",
+			claimUid: "claim-x",
+			expected: true,
+		},
+		{
+			name:     "exclusively prepared device, new share",
+			uid:      "gpu-prepared",
+			claimUid: "claim-x",
+			shareID:  ptr.To(types.UID("share-x")),
+			expected: true,
+		},
 	}
 
 	for _, testcase := range testcases {
 		t.Run(testcase.name, func(t *testing.T) {
-			got := state.isDeviceUsedExclusivelyAlready(testcase.uid, "pool0", testcase.claimUid)
+			got := state.isDeviceUsedExclusivelyAlready(testcase.uid, "pool0", testcase.claimUid, testcase.shareID)
 
 			if got != testcase.expected {
 				t.Fatalf("expected IsDeviceUsedExclusivelyAlready()=%v, got %v", testcase.expected, got)

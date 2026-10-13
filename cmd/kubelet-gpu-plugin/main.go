@@ -23,6 +23,7 @@ const (
 	IgnoreHealthWarningFlagDefault = true
 	HealthcheckPortDefault         = 51516
 	DefaultManageBinding           = true
+	ConsumableSharesDefault        = ConsumableSharesDisabled
 )
 
 type GPUFlags struct {
@@ -32,6 +33,7 @@ type GPUFlags struct {
 	HealthcheckPort     int
 	XPUMDSocketFilePath string
 	ManageBinding       bool
+	ConsumableShares    string
 }
 
 func main() {
@@ -85,6 +87,13 @@ func main() {
 			Value:       DefaultManageBinding,
 			Destination: &gpuFlags.ManageBinding,
 			EnvVars:     []string{"MANAGE_BINDING"},
+		},
+		&cli.StringFlag{
+			Name:        "consumable-shares",
+			Usage:       "Allow multiple claims to share a GPU: 'disabled', 'memory', 'unlimited', or a positive integer number of shares per GPU.",
+			Value:       ConsumableSharesDefault,
+			Destination: &gpuFlags.ConsumableShares,
+			EnvVars:     []string{"CONSUMABLE_SHARES"},
 		},
 	}
 
