@@ -72,6 +72,9 @@ const (
 	UnboundUnmanagedTaintKey     = "UnboundUnmanaged"   // part of HealthCustomList
 	DriverChangeFailed           = "DriverChangeFailed" // part of HealthCustomList
 	UnsupportedHealthTaintKey    = "UnsupportedHealth"
+	// SharedClaimsDrainingTaintKey taints a device that claims still hold shares of while it is
+	// published as exclusive (sharing disabled), until those claims are unprepared.
+	SharedClaimsDrainingTaintKey = "SharedClaimsDraining"
 
 	PCIVendorId                         = "0x8086"
 	PCIVGAClassID                       = "0x030000"

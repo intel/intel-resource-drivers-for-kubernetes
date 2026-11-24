@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/dynamic-resource-allocation/kubeletplugin"
+	"k8s.io/utils/ptr"
 
 	"github.com/containers/nri-plugins/pkg/udev"
 
@@ -185,6 +186,126 @@ func TestPrepareResourceClaims(t *testing.T) {
 							},
 						},
 					},
+				},
+			},
+		},
+		{
+			name: "second share of a shared GPU",
+			request: []*resourceapi.ResourceClaim{
+				withShareID(testhelpers.NewClaim("namespace1", "claim2", "uid2", "request2", "gpu.intel.com", "node1", "gpu.intel.com", []string{"0000-00-02-0-0x56c0"}, false), "share-b"),
+			},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid2": {
+					Devices: []kubeletplugin.Device{
+						{
+							Requests:     []string{"request2"},
+							PoolName:     "node1",
+							DeviceName:   "0000-00-02-0-0x56c0",
+							ShareID:      ptr.To(types.UID("share-b")),
+							CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+							Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:02.0"}[0]}}},
+						},
+					},
+				},
+			},
+			initialPreparedClaims: ClaimPreparations{
+				"uid1": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"request1"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-02-0-0x56c0",
+								ShareID:      ptr.To(types.UID("share-a")),
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+								Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:02.0"}[0]}}},
+							},
+						},
+					},
+				},
+			},
+			expectedPreparedClaims: ClaimPreparations{
+				"uid1": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"request1"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-02-0-0x56c0",
+								ShareID:      ptr.To(types.UID("share-a")),
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+								Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:02.0"}[0]}}},
+							},
+						},
+					},
+				},
+				"uid2": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"request2"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-02-0-0x56c0",
+								ShareID:      ptr.To(types.UID("share-b")),
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+								Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:02.0"}[0]}}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "exclusive claim on a shared GPU prepare failure",
+			request: []*resourceapi.ResourceClaim{
+				testhelpers.NewClaim("namespace1", "claim2", "uid2", "request2", "gpu.intel.com", "node1", "gpu.intel.com", []string{"0000-00-02-0-0x56c0"}, false),
+			},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid2": {
+					Err: errors.New("device 0000-00-02-0-0x56c0 (pool node1) is already allocated to another claim and cannot be prepared without adminAccess flag"),
+				},
+			},
+			initialPreparedClaims: ClaimPreparations{
+				"uid1": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"request1"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-02-0-0x56c0",
+								ShareID:      ptr.To(types.UID("share-a")),
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+								Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:02.0"}[0]}}},
+							},
+						},
+					},
+				},
+			},
+			expectedPreparedClaims: ClaimPreparations{
+				"uid1": {
+					PreparedDevices: []PreparedDevice{
+						{
+							KubeletpluginDevice: kubeletplugin.Device{
+								Requests:     []string{"request1"},
+								PoolName:     "node1",
+								DeviceName:   "0000-00-02-0-0x56c0",
+								ShareID:      ptr.To(types.UID("share-a")),
+								CDIDeviceIDs: []string{"intel.com/gpu=0000-00-02-0-0x56c0"},
+								Metadata:     &kubeletplugin.DeviceMetadata{Attributes: map[string]resourceapi.DeviceAttribute{"resource.kubernetes.io/pciBusID": {StringValue: &[]string{"0000:00:02.0"}[0]}}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "VFIO claim on a shared GPU prepare failure",
+			request: []*resourceapi.ResourceClaim{
+				withShareID(testhelpers.NewClaim("namespace1", "claim1", "uid1", "request1", "gpu.intel.com", "node1", "gpu-vfio.intel.com", []string{"0000-00-02-0-0x56c0"}, false), "share-a"),
+			},
+			expectedResponse: map[types.UID]kubeletplugin.PrepareResult{
+				"uid1": {
+					Err: errors.New("device 0000-00-02-0-0x56c0 (pool node1) is shared and cannot be prepared as VFIO device"),
 				},
 			},
 		},
@@ -1619,4 +1740,13 @@ func TestWatchDevices_ContextCancelledAfterStart(t *testing.T) {
 	cancel()
 
 	waitForWatchDevicesExit(t, done, 3*time.Second)
+}
+
+// withShareID sets the ShareID of the claim's allocated devices, as the scheduler does for devices
+// that allow multiple allocations.
+func withShareID(claim *resourceapi.ResourceClaim, shareID string) *resourceapi.ResourceClaim {
+	for i := range claim.Status.Allocation.Devices.Results {
+		claim.Status.Allocation.Devices.Results[i].ShareID = ptr.To(types.UID(shareID))
+	}
+	return claim
 }

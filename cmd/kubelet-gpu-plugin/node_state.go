@@ -43,9 +43,11 @@ type nodeState struct {
 	NodeName               string
 	SysfsRoot              string
 	ManageBinding          bool
+	// ConsumableShares is the --consumable-shares flag value, see applyConsumableShares.
+	ConsumableShares string
 }
 
-func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string, preparedClaimFilePath string, sysfsRoot string, nodeName string, manageBinding bool) (*nodeState, error) {
+func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string, preparedClaimFilePath string, sysfsRoot string, nodeName string, manageBinding bool, consumableShares string) (*nodeState, error) {
 	for ddev := range detectedDevices {
 		klog.V(3).Infof("new device: %+v", ddev)
 	}
@@ -84,6 +86,7 @@ func newNodeState(detectedDevices map[string]*device.DeviceInfo, cdiRoot string,
 		SysfsRoot:              sysfsRoot,
 		NodeName:               nodeName,
 		ManageBinding:          manageBinding,
+		ConsumableShares:       consumableShares,
 	}
 
 	allocatableDevices, ok := state.Allocatable.(map[string]*device.DeviceInfo)
@@ -155,6 +158,8 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 			},
 		}
 
+		applyConsumableShares(&newDevice, s.ConsumableShares)
+
 		// pciRoot Device.DeviceAttribute is deprecated: will be removed in 1.0.0 release, use resource.kubernetes.io/pcieRoot'.
 		// For backwards compatibility, strip domain, only bus was in the value.
 		if len(gpu.PCIRoot) > 0 {
@@ -205,6 +210,17 @@ func (s *nodeState) GetResources() resourceslice.DriverResources {
 			})
 		}
 
+		// Taint the device if claims still hold shares of it but it is now published as
+		// exclusive (sharing was disabled with claims live). The scheduler does not count those
+		// shares against an exclusive device and would allocate the whole device to a new claim,
+		// which Prepare then refuses. The taint goes away when the last shared claim is unprepared.
+		if !ptr.Deref(newDevice.AllowMultipleAllocations, false) && deviceHasSharedClaims(s.Prepared, gpuUID) {
+			newDevice.Taints = append(newDevice.Taints, resourcev1.DeviceTaint{
+				Key:    device.SharedClaimsDrainingTaintKey,
+				Effect: resourcev1.DeviceTaintEffectNoSchedule,
+			})
+		}
+
 		// Taint the device if it is not bound to any kernel driver and binding
 		// management is disabled.
 		if gpu.CurrentDriver == "" && !s.ManageBinding {
@@ -247,7 +263,7 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 
 		// Protection against force-deleted claims making cluster think the device is free.
 		adminAccess := ptr.Deref(allocatedDevice.AdminAccess, false)
-		deviceOccupied := s.isDeviceUsedExclusivelyAlready(allocatedDevice.Device, allocatedDevice.Pool, claim.UID)
+		deviceOccupied := s.isDeviceUsedExclusivelyAlready(allocatedDevice.Device, allocatedDevice.Pool, claim.UID, allocatedDevice.ShareID)
 		if deviceOccupied {
 			if !adminAccess {
 				prepareResult.Err = fmt.Errorf(
@@ -272,21 +288,10 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 
 		deviceClassName := s.getRequestDeviceClassNameFromClaim(allocatedDevice.Request, claim)
 		klog.V(5).Infof("Device class name for request %v: %v", allocatedDevice.Request, deviceClassName)
-		if deviceClassName == device.VFIODeviceClassName {
-			klog.V(5).Infof("Device %v is requested as VFIO device, preparing with VFIO driver", allocatableDevice.PCIAddress)
-			needToPublishSlice, err = s.prepareVFIODevice(allocatableDevice)
-			if err != nil {
-				prepareResult.Err = fmt.Errorf("failed to prepare VFIO device %v: %v", allocatableDevice.PCIAddress, err)
-				return
-			}
-		} else {
-			klog.V(5).Infof("Device %v is requested as regular GPU device, preparing with DRM driver", allocatableDevice.PCIAddress)
-			needToPublishSlice, err = s.prepareDRMDevice(allocatableDevice)
-			// Skip error for adminAccess claims, xpumd might make use of the device still.
-			if !adminAccess && err != nil {
-				prepareResult.Err = fmt.Errorf("failed to prepare DRM device %v: %v", allocatableDevice.PCIAddress, err)
-				return
-			}
+		needToPublishSlice, err = s.prepareDeviceDriver(allocatedDevice, allocatableDevice, deviceClassName, adminAccess)
+		if err != nil {
+			prepareResult.Err = err
+			return
 		}
 
 		newDevice := PreparedDevice{
@@ -294,6 +299,7 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 				Requests:     []string{allocatedDevice.Request},
 				PoolName:     allocatedDevice.Pool,
 				DeviceName:   allocatedDevice.Device,
+				ShareID:      allocatedDevice.ShareID,
 				CDIDeviceIDs: deviceCDINames(allocatableDevice, adminAccess),
 				Metadata: &kubeletplugin.DeviceMetadata{
 					Attributes: map[string]resourcev1.DeviceAttribute{
@@ -317,10 +323,35 @@ func (s *nodeState) Prepare(ctx context.Context, claim *resourcev1.ResourceClaim
 		return
 	}
 
-	klog.V(5).Infof("Created prepared claim %v allocation", claim.UID)
+	klog.Infof("Prepared claim %v: %s", claim.UID, describePreparedDevices(preparedDevices))
 	prepareResult = s.Prepared[claim.UID].PrepareResult()
 
 	return
+}
+
+// prepareDeviceDriver binds the allocated device to the kernel driver its DeviceClass needs:
+// VFIO or DRM. Returns bool indicating if new ResourceSlice needs to be published.
+func (s *nodeState) prepareDeviceDriver(allocatedDevice resourcev1.DeviceRequestAllocationResult, allocatableDevice *device.DeviceInfo, deviceClassName string, adminAccess bool) (bool, error) {
+	if deviceClassName == device.VFIODeviceClassName {
+		// Rebinding a shared GPU to the VFIO driver would take it away from the other claims.
+		if allocatedDevice.ShareID != nil {
+			return false, fmt.Errorf("device %v (pool %v) is shared and cannot be prepared as VFIO device", allocatedDevice.Device, allocatedDevice.Pool)
+		}
+		klog.V(5).Infof("Device %v is requested as VFIO device, preparing with VFIO driver", allocatableDevice.PCIAddress)
+		needToPublishSlice, err := s.prepareVFIODevice(allocatableDevice)
+		if err != nil {
+			return needToPublishSlice, fmt.Errorf("failed to prepare VFIO device %v: %v", allocatableDevice.PCIAddress, err)
+		}
+		return needToPublishSlice, nil
+	}
+
+	klog.V(5).Infof("Device %v is requested as regular GPU device, preparing with DRM driver", allocatableDevice.PCIAddress)
+	needToPublishSlice, err := s.prepareDRMDevice(allocatableDevice)
+	// Skip error for adminAccess claims, xpumd might make use of the device still.
+	if !adminAccess && err != nil {
+		return needToPublishSlice, fmt.Errorf("failed to prepare DRM device %v: %v", allocatableDevice.PCIAddress, err)
+	}
+	return needToPublishSlice, nil
 }
 
 // deviceCDINames returns the names of the CDI devices that the kubelet should inject into the
@@ -403,11 +434,10 @@ func (s *nodeState) ValidatePreparedClaim(claimUID types.UID) bool {
 	return true
 }
 
-// isDeviceUsedExclusivelyAlready returns true if the device is already in use in some other claim and
-// adminAccess flag is not set.
-// TODO: FIXME: shareID needs to be checked as well but it is not in kubeletplugin.PrepareResult,
-// and therefore it is not currently stored in cached preparedClaims file or in s.Prepared.
-func (s *nodeState) isDeviceUsedExclusivelyAlready(deviceName, poolName string, claimUID types.UID) bool {
+// isDeviceUsedExclusivelyAlready returns true if the device is already in use in some other claim
+// without adminAccess flag, unless both that claim and the new one (shareID) got a share of the device.
+// Pass nil shareID to check whether the device is in use by any other claim.
+func (s *nodeState) isDeviceUsedExclusivelyAlready(deviceName, poolName string, claimUID types.UID, shareID *types.UID) bool {
 	for preparedClaimUID, claimPreparation := range s.Prepared {
 		// Ignore currently processed claim if it was prepared before.
 		if preparedClaimUID == claimUID {
@@ -418,8 +448,8 @@ func (s *nodeState) isDeviceUsedExclusivelyAlready(deviceName, poolName string, 
 			if preparedDevice.AdminAccess {
 				continue
 			}
-			if preparedDevice.KubeletpluginDevice.DeviceName == deviceName && preparedDevice.KubeletpluginDevice.PoolName == poolName {
-				// TODO: FIXME: check for shareID when consumableCapacity is supported.
+			if preparedDevice.KubeletpluginDevice.DeviceName == deviceName && preparedDevice.KubeletpluginDevice.PoolName == poolName &&
+				(shareID == nil || preparedDevice.KubeletpluginDevice.ShareID == nil) {
 				return true
 			}
 		}
@@ -512,7 +542,7 @@ func (s *nodeState) refreshCachedDevice(cachedDeviceInfo, discoveredDeviceInfo *
 		cachedDeviceInfo.VFIODevice = discoveredDeviceInfo.VFIODevice
 		cachedDeviceInfo.IOMMUGroup = discoveredDeviceInfo.IOMMUGroup
 		cachedDeviceInfo.VFIndex = discoveredDeviceInfo.VFIndex
-		if s.isDeviceUsedExclusivelyAlready(cachedDeviceInfo.UID, s.NodeName, "") {
+		if s.isDeviceUsedExclusivelyAlready(cachedDeviceInfo.UID, s.NodeName, "", nil) {
 			// This taint is removed when the device is unprepared.
 			cachedDeviceInfo.HealthStatus[device.HealthStatusUnexpectedDriver] = device.HealthUnhealthy
 		}
@@ -557,14 +587,21 @@ func (s *nodeState) Unprepare(ctx context.Context, claimUID types.UID) (needToPu
 	defer s.Unlock()
 	var unwrappedErr error
 
-	if _, found := s.Prepared[claimUID]; !found {
+	preparedClaim, found := s.Prepared[claimUID]
+	if !found {
 		return
 	}
 
 	needToPublishSlice = s.unprepareDevices(claimUID)
 
-	klog.V(5).Infof("Freeing devices from claim %v", claimUID)
+	klog.Infof("Unprepared claim %v: %s", claimUID, describePreparedDevices(preparedClaim.PreparedDevices))
 	delete(s.Prepared, claimUID)
+
+	// With sharing disabled the device may carry a SharedClaimsDraining taint (see GetResources):
+	// republish so that the taint is removed once the last share is gone.
+	if !consumableSharesEnabled(s.ConsumableShares) && claimHasShares(preparedClaim) {
+		needToPublishSlice = true
+	}
 
 	// write prepared claims to file
 	if unwrappedErr = WritePreparedClaimsToFile(s.PreparedClaimsFilePath, s.Prepared); unwrappedErr != nil {
@@ -805,6 +842,12 @@ func (s *nodeState) unprepareDevices(claimUID types.UID) bool {
 		if !found {
 			// Could be a stuck pod after reboot.
 			klog.Errorf("could not find allocatable device %v for claim %v", preparedDevice.KubeletpluginDevice.DeviceName, claimUID)
+			continue
+		}
+
+		// A shared device stays in use by the other claims.
+		if s.isDeviceUsedExclusivelyAlready(preparedDevice.KubeletpluginDevice.DeviceName, preparedDevice.KubeletpluginDevice.PoolName, claimUID, nil) {
+			klog.V(5).Infof("Device %v is still prepared for other claims, keeping its taints", preparedDevice.KubeletpluginDevice.DeviceName)
 			continue
 		}
 

@@ -31,6 +31,9 @@ spec:
         - --manage-binding=false
         {{- end }}
         {{- end }}
+        {{- if ne (toString .Values.kubeletPlugin.consumableShares) "disabled" }}
+        - --consumable-shares={{ .Values.kubeletPlugin.consumableShares }}
+        {{- end }}
         {{- range .Values.kubeletPlugin.extraArgs | default "" | splitList " " }}
         {{- if . }}
         - {{ . | quote }}

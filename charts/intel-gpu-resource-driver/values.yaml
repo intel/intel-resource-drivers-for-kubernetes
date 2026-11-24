@@ -61,6 +61,10 @@ kubeletPlugin:
     # If set to false - only VFIO-driver-bound GPUs will be usable for VMs PCI passthrough.
     enabled: true
 
+  # Let multiple claims share a GPU: "disabled", "memory", "unlimited", or a number of shares per GPU.
+  # Requires the DRAConsumableCapacity feature gate. See doc/gpu/USAGE.md.
+  consumableShares: "disabled"
+
   tolerations:
     - key: node-role.kubernetes.io/master
       operator: Exists

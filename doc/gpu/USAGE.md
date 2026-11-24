@@ -389,6 +389,49 @@ spec:
               expression: device.capacity["gpu.intel.com"].memory.compareTo(quantity("16Gi")) >= 0
 ```
 
+#### Sharing a GPU between Pods
+
+By default each GPU is allocated to one ResourceClaim. With the `--consumable-shares` flag
+(Helm value `kubeletPlugin.consumableShares`) GPUs can be shared by multiple ResourceClaims, using
+[DRA consumable capacity](https://github.com/kubernetes/enhancements/tree/master/keps/sig-scheduling/5075-dra-consumable-capacity).
+This requires the `DRAConsumableCapacity` feature gate on kube-apiserver, kube-scheduler and kubelet.
+The flag takes one of these values:
+
+| Value | Effect |
+|---|---|
+| `disabled` | default, a GPU is allocated to one claim |
+| number, e.g. `4` | each GPU has `4` shares, a claim takes 1 share unless it requests more |
+| `unlimited` | any number of claims can share a GPU |
+| `memory` | claims share a GPU until its memory is used up, a claim takes all memory unless it requests less |
+
+Example of Resource Claim requesting 2 shares and 4 Gi of memory of a GPU:
+```yaml
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: shared-gpu
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.intel.com
+          capacity:
+            requests:
+              shares: 2
+              memory: 4Gi
+```
+
+Notes:
+- Shares and memory are only used for scheduling, they are not enforced: all Pods sharing a GPU
+  can use all of its memory and compute, and the GPU driver time-slices between them.
+- A shared GPU cannot be requested with the `gpu-vfio.intel.com` DeviceClass.
+- GPU memory is unknown (`0`) when the kubelet plugin runs unprivileged without health monitoring,
+  and for VFIO-bound GPUs. Such a GPU has no memory request policy in the number and `unlimited`
+  modes, and in `memory` mode it stays exclusive. The plugin logs an error for it.
+- When a GPU becomes unhealthy, all Pods sharing it are evicted.
+
 ## GPU monitor deployment
 
 GPU monitor deployment ResourceClaim must specify `allocationMode: All` and `adminAccess: true` in `requests` (see [Monitor pod example](../../deployments/gpu/examples/monitor-pod-inline.yaml).

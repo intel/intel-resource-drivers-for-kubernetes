@@ -67,6 +67,10 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 		return nil, fmt.Errorf("get GPU flags: %w", err)
 	}
 
+	if err := validateConsumableShares(gpuFlags.ConsumableShares); err != nil {
+		return nil, err
+	}
+
 	driver := &driver{
 		client: config.Coreclient,
 		state: &nodeState{
@@ -90,7 +94,7 @@ func newDriver(ctx context.Context, config *helpers.Config) (helpers.Driver, err
 	}
 
 	klog.V(3).Info("Creating new NodeState")
-	driver.state, err = newNodeState(detectedDevices, config.CommonFlags.CdiRoot, driver.state.PreparedClaimsFilePath, driver.state.SysfsRoot, driver.state.NodeName, gpuFlags.ManageBinding)
+	driver.state, err = newNodeState(detectedDevices, config.CommonFlags.CdiRoot, driver.state.PreparedClaimsFilePath, driver.state.SysfsRoot, driver.state.NodeName, gpuFlags.ManageBinding, gpuFlags.ConsumableShares)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new NodeState: %v", err)
 	}
@@ -242,6 +246,13 @@ func (d *driver) Shutdown(ctx context.Context) error {
 // - dropped fields (see [resourceslice.DroppedFieldsError])
 // - validation errors (see [apierrors.IsInvalid]).
 func (d *driver) HandleError(ctx context.Context, err error, message string) {
+	if isConsumableCapacityDisabledError(err) {
+		klog.Errorf("--consumable-shares is set, but the DRAConsumableCapacity feature gate is disabled in the cluster: " +
+			"GPUs cannot be shared and each GPU is allocated to one claim only. " +
+			"Enable DRAConsumableCapacity on kube-apiserver, kube-scheduler and kubelet, or set --consumable-shares=disabled.")
+		return
+	}
+
 	if errors.Is(err, kubeletplugin.ErrRecoverable) {
 		// TODO: FIXME: error is ignored ATM, handle it properly.
 		klog.FromContext(ctx).Error(err, "DRAPlugin encountered an error.")

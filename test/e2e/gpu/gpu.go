@@ -184,6 +184,10 @@ func describeGpuDraDriver() {
 		}
 	})
 
+	ginkgo.Context("When GPU DRA driver is running with consumable shares", func() {
+		describeConsumableShares(f)
+	})
+
 	ginkgo.Context("When GPU DRA driver is running in CRI simics", func() {
 		ginkgo.It("deploys a GPU sample application pod", func(ctx context.Context) {
 			gpuSampleAppKustomizeDir, err := utils.LocateRepoFile(gpuSampleAppKustomizationYaml)
